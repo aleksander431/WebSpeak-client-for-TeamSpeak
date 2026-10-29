@@ -4088,3 +4088,7 @@
 
 .admin-root :deep(.operation-card header > strong) { color: var(--admin-accent); }
 :deep(.ts-admin-credentials > summary .state-pill) { color: var(--admin-accent); background: var(--admin-accent-soft); }
+
+/* Device approval: pending request count beside the navigation entry. */
+.admin-sidebar nav a.admin-nav-access .admin-nav-label { flex: 1 1 auto; min-width: 0; }
+.admin-nav-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: auto; padding: 0 6px; border-radius: 999px; color: #fff; background: #d95d55; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; box-shadow: 0 0 0 2px #0b3a35; }

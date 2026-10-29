@@ -8,7 +8,7 @@ import test from "node:test";
 import { AdminService, type AdminSettingsInput } from "../admin/admin-service.js";
 import { migrateConfig } from "../config.js";
 import type { Logger } from "../logger.js";
-import { WebSpeakDatabase } from "../persistence/database.js";
+import { DATABASE_SCHEMA_VERSION, WebSpeakDatabase } from "../persistence/database.js";
 import { JoinTicketStore } from "./join-ticket.js";
 import { createWebServer } from "./server.js";
 
@@ -134,7 +134,7 @@ test("schema 8 settings and invites survive the nickname migration", async (cont
   legacy.close();
   const migrated = new WebSpeakDatabase(file);
   try {
-    assert.equal(migrated.schemaVersion, 12);
+    assert.equal(migrated.schemaVersion, DATABASE_SCHEMA_VERSION);
     assert.equal(migrated.getSettings().tsHost, "127.0.0.1");
     assert.equal(migrated.getSettings().tsTarget, null);
     const invite = migrated.consumeManagedInvite("legacy-token");

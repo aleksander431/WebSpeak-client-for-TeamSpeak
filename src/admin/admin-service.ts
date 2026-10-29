@@ -21,6 +21,7 @@ import { DEFAULT_WEBRTC_UDP_PORT_RANGE, WEBRTC_UDP_PORT_MAX, WEBRTC_UDP_PORT_MIN
 import { DEFAULT_WELCOME_TEXTS, resolveWelcomeTexts } from "../site-copy.js";
 import { TsAdminService, type TsAdminQueryClientFactory } from "./ts-admin-service.js";
 import { AdminInputError } from "./admin-errors.js";
+import { DeviceAccessService } from "../security/device-access.js";
 export { AdminInputError } from "./admin-errors.js";
 
 export interface ConnectionPolicy {
@@ -45,6 +46,8 @@ type ProbeFunction = typeof probeTeamSpeak;
 
 export class AdminService {
   private readonly tsAdmin: TsAdminService;
+  /** Administrator approval of individual browsers before they may join. */
+  readonly deviceAccess: DeviceAccessService;
   constructor(
     readonly database: WebSpeakDatabase,
     private readonly masterSecret: Buffer,
@@ -54,6 +57,7 @@ export class AdminService {
     private readonly version = "0.1.0",
     tsAdminClientFactory?: TsAdminQueryClientFactory,
   ) {
+    this.deviceAccess = new DeviceAccessService(database);
     this.tsAdmin = new TsAdminService(database, masterSecret, logger, () => {
       const settings = database.getSettings();
       return { mode: settings.accessMode, target: settings.tsTarget || formatTeamSpeakTarget({ host: settings.tsHost, port: settings.tsPort }) };
@@ -112,6 +116,7 @@ export class AdminService {
       welcomeTexts,
       accessMode: settings.accessMode,
       target: settingsTarget(settings),
+      deviceApprovalRequired: this.deviceAccess.isRequired(),
     };
   }
 

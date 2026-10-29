@@ -91,6 +91,11 @@ const tsAdminOverview = object({
   bans: array(object({ id: text, name: text, uid: text, reason: text, durationSeconds: number, createdAt: nullable(text) })),
   observedAt: text,
 });
+const deviceAccessDevice = object({
+  id: text, status: choice("pending", "approved", "denied"), nickname: text, clientIp: text, userAgent: text,
+  createdAt: text, lastSeenAt: text, decidedAt: nullable(text),
+});
+const deviceAccess = object({ required: boolean, pendingCount: number, devices: array(deviceAccessDevice) });
 const savedTsAdminSettings = object({ ok: choice(true), settings: tsAdminSettings });
 const sessionStatus = object({ authenticated: boolean, mustChangePassword: optional(boolean), csrfToken: optional(text) });
 
@@ -119,6 +124,7 @@ export const adminResponses = {
   tsAdminSettings,
   savedTsAdminSettings,
   tsAdminOverview,
+  deviceAccess,
   defaultSkin: object({ ok: choice(true), defaultSkinId: text }),
   updatedSkin: object({ ok: choice(true), skin, defaultSkinId: text }),
   uploadedSkin: object({ ok: choice(true), skin }),
@@ -135,3 +141,5 @@ export type AdminSession = ReturnType<typeof session>;
 export type ManagedInvite = ReturnType<typeof invite>;
 export type AdminLog = ReturnType<typeof logEntry>;
 export type AdminConnectionRecord = ReturnType<typeof connection>;
+export type DeviceAccessDevice = ReturnType<typeof deviceAccessDevice>;
+export type DeviceAccessListing = ReturnType<typeof deviceAccess>;

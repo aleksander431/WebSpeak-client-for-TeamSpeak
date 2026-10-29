@@ -6,7 +6,7 @@ import type { AdminCredential } from "../security/admin-password.js";
 import type { TeamSpeakProtocol } from "../server/teamspeak-adapter.js";
 import { DEFAULT_WEBRTC_UDP_PORT_RANGE } from "../server/webrtc-config.js";
 
-export const DATABASE_SCHEMA_VERSION = 12;
+export const DATABASE_SCHEMA_VERSION = 13;
 export type AccessMode = "fixed" | "open";
 
 export interface PersistedSettings {
@@ -105,6 +105,32 @@ export interface PersistedTsAdminSettings {
   passwordEncrypted: string | null;
   hostKeyFingerprint: string;
   updatedAt: string;
+}
+
+export type DeviceAccessStatus = "pending" | "approved" | "denied";
+
+export interface DeviceAccessRecord {
+  id: string;
+  tokenHash: string;
+  status: DeviceAccessStatus;
+  nickname: string;
+  clientIp: string;
+  userAgent: string;
+  createdAt: string;
+  lastSeenAt: string;
+  decidedAt: string | null;
+}
+
+interface DeviceAccessRow extends Record<string, unknown> {
+  id: string;
+  token_hash: string;
+  status: string;
+  nickname: string;
+  client_ip: string;
+  user_agent: string;
+  created_at: string;
+  last_seen_at: string;
+  decided_at: string | null;
 }
 
 interface ManagedInviteRow extends Record<string, unknown> {
@@ -448,6 +474,51 @@ export class WebSpeakDatabase {
     }
   }
 
+  getDeviceAccess(tokenHash: string): DeviceAccessRecord | null {
+    const row = this.database.prepare("SELECT * FROM device_access WHERE token_hash = ?").get(tokenHash) as DeviceAccessRow | undefined;
+    return row ? mapDeviceAccessRow(row) : null;
+  }
+
+  listDeviceAccess(): DeviceAccessRecord[] {
+    const rows = this.database.prepare(
+      `SELECT * FROM device_access
+       ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, last_seen_at DESC`,
+    ).all() as DeviceAccessRow[];
+    return rows.map(mapDeviceAccessRow);
+  }
+
+  countPendingDeviceAccess(): number {
+    const row = this.database.prepare("SELECT COUNT(*) AS count FROM device_access WHERE status = 'pending'").get() as { count: number };
+    return Number(row.count);
+  }
+
+  createDeviceAccessRequest(record: Pick<DeviceAccessRecord, "id" | "tokenHash" | "nickname" | "clientIp" | "userAgent">): DeviceAccessRecord {
+    const now = new Date().toISOString();
+    this.database.prepare(
+      `INSERT INTO device_access (id, token_hash, status, nickname, client_ip, user_agent, created_at, last_seen_at, decided_at)
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, NULL)`,
+    ).run(record.id, record.tokenHash, record.nickname, record.clientIp, record.userAgent, now, now);
+    return { ...record, status: "pending", createdAt: now, lastSeenAt: now, decidedAt: null };
+  }
+
+  touchDeviceAccess(id: string, seen: Pick<DeviceAccessRecord, "nickname" | "clientIp" | "userAgent">): void {
+    this.database.prepare(
+      "UPDATE device_access SET nickname = ?, client_ip = ?, user_agent = ?, last_seen_at = ? WHERE id = ?",
+    ).run(seen.nickname, seen.clientIp, seen.userAgent, new Date().toISOString(), id);
+  }
+
+  setDeviceAccessStatus(id: string, status: DeviceAccessStatus): boolean {
+    const result = this.database.prepare(
+      "UPDATE device_access SET status = ?, decided_at = ? WHERE id = ?",
+    ).run(status, new Date().toISOString(), id) as { changes?: number | bigint };
+    return Number(result.changes ?? 0) === 1;
+  }
+
+  deleteDeviceAccess(id: string): boolean {
+    const result = this.database.prepare("DELETE FROM device_access WHERE id = ?").run(id) as { changes?: number | bigint };
+    return Number(result.changes ?? 0) === 1;
+  }
+
   exportBackup(): Buffer {
     const exportPath = `${this.path}.export-${randomBytes(8).toString("hex")}.db`;
     try {
@@ -731,6 +802,28 @@ export class WebSpeakDatabase {
           PRAGMA user_version = 12;
         `);
       });
+      version = 12;
+    }
+    if (version === 12) {
+      this.transaction(() => {
+        this.database.exec(`
+          -- Browsers that asked to join while administrator approval is
+          -- required. Only a hash of the device cookie is stored.
+          CREATE TABLE IF NOT EXISTS device_access (
+            id TEXT PRIMARY KEY,
+            token_hash TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied')),
+            nickname TEXT NOT NULL DEFAULT '',
+            client_ip TEXT NOT NULL DEFAULT '',
+            user_agent TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            decided_at TEXT
+          );
+          CREATE INDEX IF NOT EXISTS device_access_status_idx ON device_access(status);
+          PRAGMA user_version = 13;
+        `);
+      });
     }
   }
 
@@ -802,5 +895,19 @@ function mapManagedInviteRow(row: ManagedInviteRow): ManagedInviteRecord {
     useCount: row.use_count,
     createdAt: row.created_at,
     revokedAt: row.revoked_at,
+  };
+}
+
+function mapDeviceAccessRow(row: DeviceAccessRow): DeviceAccessRecord {
+  return {
+    id: row.id,
+    tokenHash: row.token_hash,
+    status: row.status === "approved" ? "approved" : row.status === "denied" ? "denied" : "pending",
+    nickname: row.nickname,
+    clientIp: row.client_ip,
+    userAgent: row.user_agent,
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+    decidedAt: row.decided_at,
   };
 }

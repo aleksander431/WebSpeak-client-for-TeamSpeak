@@ -18,6 +18,9 @@ import type { ConfiguredAccelerationRelay } from "./acceleration-relay.js";
 import { createVoiceGatewayAuthHeaders, type DelegatedVoiceSession } from "./voice-gateway-auth.js";
 import type { SkinRegistry } from "../admin/skin-registry.js";
 import { resolveVisitorTotal } from "./visitor-count.js";
+import { createTrustedProxies, resolveClientIp } from "./voice-bridge.js";
+import { createDeviceToken, DEVICE_COOKIE_MAX_AGE_MS, DEVICE_COOKIE_NAME, isDeviceToken } from "../security/device-access.js";
+import { isSecureRequest } from "../admin/admin-session.js";
 
 export interface WebServerOptions {
   port: number;
@@ -60,7 +63,23 @@ export function createWebServer(options: WebServerOptions): WebServer {
   const voiceBridge = new VoiceBridge(options.voiceBridgeOptions, logger);
   const adminSessions = new AdminSessionStore();
   const joinRateLimiter = new JoinRateLimiter();
+  const trustedProxies = createTrustedProxies(options.voiceBridgeOptions.trustedProxies);
   const startedAt = Date.now();
+
+  /** Return this browser's device token, issuing a long-lived cookie on first use. */
+  function ensureDeviceToken(request: express.Request, response: express.Response): string {
+    const existing = readCookie(request.header("cookie"), DEVICE_COOKIE_NAME);
+    if (isDeviceToken(existing)) return existing;
+    const token = createDeviceToken();
+    response.cookie(DEVICE_COOKIE_NAME, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isSecureRequest(request),
+      path: "/",
+      maxAge: DEVICE_COOKIE_MAX_AGE_MS,
+    });
+    return token;
+  }
 
   const healthHandler: express.RequestHandler = (_request, response) => {
     response.json({ status: "ok", version: options.version ?? "0.1.0" });
@@ -113,6 +132,18 @@ export function createWebServer(options: WebServerOptions): WebServer {
       accelerationAvailable: acceleration.length > 0,
       accelerationRelays: acceleration.map((relay) => ({ id: relay.id, name: relay.name })),
     });
+  });
+
+  // Lets a waiting browser find out whether the administrator has answered.
+  app.get("/api/access-status", (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    const deviceAccess = options.adminService.deviceAccess;
+    if (!deviceAccess.isRequired()) {
+      response.json({ required: false, status: "not-required" });
+      return;
+    }
+    const status = deviceAccess.status(ensureDeviceToken(request, response));
+    response.json({ required: true, status: status === "unknown" ? "none" : status });
   });
 
   app.get("/api/skins", async (_request, response) => {
@@ -181,6 +212,25 @@ export function createWebServer(options: WebServerOptions): WebServer {
     if (!nickname) {
       response.status(400).json({ ok: false, code: "INVALID_NICKNAME" });
       return;
+    }
+
+    // Invitation links are already issued by the administrator, so they skip
+    // per-device approval; every other join needs an approved browser.
+    if (!inviteToken && options.adminService.deviceAccess.isRequired()) {
+      const admission = options.adminService.deviceAccess.admit(ensureDeviceToken(request, response), {
+        nickname,
+        clientIp: resolveClientIp(request, trustedProxies),
+        userAgent: request.header("user-agent") ?? "",
+      });
+      if (!admission.allowed) {
+        if (admission.status === "queue-full") {
+          response.status(429).json({ ok: false, code: "APPROVAL_QUEUE_FULL" });
+        } else {
+          if (admission.status === "pending" && admission.created) logger.info({ nickname }, "New device is waiting for administrator approval");
+          response.status(403).json({ ok: false, code: admission.status === "pending" ? "APPROVAL_PENDING" : "APPROVAL_DENIED" });
+        }
+        return;
+      }
     }
 
     const policy = options.adminService.getConnectionPolicy();
@@ -337,6 +387,20 @@ async function createRemoteVoiceTicket(relay: ConfiguredAccelerationRelay, paylo
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readCookie(header: string | undefined, name: string): string | null {
+  if (!header) return null;
+  for (const entry of header.split(";")) {
+    const separator = entry.indexOf("=");
+    if (separator < 0 || entry.slice(0, separator).trim() !== name) continue;
+    try {
+      return decodeURIComponent(entry.slice(separator + 1).trim());
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 function readVisitorNumberCookie(header: string | undefined): number | null {

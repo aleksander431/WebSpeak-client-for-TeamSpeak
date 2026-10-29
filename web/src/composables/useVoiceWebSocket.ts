@@ -947,6 +947,9 @@ export function useVoiceWebSocket() {
       VOICE_GATEWAY_UNAVAILABLE: "中继语音网关暂不可连接，请检查管理员配置与 HTTPS 证书",
       INVALID_NICKNAME: "请输入有效的昵称",
       INVITE_INVALID: "邀请链接已失效或已被撤销",
+      APPROVAL_PENDING: "已向管理员发送访问请求，请等待批准",
+      APPROVAL_DENIED: "管理员拒绝了此浏览器的访问",
+      APPROVAL_QUEUE_FULL: "待处理的访问请求过多，请稍后重试",
       REQUEST_TIMEOUT: "等待 WebSpeak 网关响应超时，请检查网络后重试",
     };
     const normalized = normalizedClientErrorCode(code);

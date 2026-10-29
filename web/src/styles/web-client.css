@@ -566,6 +566,44 @@
   background: #c89143;
 }
 
+/* Waiting for the administrator to approve this browser. */
+.approval-notice .notice-content {
+  display: grid;
+  gap: 3px;
+}
+
+.approval-notice .approval-spinner {
+  width: 9px;
+  height: 9px;
+  border: 2px solid rgba(255, 255, 255, .45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+}
+
+.approval-cancel {
+  justify-self: start;
+  margin-top: 4px;
+  padding: 3px 10px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.approval-cancel:hover {
+  background: rgba(200, 145, 67, .12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .approval-notice .approval-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 :deep(.join-form) {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

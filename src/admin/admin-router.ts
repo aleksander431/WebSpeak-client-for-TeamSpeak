@@ -310,6 +310,39 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
     }
   });
 
+  router.get("/device-access", (_request, response) => {
+    response.json(options.service.deviceAccess.list());
+  });
+
+  router.put("/device-access/settings", requireSameOrigin, requireCsrf(options.sessions), (request, response) => {
+    try {
+      const body = asRecord(request.body);
+      if (typeof body.required !== "boolean") throw new AdminInputError("INVALID_DEVICE_APPROVAL", "Approval setting must be boolean");
+      options.service.deviceAccess.setRequired(body.required);
+      response.json({ ok: true });
+    } catch (error: unknown) {
+      sendAdminError(response, error);
+    }
+  });
+
+  for (const action of ["approve", "deny", "forget"] as const) {
+    router.post(`/device-access/:id/${action}`, requireSameOrigin, requireCsrf(options.sessions), (request, response) => {
+      try {
+        const id = typeof request.params.id === "string" ? request.params.id : "";
+        const done = action === "forget"
+          ? options.service.deviceAccess.forget(id)
+          : options.service.deviceAccess.decide(id, action);
+        if (!done) {
+          response.status(404).json({ ok: false, code: "DEVICE_NOT_FOUND" });
+          return;
+        }
+        response.json({ ok: true });
+      } catch (error: unknown) {
+        sendAdminError(response, error);
+      }
+    });
+  }
+
   router.get("/audit", (request, response) => {
     response.json({ events: options.service.database.recentAudit(readLimit(request.query.limit, 50)) });
   });

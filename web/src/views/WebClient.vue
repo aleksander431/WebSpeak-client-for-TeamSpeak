@@ -172,7 +172,35 @@
           >
 
           <div
-            v-if="voiceState.error"
+            v-if="deviceApproval.waiting.value"
+            class="notice warning-notice approval-notice"
+            role="status"
+            data-ws-part="home.notice"
+            data-ws-state="approval-pending"
+            ><span class="notice-symbol"><span class="approval-spinner" aria-hidden="true"></span></span
+            ><span class="notice-content"
+              ><strong>{{ t("approvalPendingTitle") }}</strong
+              ><span>{{ t("approvalPendingText") }}</span
+              ><button
+                type="button"
+                class="approval-cancel"
+                @click="deviceApproval.cancel"
+                >{{ t("approvalCancel") }}</button
+              ></span
+            ></div
+          >
+          <div
+            v-else-if="deviceApproval.denied.value || deviceApproval.queueFull.value"
+            class="notice error-notice"
+            data-ws-part="home.notice"
+            :data-ws-state="deviceApproval.denied.value ? 'approval-denied' : 'approval-queue-full'"
+            ><span class="notice-symbol">!</span
+            ><span class="notice-content"
+              ><span>{{ t(deviceApproval.denied.value ? "approvalDeniedText" : "approvalQueueFullText") }}</span></span
+            ></div
+          >
+          <div
+            v-else-if="voiceState.error"
             class="notice error-notice"
             data-ws-part="home.notice"
             data-ws-state="error"
@@ -1000,6 +1028,7 @@ import { useWebClientChat } from "../composables/useWebClientChat.js";
 import { useWebClientAudioControls } from "../composables/useWebClientAudioControls.js";
 import { useWebClientChannels, type TreeChannel } from "../composables/useWebClientChannels.js";
 import { useWebClientConnection } from "../composables/useWebClientConnection.js";
+import { useDeviceApproval } from "../composables/useDeviceApproval.js";
 import { useWebClientMembers } from "../composables/useWebClientMembers.js";
 import { useVoiceWebSocket, type ChannelMember, type ChatMessage } from "../composables/useVoiceWebSocket.js";
 import { useWebClientScreenShare } from "../composables/useWebClientScreenShare.js";
@@ -1437,6 +1466,14 @@ const {
   },
   showToast,
   t,
+});
+
+// A browser the administrator has not approved yet waits here and joins by
+// itself as soon as the request is answered.
+const deviceApproval = useDeviceApproval({
+  errorCode: computed(() => voiceState.errorCode),
+  retry: doConnect,
+  cancel: clearError,
 });
 
 const voiceWorkspace = useVoiceWorkspace({

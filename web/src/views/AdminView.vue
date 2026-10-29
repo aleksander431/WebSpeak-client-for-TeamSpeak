@@ -150,6 +150,7 @@
             <RouterLink to="/admin" exact-active-class="active"><Icon name="activity" :size="18" />{{ tr('overview') }}</RouterLink>
             <RouterLink to="/admin/server" active-class="active"><Icon name="server" :size="18" />{{ tr('adminInstanceSettings') }}</RouterLink>
             <RouterLink to="/admin/operations" active-class="active"><Icon name="users" :size="18" />{{ tr('adminInstanceOperations') }}</RouterLink>
+            <RouterLink to="/admin/access" active-class="active" class="admin-nav-access"><Icon name="lock" :size="18" /><span class="admin-nav-label">{{ tr('deviceAccessNav') }}</span><span v-if="adminDeviceAccess.access.pendingCount > 0" class="admin-nav-badge" :aria-label="tr('devicePendingBadge', { count: adminDeviceAccess.access.pendingCount })">{{ adminDeviceAccess.access.pendingCount }}</span></RouterLink>
             <RouterLink to="/admin/skins" active-class="active"><Icon name="compass" :size="18" />{{ tr('skinLibrary') }}</RouterLink>
           </div>
           <div class="admin-nav-group">
@@ -234,6 +235,11 @@
           v-else-if="route.path === '/admin/operations'"
           :model="adminOperations"
           :initial-section="initialSection"
+          :i18n="i18n"
+        />
+        <AdminDeviceAccess
+          v-else-if="route.path === '/admin/access'"
+          :model="adminDeviceAccess"
           :i18n="i18n"
         />
         <AdminSkins
@@ -400,12 +406,14 @@ import AdminServerSettings from "../components/admin/AdminServerSettings.vue";
 import AdminOperations from "../components/admin/AdminOperations.vue";
 import AdminSkins from "../components/admin/AdminSkins.vue";
 import AdminTsAdmin from "../components/admin/AdminTsAdmin.vue";
+import AdminDeviceAccess from "../components/admin/AdminDeviceAccess.vue";
 import LanguageSwitcher from "../components/LanguageSwitcher.vue";
 import { createAdminRequests } from "../services/admin-requests.js";
 import { useAdminServerSettings } from "../composables/useAdminServerSettings.js";
 import { useAdminOperations } from "../composables/useAdminOperations.js";
 import { useAdminSkins } from "../composables/useAdminSkins.js";
 import { useAdminTsAdmin } from "../composables/useAdminTsAdmin.js";
+import { useAdminDeviceAccess } from "../composables/useAdminDeviceAccess.js";
 import { splitTeamSpeakTarget } from "../services/teamspeak-target.js";
 import type { SiteLanguage } from "../../../src/site-copy.js";
 import { applyTheme, getStoredTheme, isDarkTheme, nextTheme, saveTheme, type ThemeMode } from "../services/theme.js";
@@ -457,9 +465,14 @@ const adminSkins = useAdminSkins({ api: adminApi, tr });
 const { loadSkinCatalog } = adminSkins;
 const adminTsAdmin = useAdminTsAdmin({ api: adminApi, errorMessage, errorText, tr });
 const { loadSettings: loadTsAdminSettings } = adminTsAdmin;
+const adminDeviceAccess = useAdminDeviceAccess({
+  api: adminApi, errorMessage, errorText, tr,
+  active: computed(() => screen.value === "admin" && !loading.value),
+});
+const { load: loadDeviceAccess } = adminDeviceAccess;
 
 const passwordStrength = computed(() => Math.min(100, Math.max(8, newPassword.value.length * 5 + (/[\s\W]/.test(newPassword.value) ? 15 : 0))));
-const currentPageTitle = computed(() => route.path === "/admin/server" ? tr('adminInstanceSettings') : route.path === "/admin/operations" ? tr('adminInstanceOperations') : route.path === "/admin/skins" ? tr('skinLibrary') : route.path === "/admin/ts-admin" ? tr('tsAdminTitle') : tr('overview'));
+const currentPageTitle = computed(() => route.path === "/admin/server" ? tr('adminInstanceSettings') : route.path === "/admin/operations" ? tr('adminInstanceOperations') : route.path === "/admin/access" ? tr('deviceAccessTitle') : route.path === "/admin/skins" ? tr('skinLibrary') : route.path === "/admin/ts-admin" ? tr('tsAdminTitle') : tr('overview'));
 const targetStatusText = computed(() => overview.teamSpeak.status === "reachable" ? tr('reachable') : overview.teamSpeak.status === "unreachable" ? tr('unreachable') : tr('notTested'));
 const webrtcPortRangeText = computed(() => `${serverForm.webRtcUdpStart}–${serverForm.webRtcUdpEnd}`);
 
@@ -472,10 +485,12 @@ watch(() => route.path, (path, previous) => {
   if (previous === "/admin/operations") adminOperations.cancelRequests();
   if (previous === "/admin/skins") adminSkins.cancelRequests();
   if (previous === "/admin/ts-admin") adminTsAdmin.cancelRequests();
+  if (previous === "/admin/access") adminDeviceAccess.cancelRequests();
   if (screen.value !== "admin" || loading.value || submitting.value || loggingOut.value) return;
   if (path === "/admin/operations") void loadOperations();
   else if (path === "/admin/skins") void loadSkinCatalog();
   else if (path === "/admin/ts-admin") void loadTsAdminSettings();
+  else if (path === "/admin/access") void loadDeviceAccess();
   else if (path === "/admin") void loadOverview();
 });
 
@@ -486,12 +501,13 @@ function cancelPendingWork() {
   adminOperations.cancelRequests();
   adminSkins.cancelRequests();
   adminTsAdmin.cancelRequests();
+  adminDeviceAccess.cancelRequests();
   loading.value = false;
   submitting.value = false;
   loggingOut.value = false;
 }
 function resetPrivateState() {
-  serverSettings.reset(); adminOperations.reset(); adminSkins.reset(); adminTsAdmin.reset();
+  serverSettings.reset(); adminOperations.reset(); adminSkins.reset(); adminTsAdmin.reset(); adminDeviceAccess.reset();
   Object.assign(overview, emptyOverview());
   loginPassword.value = ""; newPassword.value = ""; confirmNewPassword.value = "";
   errorMessage.value = "";
@@ -506,6 +522,7 @@ async function loadAdminData(request: { isCurrent(): boolean }) {
   if (route.path === "/admin/operations") await loadOperations();
   else if (route.path === "/admin/skins") await loadSkinCatalog();
   else if (route.path === "/admin/ts-admin") await loadTsAdminSettings();
+  else if (route.path === "/admin/access") await loadDeviceAccess();
 }
 async function loadAdminView() {
   const request = pageRequests.begin("auth");

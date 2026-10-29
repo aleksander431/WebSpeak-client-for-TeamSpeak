@@ -1,12 +1,14 @@
 import { adminOrganizationCopy } from "./admin-organization.js";
 import { tsAdminCopy } from "./ts-admin.js";
 import { skinStoreCopy } from "./skin-store.js";
+import { deviceAccessCopy } from "./device-access.js";
 
 export const copy = {
   zh: {
     ...tsAdminCopy.zh,
     ...adminOrganizationCopy.zh,
     ...skinStoreCopy.zh,
+    ...deviceAccessCopy.zh,
     uptimeText: "已运行 {{hours}} 小时 {{minutes}} 分钟",
     ageSeconds: "{{seconds}} 秒",
     ageMinutes: "{{minutes}} 分钟",
@@ -348,6 +350,7 @@ export const copy = {
     ...tsAdminCopy.en,
     ...adminOrganizationCopy.en,
   ...skinStoreCopy.en,
+  ...deviceAccessCopy.en,
     uptimeText: "Up {{hours}}h {{minutes}}m",
     ageSeconds: "{{seconds}}s",
     ageMinutes: "{{minutes}}m",
@@ -1027,6 +1030,7 @@ export const germanCopy = {
   ...tsAdminCopy.de,
     ...adminOrganizationCopy.de,
   ...skinStoreCopy.de,
+  ...deviceAccessCopy.de,
 } as const satisfies Record<AdminTranslationKey, string>;
 
 export const russianCopy = {
@@ -1369,6 +1373,7 @@ export const russianCopy = {
   ...tsAdminCopy.ru,
     ...adminOrganizationCopy.ru,
   ...skinStoreCopy.ru,
+  ...deviceAccessCopy.ru,
 } as const satisfies Record<AdminTranslationKey, string>;
 
 export const japaneseCopy = {
@@ -1711,6 +1716,7 @@ export const japaneseCopy = {
   ...tsAdminCopy.ja,
     ...adminOrganizationCopy.ja,
   ...skinStoreCopy.ja,
+  ...deviceAccessCopy.ja,
 } as const satisfies Record<AdminTranslationKey, string>;
 
 export type AdminTranslationKey = keyof typeof copy.zh;
