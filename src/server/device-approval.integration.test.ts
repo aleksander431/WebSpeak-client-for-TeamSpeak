@@ -103,6 +103,91 @@ test("new browsers wait for administrator approval and approved browsers rejoin 
   assert.deepEqual(await status(second.cookie), { required: false, status: "not-required" });
 });
 
+test("an approved owner protects a nickname with a password and uses it on another browser", async (context) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "webspeak-device-account-"));
+  const database = new WebSpeakDatabase(path.join(directory, "webspeak.db"));
+  const service = new AdminService(database, Buffer.alloc(32, 5), logger, path.join(directory, "missing-config.json"));
+  await service.initialize();
+  service.updateSettings({ target: "8.8.8.8:9987", accessMode: "fixed", siteName: "WebSpeak", welcomeText: "", webRtcEnabled: false });
+  service.deviceAccess.setRequired(true);
+  const port = await availablePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const server = createWebServer({ port, adminService: service, voiceBridgeOptions: { joinTickets: new JoinTicketStore() }, logger });
+  context.after(async () => {
+    await server.stop();
+    database.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  await server.start();
+  const post = async (route: string, body: Record<string, unknown>, cookie = "") => {
+    const response = await fetch(`${origin}${route}`, {
+      method: "POST",
+      headers: { origin, "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json() as { code?: string };
+    return { status: response.status, code: result.code, cookie: deviceCookie(response) };
+  };
+  const state = async (cookie: string, nickname: string) => (await (await fetch(`${origin}/api/access-status?nickname=${encodeURIComponent(nickname)}`, { headers: { cookie } })).json() as { status: string; account?: string; canCreate?: boolean });
+
+  // Laptop asks, the administrator approves.
+  const laptop = (await post("/api/join-ticket", { nickname: "Petya" })).cookie;
+  service.deviceAccess.decide(service.deviceAccess.list().devices[0]!.id, "approve");
+  assert.deepEqual(await state(laptop, "Petya"), { required: true, status: "approved", account: "none", canCreate: true } as never);
+
+  // A pending browser cannot claim a nickname; the approved one can, once.
+  const stranger = (await post("/api/join-ticket", { nickname: "Stranger" })).cookie;
+  assert.equal((await post("/api/account/setup", { nickname: "Stranger", password: "secret-1" }, stranger)).code, "APPROVAL_REQUIRED");
+  assert.equal((await post("/api/account/setup", { nickname: "Petya", password: "123" }, laptop)).code, "ACCOUNT_PASSWORD_TOO_SHORT");
+  assert.equal((await post("/api/account/setup", { nickname: "Petya", password: "petya-pass" }, laptop)).status, 200);
+  assert.equal((await post("/api/account/setup", { nickname: "Other", password: "petya-pass" }, laptop)).code, "DEVICE_HAS_ACCOUNT");
+  assert.equal((await state(laptop, "petya")).account, "linked", "nicknames are matched case-insensitively");
+  assert.equal((await post("/api/join-ticket", { nickname: "Petya" }, laptop)).status, 201);
+
+  // A new phone using the protected nickname is asked for the password, not queued.
+  const before = service.deviceAccess.list().devices.length;
+  const phoneTry = await post("/api/join-ticket", { nickname: " PETYA " });
+  assert.equal(phoneTry.code, "ACCOUNT_PASSWORD_REQUIRED");
+  assert.equal(service.deviceAccess.list().devices.length, before, "no admin request is created for a protected nickname");
+  const phone = phoneTry.cookie;
+  assert.equal((await state(phone, "Petya")).account, "other");
+  assert.equal((await post("/api/account/sign-in", { nickname: "Petya", password: "wrong-pass" }, phone)).code, "ACCOUNT_PASSWORD_INVALID");
+  assert.equal((await post("/api/account/sign-in", { nickname: "Petya", password: "petya-pass" }, phone)).status, 200);
+  assert.equal((await post("/api/join-ticket", { nickname: "Petya" }, phone)).status, 201);
+  assert.equal((await state(phone, "Petya")).status, "approved");
+  // Another approved browser that is not linked to the account cannot use the nickname either.
+  service.deviceAccess.decide(service.deviceAccess.list().devices.find((device) => device.nickname === "Stranger")!.id, "approve");
+  assert.equal((await post("/api/join-ticket", { nickname: "Petya" }, stranger)).code, "ACCOUNT_PASSWORD_REQUIRED");
+  assert.equal((await post("/api/join-ticket", { nickname: "Stranger" }, stranger)).status, 201);
+
+  const listing = service.deviceAccess.list();
+  assert.equal(listing.accounts.length, 1);
+  assert.equal(listing.accounts[0]!.deviceCount, 2);
+  assert.equal(listing.devices.filter((device) => device.accountNickname === "Petya").length, 2);
+  assert.equal(JSON.stringify(listing).includes("credential"), false, "password material never reaches the admin view");
+
+  // Five wrong passwords lock the nickname even for the right password.
+  const tablet = (await post("/api/join-ticket", { nickname: "Petya" })).cookie;
+  for (let attempt = 1; attempt < 5; attempt += 1) {
+    assert.equal((await post("/api/account/sign-in", { nickname: "Petya", password: `bad-${attempt}-x` }, tablet)).code, "ACCOUNT_PASSWORD_INVALID");
+  }
+  assert.equal((await post("/api/account/sign-in", { nickname: "Petya", password: "bad-5-x" }, tablet)).code, "ACCOUNT_LOCKED");
+  assert.equal((await post("/api/account/sign-in", { nickname: "Petya", password: "petya-pass" }, tablet)).code, "ACCOUNT_LOCKED");
+  assert.equal(service.deviceAccess.list().accounts[0]!.locked, true);
+  // The lock expires.
+  assert.equal((await service.deviceAccess.signIn(tablet.split("=")[1]!, "Petya", "petya-pass", { clientIp: "x", userAgent: "y" }, Date.now() + 16 * 60 * 1000)).ok, true);
+
+  // An administrator's denial wins over the password.
+  const deniedId = service.deviceAccess.list().devices.find((device) => device.nickname === "Stranger")!.id;
+  service.deviceAccess.decide(deniedId, "deny");
+  assert.equal((await post("/api/account/sign-in", { nickname: "Petya", password: "petya-pass" }, stranger)).code, "APPROVAL_DENIED");
+
+  // Resetting removes the protection; linked browsers stay approved.
+  assert.equal(service.deviceAccess.deleteAccount(listing.accounts[0]!.id), true);
+  assert.equal((await post("/api/join-ticket", { nickname: "Petya" }, phone)).status, 201);
+  assert.equal((await state(phone, "Petya")).canCreate, true);
+});
+
 test("pending requests are capped so anonymous visitors cannot grow the queue without limit", async (context) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "webspeak-device-cap-"));
   const database = new WebSpeakDatabase(path.join(directory, "webspeak.db"));

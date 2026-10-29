@@ -30,6 +30,8 @@ const eventLabels: Record<string, AdminTranslationKey> = {
   DEVICE_APPROVAL_ENABLED: "deviceApprovalEnabledEvent", DEVICE_APPROVAL_DISABLED: "deviceApprovalDisabledEvent",
   DEVICE_ACCESS_REQUESTED: "deviceAccessRequestedEvent", DEVICE_ACCESS_APPROVED: "deviceAccessApprovedEvent",
   DEVICE_ACCESS_DENIED: "deviceAccessDeniedEvent", DEVICE_ACCESS_FORGOTTEN: "deviceAccessForgottenEvent",
+  ACCESS_ACCOUNT_CREATED: "accountCreatedEvent", ACCESS_ACCOUNT_SIGNED_IN: "accountSignedInEvent",
+  ACCESS_ACCOUNT_LOCKED: "accountLockedEvent", ACCESS_ACCOUNT_RESET: "accountResetEvent",
   TS_ADMIN_SETTINGS_UPDATED: "tsAdminSaved",
   TS_ADMIN_OVERVIEW_READ: "tsAdminReadEvent",
   TS_ADMIN_OVERVIEW_FAILED: "tsAdminReadFailedEvent",
@@ -37,6 +39,7 @@ const eventLabels: Record<string, AdminTranslationKey> = {
 };
 const errorLabels: Record<string, AdminTranslationKey> = {
   DEVICE_NOT_FOUND: "deviceNotFoundError", INVALID_DEVICE_ID: "deviceNotFoundError",
+  ACCOUNT_NOT_FOUND: "deviceNotFoundError", INVALID_ACCOUNT_ID: "deviceNotFoundError",
   INVALID_PASSWORD: "invalidPassword", INVALID_ADMIN_PASSWORD: "setupPasswordShort", PASSWORD_CHANGE_REQUIRED: "changePasswordLead", RATE_LIMITED: "rateLimited",
   INVALID_WEBRTC_PUBLIC_HOST: "invalidWebRtcNetworkError", INVALID_WEBRTC_STUN_SERVER: "invalidWebRtcNetworkError", INVALID_WEBRTC_IPV6: "invalidWebRtcNetworkError",
   INVALID_WEBRTC_PORT_RANGE: "invalidWebRtcPortRangeError", WEBRTC_PORT_LOCKED: "webRtcPortLockedError",

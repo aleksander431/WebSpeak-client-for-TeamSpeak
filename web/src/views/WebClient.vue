@@ -200,7 +200,7 @@
             ></div
           >
           <div
-            v-else-if="voiceState.error"
+            v-else-if="voiceState.error && !deviceApproval.passwordRequired.value"
             class="notice error-notice"
             data-ws-part="home.notice"
             data-ws-state="error"
@@ -941,6 +941,17 @@
     />
 
     <!-- TeamSpeak server password modal -->
+    <AccountPasswordDialog
+      v-if="deviceApproval.accountDialog.open"
+      :mode="deviceApproval.accountDialog.mode"
+      :nickname="deviceApproval.accountDialog.nickname"
+      :busy="deviceApproval.accountDialog.busy"
+      :error-code="deviceApproval.accountDialog.errorCode"
+      :min-length="deviceApproval.passwordMinLength"
+      :t="t"
+      @cancel="deviceApproval.closeAccountDialog"
+      @submit="deviceApproval.submitAccountPassword"
+    />
     <ServerPasswordDialog
       v-if="serverPasswordDialog.open"
       v-model="serverPasswordDialog.password"
@@ -1029,6 +1040,7 @@ import { useWebClientAudioControls } from "../composables/useWebClientAudioContr
 import { useWebClientChannels, type TreeChannel } from "../composables/useWebClientChannels.js";
 import { useWebClientConnection } from "../composables/useWebClientConnection.js";
 import { useDeviceApproval } from "../composables/useDeviceApproval.js";
+import AccountPasswordDialog from "../components/web-client/AccountPasswordDialog.vue";
 import { useWebClientMembers } from "../composables/useWebClientMembers.js";
 import { useVoiceWebSocket, type ChannelMember, type ChatMessage } from "../composables/useVoiceWebSocket.js";
 import { useWebClientScreenShare } from "../composables/useWebClientScreenShare.js";
@@ -1233,6 +1245,7 @@ const {
   serverConfigLoading,
   localizedWelcomeText,
   loadPublicConfig,
+  deviceApprovalRequired,
 } = useWebClientPublicConfig({ serverHost, serverPort, accelerationRelayId, language, t });
 const themeMode = ref<ThemeMode>(getStoredTheme());
 applyTheme(themeMode.value);
@@ -1474,6 +1487,10 @@ const deviceApproval = useDeviceApproval({
   errorCode: computed(() => voiceState.errorCode),
   retry: doConnect,
   cancel: clearError,
+  nickname,
+  connected: computed(() => voiceState.connected),
+  approvalRequired: deviceApprovalRequired,
+  onAccountCreated: () => showToast(t("accountCreatedToast")),
 });
 
 const voiceWorkspace = useVoiceWorkspace({

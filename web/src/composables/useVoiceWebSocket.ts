@@ -950,6 +950,7 @@ export function useVoiceWebSocket() {
       APPROVAL_PENDING: "已向管理员发送访问请求，请等待批准",
       APPROVAL_DENIED: "管理员拒绝了此浏览器的访问",
       APPROVAL_QUEUE_FULL: "待处理的访问请求过多，请稍后重试",
+      ACCOUNT_PASSWORD_REQUIRED: "这个昵称受密码保护，请输入密码",
       REQUEST_TIMEOUT: "等待 WebSpeak 网关响应超时，请检查网络后重试",
     };
     const normalized = normalizedClientErrorCode(code);

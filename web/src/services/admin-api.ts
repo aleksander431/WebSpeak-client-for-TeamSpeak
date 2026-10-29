@@ -120,6 +120,7 @@ export function createAdminApi(options: AdminApiOptions) {
     deviceAccess: (signal?: AbortSignal) => request("/device-access", adminResponses.deviceAccess, "GET", undefined, true, signal),
     setDeviceApprovalRequired: (required: boolean, signal?: AbortSignal) => request("/device-access/settings", adminResponses.ok, "PUT", { required }, true, signal),
     decideDevice: (id: string, action: "approve" | "deny" | "forget", signal?: AbortSignal) => request(`/device-access/${encodeURIComponent(id)}/${action}`, adminResponses.ok, "POST", {}, true, signal),
+    resetAccount: (id: string, signal?: AbortSignal) => request(`/device-access/accounts/${encodeURIComponent(id)}/reset`, adminResponses.ok, "POST", {}, true, signal),
     diagnostics: (signal?: AbortSignal) => request("/diagnostics", adminResponses.diagnostics, "GET", undefined, true, signal),
     logs: (signal?: AbortSignal) => request("/logs?limit=100", adminResponses.logs, "GET", undefined, true, signal),
     audit: (signal?: AbortSignal) => request("/audit?limit=50", adminResponses.audit, "GET", undefined, true, signal),

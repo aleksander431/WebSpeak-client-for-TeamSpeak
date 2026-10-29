@@ -93,9 +93,10 @@ const tsAdminOverview = object({
 });
 const deviceAccessDevice = object({
   id: text, status: choice("pending", "approved", "denied"), nickname: text, clientIp: text, userAgent: text,
-  createdAt: text, lastSeenAt: text, decidedAt: nullable(text),
+  createdAt: text, lastSeenAt: text, decidedAt: nullable(text), accountNickname: nullable(text),
 });
-const deviceAccess = object({ required: boolean, pendingCount: number, devices: array(deviceAccessDevice) });
+const accessAccount = object({ id: text, nickname: text, createdAt: text, lastLoginAt: nullable(text), deviceCount: number, locked: boolean });
+const deviceAccess = object({ required: boolean, pendingCount: number, devices: array(deviceAccessDevice), accounts: array(accessAccount) });
 const savedTsAdminSettings = object({ ok: choice(true), settings: tsAdminSettings });
 const sessionStatus = object({ authenticated: boolean, mustChangePassword: optional(boolean), csrfToken: optional(text) });
 
@@ -143,3 +144,4 @@ export type AdminLog = ReturnType<typeof logEntry>;
 export type AdminConnectionRecord = ReturnType<typeof connection>;
 export type DeviceAccessDevice = ReturnType<typeof deviceAccessDevice>;
 export type DeviceAccessListing = ReturnType<typeof deviceAccess>;
+export type AccessAccount = ReturnType<typeof accessAccount>;

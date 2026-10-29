@@ -6,7 +6,7 @@ import type { AdminCredential } from "../security/admin-password.js";
 import type { TeamSpeakProtocol } from "../server/teamspeak-adapter.js";
 import { DEFAULT_WEBRTC_UDP_PORT_RANGE } from "../server/webrtc-config.js";
 
-export const DATABASE_SCHEMA_VERSION = 13;
+export const DATABASE_SCHEMA_VERSION = 14;
 export type AccessMode = "fixed" | "open";
 
 export interface PersistedSettings {
@@ -119,6 +119,29 @@ export interface DeviceAccessRecord {
   createdAt: string;
   lastSeenAt: string;
   decidedAt: string | null;
+  accountId: string | null;
+}
+
+export interface AccessAccountRecord {
+  id: string;
+  nicknameKey: string;
+  nickname: string;
+  credentialJson: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+  failedAttempts: number;
+  lockedUntil: string | null;
+}
+
+interface AccessAccountRow extends Record<string, unknown> {
+  id: string;
+  nickname_key: string;
+  nickname: string;
+  credential_json: string;
+  created_at: string;
+  last_login_at: string | null;
+  failed_attempts: number;
+  locked_until: string | null;
 }
 
 interface DeviceAccessRow extends Record<string, unknown> {
@@ -131,6 +154,7 @@ interface DeviceAccessRow extends Record<string, unknown> {
   created_at: string;
   last_seen_at: string;
   decided_at: string | null;
+  account_id: string | null;
 }
 
 interface ManagedInviteRow extends Record<string, unknown> {
@@ -498,7 +522,7 @@ export class WebSpeakDatabase {
       `INSERT INTO device_access (id, token_hash, status, nickname, client_ip, user_agent, created_at, last_seen_at, decided_at)
        VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, NULL)`,
     ).run(record.id, record.tokenHash, record.nickname, record.clientIp, record.userAgent, now, now);
-    return { ...record, status: "pending", createdAt: now, lastSeenAt: now, decidedAt: null };
+    return { ...record, status: "pending", createdAt: now, lastSeenAt: now, decidedAt: null, accountId: null };
   }
 
   touchDeviceAccess(id: string, seen: Pick<DeviceAccessRecord, "nickname" | "clientIp" | "userAgent">): void {
@@ -512,6 +536,76 @@ export class WebSpeakDatabase {
       "UPDATE device_access SET status = ?, decided_at = ? WHERE id = ?",
     ).run(status, new Date().toISOString(), id) as { changes?: number | bigint };
     return Number(result.changes ?? 0) === 1;
+  }
+
+  /** Create a device record that is approved from the start (password sign-in on a new browser). */
+  createApprovedDevice(record: Pick<DeviceAccessRecord, "id" | "tokenHash" | "nickname" | "clientIp" | "userAgent" | "accountId">): void {
+    const now = new Date().toISOString();
+    this.database.prepare(
+      `INSERT INTO device_access (id, token_hash, status, nickname, client_ip, user_agent, created_at, last_seen_at, decided_at, account_id)
+       VALUES (?, ?, 'approved', ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(record.id, record.tokenHash, record.nickname, record.clientIp, record.userAgent, now, now, now, record.accountId);
+  }
+
+  approveDeviceForAccount(id: string, accountId: string): void {
+    this.database.prepare(
+      "UPDATE device_access SET status = 'approved', decided_at = COALESCE(CASE WHEN status = 'approved' THEN decided_at END, ?), account_id = ? WHERE id = ?",
+    ).run(new Date().toISOString(), accountId, id);
+  }
+
+  getAccessAccountByKey(nicknameKey: string): AccessAccountRecord | null {
+    const row = this.database.prepare("SELECT * FROM access_accounts WHERE nickname_key = ?").get(nicknameKey) as AccessAccountRow | undefined;
+    return row ? mapAccessAccountRow(row) : null;
+  }
+
+  listAccessAccounts(): Array<AccessAccountRecord & { deviceCount: number }> {
+    const rows = this.database.prepare(
+      `SELECT a.*, (SELECT COUNT(*) FROM device_access d WHERE d.account_id = a.id) AS device_count
+       FROM access_accounts a ORDER BY a.nickname COLLATE NOCASE`,
+    ).all() as Array<AccessAccountRow & { device_count: number }>;
+    return rows.map((row) => ({ ...mapAccessAccountRow(row), deviceCount: Number(row.device_count) }));
+  }
+
+  /** Create an account and link the creating device to it, atomically. */
+  createAccessAccount(record: Pick<AccessAccountRecord, "id" | "nicknameKey" | "nickname" | "credentialJson">, deviceId: string): boolean {
+    let created = false;
+    this.transaction(() => {
+      if (this.getAccessAccountByKey(record.nicknameKey)) return;
+      const now = new Date().toISOString();
+      this.database.prepare(
+        `INSERT INTO access_accounts (id, nickname_key, nickname, credential_json, created_at, last_login_at, failed_attempts, locked_until)
+         VALUES (?, ?, ?, ?, ?, ?, 0, NULL)`,
+      ).run(record.id, record.nicknameKey, record.nickname, record.credentialJson, now, now);
+      this.database.prepare("UPDATE device_access SET account_id = ? WHERE id = ?").run(record.id, deviceId);
+      created = true;
+    });
+    return created;
+  }
+
+  recordAccountLogin(id: string, success: boolean, lockedUntil: string | null): void {
+    if (success) {
+      this.database.prepare(
+        "UPDATE access_accounts SET last_login_at = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?",
+      ).run(new Date().toISOString(), id);
+    } else {
+      this.database.prepare(
+        "UPDATE access_accounts SET failed_attempts = failed_attempts + 1, locked_until = ? WHERE id = ?",
+      ).run(lockedUntil, id);
+    }
+  }
+
+  resetAccountFailures(id: string): void {
+    this.database.prepare("UPDATE access_accounts SET failed_attempts = 0 WHERE id = ?").run(id);
+  }
+
+  deleteAccessAccount(id: string): boolean {
+    let removed = false;
+    this.transaction(() => {
+      this.database.prepare("UPDATE device_access SET account_id = NULL WHERE account_id = ?").run(id);
+      const result = this.database.prepare("DELETE FROM access_accounts WHERE id = ?").run(id) as { changes?: number | bigint };
+      removed = Number(result.changes ?? 0) === 1;
+    });
+    return removed;
   }
 
   deleteDeviceAccess(id: string): boolean {
@@ -824,6 +918,30 @@ export class WebSpeakDatabase {
           PRAGMA user_version = 13;
         `);
       });
+      version = 13;
+    }
+    if (version === 13) {
+      this.transaction(() => {
+        // A nickname protected by a password lets its owner approve their own
+        // new browsers. Only a scrypt credential is stored.
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS access_accounts (
+            id TEXT PRIMARY KEY,
+            nickname_key TEXT NOT NULL UNIQUE,
+            nickname TEXT NOT NULL,
+            credential_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            last_login_at TEXT,
+            failed_attempts INTEGER NOT NULL DEFAULT 0,
+            locked_until TEXT
+          );
+        `);
+        const columns = this.database.prepare("PRAGMA table_info(device_access)").all() as Array<{ name: string }>;
+        if (!columns.some((column) => column.name === "account_id")) {
+          this.database.exec("ALTER TABLE device_access ADD COLUMN account_id TEXT");
+        }
+        this.database.exec("CREATE INDEX IF NOT EXISTS device_access_account_idx ON device_access(account_id); PRAGMA user_version = 14;");
+      });
     }
   }
 
@@ -909,5 +1027,19 @@ function mapDeviceAccessRow(row: DeviceAccessRow): DeviceAccessRecord {
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
     decidedAt: row.decided_at,
+    accountId: row.account_id ?? null,
+  };
+}
+
+function mapAccessAccountRow(row: AccessAccountRow): AccessAccountRecord {
+  return {
+    id: row.id,
+    nicknameKey: row.nickname_key,
+    nickname: row.nickname,
+    credentialJson: row.credential_json,
+    createdAt: row.created_at,
+    lastLoginAt: row.last_login_at,
+    failedAttempts: Number(row.failed_attempts),
+    lockedUntil: row.locked_until,
   };
 }

@@ -63,7 +63,15 @@
           :key="device.id"
           class="invite-row device-row"
           ><div
-            ><strong>{{ device.nickname || tr("deviceUnnamed") }}</strong
+            ><strong>{{ device.nickname || tr("deviceUnnamed") }}<span
+                v-if="device.accountNickname"
+                class="state-pill device-account-pill"
+                :title="tr('deviceAccountPillTitle', { nickname: device.accountNickname })"
+                ><Icon
+                  name="lock"
+                  :size="11"
+                />{{ device.accountNickname }}</span
+              ></strong
             ><small :title="device.userAgent">{{ describeDevice(device) }}</small
             ><small>{{ tr(device.status === "pending" ? "deviceRequestedAt" : "deviceLastSeenAt", { date: formatDate(device.status === "pending" ? device.createdAt : device.lastSeenAt) }) }}</small></div
           ><div class="invite-row-meta"
@@ -117,6 +125,48 @@
         /><span>{{ group.empty }}</span></div
       ></article
     >
+
+    <article
+      class="operation-card"
+      data-device-group="accounts"
+      ><header
+        ><div
+          ><h3>{{ tr("accountsTitle") }}</h3
+          ><p>{{ tr("accountsLead") }}</p></div
+        ><strong>{{ access.accounts.length }}</strong></header
+      ><div
+        v-if="access.accounts.length"
+        class="invite-list"
+        ><div
+          v-for="account in access.accounts"
+          :key="account.id"
+          class="invite-row device-row"
+          ><div
+            ><strong>{{ account.nickname }}</strong
+            ><small>{{ tr("accountDevices", { count: account.deviceCount }) }} · {{ account.lastLoginAt ? tr("accountLastLogin", { date: formatDate(account.lastLoginAt) }) : tr("accountCreatedAt", { date: formatDate(account.createdAt) }) }}</small></div
+          ><div class="invite-row-meta"
+            ><span
+              v-if="account.locked"
+              class="state-pill revoked"
+              >{{ tr("accountLockedPill") }}</span
+            ><button
+              class="text-danger"
+              type="button"
+              :disabled="busyDevices.has(`account:${account.id}`)"
+              @click="resetAccount(account)"
+              >{{ tr("accountReset") }}</button
+            ></div
+          ></div
+        ></div
+      ><div
+        v-else
+        class="operation-empty"
+        ><Icon
+          name="lock"
+          :size="22"
+        /><span>{{ tr("accountsEmpty") }}</span></div
+      ></article
+    >
   </section>
 </template>
 
@@ -131,7 +181,7 @@ const props = defineProps<{
   model: AdminDeviceAccessModel;
   i18n: Pick<ReturnType<typeof useAdminI18n>, "tr" | "formatDate">;
 }>();
-const { access, loading, savingSetting, busyDevices, load, setRequired, decide } = props.model;
+const { access, loading, savingSetting, busyDevices, load, setRequired, decide, resetAccount } = props.model;
 const { tr, formatDate } = props.i18n;
 const settingRevision = ref(0);
 
@@ -189,6 +239,14 @@ function browserSummary(userAgent: string): string {
 
 .device-row > div:first-child small + small {
   margin-top: 1px;
+}
+
+.device-account-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 7px;
+  vertical-align: 1px;
 }
 
 .device-approve,

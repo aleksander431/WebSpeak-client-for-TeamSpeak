@@ -61,6 +61,7 @@ function localizedMessage(message: string) {
     "已向管理员发送访问请求，请等待批准": "Access request sent to the administrator. Wait for approval",
     "管理员拒绝了此浏览器的访问": "The administrator declined access for this browser",
     "待处理的访问请求过多，请稍后重试": "Too many access requests are waiting. Try again later",
+    "这个昵称受密码保护，请输入密码": "This nickname is password-protected. Enter its password",
     "TeamSpeak 连接已断开": "The TeamSpeak connection was closed",
     "连接已断开": "The connection was closed",
     "此 TeamSpeak 身份已在另一个浏览器页面使用，请关闭另一条连接或取消“保持身份”后重试": "This TeamSpeak identity is already used by another browser page. Close that connection or clear ‘Remember identity’ and try again",

@@ -325,6 +325,19 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
     }
   });
 
+  router.post("/device-access/accounts/:id/reset", requireSameOrigin, requireCsrf(options.sessions), (request, response) => {
+    try {
+      const id = typeof request.params.id === "string" ? request.params.id : "";
+      if (!options.service.deviceAccess.deleteAccount(id)) {
+        response.status(404).json({ ok: false, code: "ACCOUNT_NOT_FOUND" });
+        return;
+      }
+      response.json({ ok: true });
+    } catch (error: unknown) {
+      sendAdminError(response, error);
+    }
+  });
+
   for (const action of ["approve", "deny", "forget"] as const) {
     router.post(`/device-access/:id/${action}`, requireSameOrigin, requireCsrf(options.sessions), (request, response) => {
       try {

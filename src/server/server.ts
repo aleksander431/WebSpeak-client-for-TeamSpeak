@@ -142,9 +142,52 @@ export function createWebServer(options: WebServerOptions): WebServer {
       response.json({ required: false, status: "not-required" });
       return;
     }
-    const status = deviceAccess.status(ensureDeviceToken(request, response));
-    response.json({ required: true, status: status === "unknown" ? "none" : status });
+    const token = ensureDeviceToken(request, response);
+    const status = deviceAccess.status(token);
+    const nickname = typeof request.query.nickname === "string" ? request.query.nickname.slice(0, 30) : "";
+    response.json({
+      required: true,
+      status: status === "unknown" ? "none" : status,
+      ...(nickname ? deviceAccess.nicknameState(token, nickname) : {}),
+    });
   });
+
+  // Password-protected nicknames: the owner sets a password from an approved
+  // browser, then uses it to approve their other browsers without a request.
+  for (const action of ["setup", "sign-in"] as const) {
+    app.post(`/api/account/${action}`, async (request, response) => {
+      response.setHeader("Cache-Control", "no-store");
+      if (!request.is("application/json") || !isSameOrigin(request)) {
+        response.status(403).json({ ok: false, code: "ORIGIN_REJECTED" });
+        return;
+      }
+      if (!joinRateLimiter.allow(request.socket.remoteAddress ?? "unknown")) {
+        response.status(429).json({ ok: false, code: "RATE_LIMITED" });
+        return;
+      }
+      const body = isRecord(request.body) ? request.body : {};
+      const nickname = typeof body.nickname === "string" ? body.nickname.slice(0, 30) : "";
+      const password = typeof body.password === "string" ? body.password.slice(0, 1024) : "";
+      const deviceAccess = options.adminService.deviceAccess;
+      const token = ensureDeviceToken(request, response);
+      const result = action === "setup"
+        ? await deviceAccess.createAccount(token, nickname, password)
+        : await deviceAccess.signIn(token, nickname, password, {
+          clientIp: resolveClientIp(request, trustedProxies),
+          userAgent: request.header("user-agent") ?? "",
+        });
+      if (result.ok) {
+        response.json({ ok: true });
+        return;
+      }
+      const status = result.code === "ACCOUNT_LOCKED" ? 429
+        : result.code === "ACCOUNT_PASSWORD_INVALID" ? 401
+          : result.code === "APPROVAL_DENIED" || result.code === "APPROVAL_REQUIRED" ? 403
+            : result.code === "ACCOUNT_EXISTS" || result.code === "DEVICE_HAS_ACCOUNT" ? 409
+              : result.code === "ACCOUNT_NOT_FOUND" ? 404 : 400;
+      response.status(status).json({ ok: false, code: result.code });
+    });
+  }
 
   app.get("/api/skins", async (_request, response) => {
     response.setHeader("Cache-Control", "no-cache");
@@ -217,7 +260,15 @@ export function createWebServer(options: WebServerOptions): WebServer {
     // Invitation links are already issued by the administrator, so they skip
     // per-device approval; every other join needs an approved browser.
     if (!inviteToken && options.adminService.deviceAccess.isRequired()) {
-      const admission = options.adminService.deviceAccess.admit(ensureDeviceToken(request, response), {
+      const deviceToken = ensureDeviceToken(request, response);
+      // A password-protected nickname needs its password on a browser that is
+      // not linked to it, instead of creating a request for the administrator.
+      const nicknameRefusal = options.adminService.deviceAccess.checkNickname(deviceToken, nickname);
+      if (nicknameRefusal) {
+        response.status(403).json({ ok: false, code: nicknameRefusal });
+        return;
+      }
+      const admission = options.adminService.deviceAccess.admit(deviceToken, {
         nickname,
         clientIp: resolveClientIp(request, trustedProxies),
         userAgent: request.header("user-agent") ?? "",

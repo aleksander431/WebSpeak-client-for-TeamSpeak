@@ -34,6 +34,7 @@ export function useWebClientPublicConfig({
   const visitorTotal = ref<number | null>(null);
   const accelerationRelays = ref<RelayOption[]>([]);
   const openTargetPrefillBlocked = ref(false);
+  const deviceApprovalRequired = ref(false);
   const serverConfigLoading = ref(true);
   const welcomeTexts = reactive<Record<Language, string>>({ zh: "", en: "", de: "", ru: "", ja: "" });
   const accelerationAvailable = computed(() => accelerationRelays.value.length > 0);
@@ -58,6 +59,7 @@ export function useWebClientPublicConfig({
         visitorNumber?: unknown;
         visitorTotal?: unknown;
         accelerationRelays?: unknown;
+        deviceApprovalRequired?: unknown;
       };
       if (typeof config.version === "string" && config.version.trim()) appVersion.value = config.version.trim();
       visitorNumber.value = Number.isSafeInteger(config.visitorNumber) && Number(config.visitorNumber) > 0 ? Number(config.visitorNumber) : null;
@@ -75,6 +77,7 @@ export function useWebClientPublicConfig({
         }
       }
       accessMode.value = config.accessMode === "open" ? "open" : "fixed";
+      deviceApprovalRequired.value = config.deviceApprovalRequired === true;
       accelerationRelays.value = Array.isArray(config.accelerationRelays)
         ? config.accelerationRelays.flatMap((value) => {
           if (!value || typeof value !== "object") return [];
@@ -104,6 +107,7 @@ export function useWebClientPublicConfig({
 
   return {
     accessMode,
+    deviceApprovalRequired,
     initialized,
     mobileMode,
     siteName,

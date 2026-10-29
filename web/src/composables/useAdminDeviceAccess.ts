@@ -1,5 +1,5 @@
 import { onScopeDispose, reactive, ref, watch, type Ref } from "vue";
-import type { DeviceAccessDevice } from "../../../src/shared/admin-responses.js";
+import type { AccessAccount, DeviceAccessDevice } from "../../../src/shared/admin-responses.js";
 import type { copy } from "../i18n/admin.js";
 import { isAdminRequestCancelled, type AdminApi } from "../services/admin-api.js";
 import { createAdminRequests } from "../services/admin-requests.js";
@@ -27,14 +27,15 @@ export function useAdminDeviceAccess(options: Options) {
   const pollRequests = createAdminRequests();
   const loading = ref(false), savingSetting = ref(false);
   const busyDevices = reactive(new Set<string>());
-  const access = reactive({ required: false, pendingCount: 0, devices: [] as DeviceAccessDevice[], loaded: false });
+  const access = reactive({ required: false, pendingCount: 0, devices: [] as DeviceAccessDevice[], accounts: [] as AccessAccount[], loaded: false });
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   const baseTitle = typeof document === "undefined" ? "" : document.title;
 
-  function apply(listing: { required: boolean; pendingCount: number; devices: DeviceAccessDevice[] }) {
+  function apply(listing: { required: boolean; pendingCount: number; devices: DeviceAccessDevice[]; accounts: AccessAccount[] }) {
     access.required = listing.required;
     access.pendingCount = listing.pendingCount;
     access.devices = listing.devices;
+    access.accounts = listing.accounts;
     access.loaded = true;
   }
   function report(error: unknown) {
@@ -48,7 +49,7 @@ export function useAdminDeviceAccess(options: Options) {
   function reset() {
     cancelRequests();
     stopPolling();
-    access.required = false; access.pendingCount = 0; access.devices = []; access.loaded = false;
+    access.required = false; access.pendingCount = 0; access.devices = []; access.accounts = []; access.loaded = false;
   }
 
   async function load() {
@@ -88,6 +89,18 @@ export function useAdminDeviceAccess(options: Options) {
     finally { busyDevices.delete(device.id); request.finish(); }
   }
 
+  async function resetAccount(account: AccessAccount) {
+    const key = `account:${account.id}`;
+    if (busyDevices.has(key) || !window.confirm(options.tr("accountConfirmReset", { nickname: account.nickname }))) return;
+    const request = requests.begin(key);
+    busyDevices.add(key); options.errorMessage.value = "";
+    try {
+      await options.api.resetAccount(account.id, request.signal);
+      if (request.isCurrent()) await load();
+    } catch (error) { if (request.isCurrent()) report(error); }
+    finally { busyDevices.delete(key); request.finish(); }
+  }
+
   async function pollOnce() {
     const request = pollRequests.begin("poll");
     try {
@@ -121,7 +134,7 @@ export function useAdminDeviceAccess(options: Options) {
     if (typeof document !== "undefined") document.title = baseTitle;
   });
 
-  return { access, loading, savingSetting, busyDevices, load, setRequired, decide, cancelRequests, reset };
+  return { access, loading, savingSetting, busyDevices, load, setRequired, decide, resetAccount, cancelRequests, reset };
 }
 
 export type AdminDeviceAccessModel = ReturnType<typeof useAdminDeviceAccess>;
