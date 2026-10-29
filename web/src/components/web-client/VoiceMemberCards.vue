@@ -69,6 +69,19 @@
           ><span>{{ t("sharingScreen") }}</span></span
         >
         <button
+          v-if="screenShareStatusEnabled && member.isSelf && screenShareActive"
+          type="button"
+          class="screen-share-stop-button screen-share-live-settings-button"
+          data-ws-part="voice.member.share-settings"
+          :aria-label="t('screenShareSettings')"
+          :aria-expanded="screenShareSettingsOpen"
+          :title="t('screenShareSettings')"
+          @click.stop="toggleScreenShareSettings"
+          ><Icon
+            name="settings"
+            :size="13"
+        /></button>
+        <button
           v-if="screenShareStatusEnabled && member.isSelf && (screenShareActive || screenShareStarting)"
           type="button"
           class="screen-share-stop-button"

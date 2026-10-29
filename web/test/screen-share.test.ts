@@ -51,7 +51,12 @@ class Peer {
     return transceiver;
   }
   addTrack(track: Track) {
-    const sender = { track, getParameters: () => ({ encodings: [] }), setParameters: async (parameters: RTCRtpSendParameters) => { this.parameters = parameters; } };
+    const sender = {
+      track,
+      getParameters: () => ({ encodings: [] }),
+      setParameters: async (parameters: RTCRtpSendParameters) => { this.parameters = parameters; },
+      replaceTrack: async (replacement: Track) => { sender.track = replacement; },
+    };
     this.transceivers.push({
       sender,
       receiver: { track: null },
@@ -60,6 +65,7 @@ class Peer {
     return sender;
   }
   getTransceivers() { return this.transceivers; }
+  getSenders() { return this.transceivers.map(transceiver => transceiver.sender); }
   getStats() { return Peer.stats(); }
   close() { this.closed = true; this.connectionState = "closed"; }
 }
@@ -138,6 +144,66 @@ test("a superseded permission result preserves the newer capture's output settin
   await nextTurn();
   assert.equal(oldStream.track.readyState, "ended");
   assert.equal(Peer.instances[0]?.parameters?.encodings[0]?.scaleResolutionDownBy, 3);
+});
+
+test("quality changes during a share reach every viewer's encoder without restarting capture", async () => {
+  const capture = stream();
+  Object.assign(navigator.mediaDevices, { getDisplayMedia: async () => capture });
+  await controller.api.startScreenShare(true, { maxFrameRate: 30 });
+  confirmStart("live");
+  controller.handleMessage({ type: "screenShareSignal", streamId: "live", fromPeerId: "viewer", signal: { kind: "offer", sdp: "offer" } });
+  await nextTurn();
+  const peer = Peer.instances[0]!;
+  assert.equal(peer.parameters?.encodings[0]?.maxFramerate, 30);
+  assert.equal(peer.parameters?.degradationPreference, "maintain-resolution");
+
+  await controller.api.updateScreenShareOutputSettings({ maxFrameRate: 60, maxWidth: 1280, maxHeight: 720, priority: "motion", hdrCorrection: 0.5 });
+  assert.equal(peer.parameters?.encodings[0]?.maxFramerate, 60);
+  assert.equal(peer.parameters?.encodings[0]?.scaleResolutionDownBy, 1.5);
+  assert.equal(peer.parameters?.degradationPreference, "maintain-framerate", "motion keeps the frame rate");
+  assert.equal(controller.api.screenShareHdrActive.value, false, "no frame processing in this environment: the original picture keeps flowing");
+  assert.equal(peer.getSenders()[0]?.track, capture.track);
+  assert.equal(capture.track.readyState, "live", "the capture is never restarted");
+});
+
+/** Minimal MediaStreamTrackProcessor/Generator so the controller sees HDR correction as available. */
+function installFrameProcessing() {
+  const generators: Array<{ stopped: boolean }> = [];
+  replaceGlobal("MediaStreamTrackProcessor", class { readable = new ReadableStream({ start() {} }); });
+  replaceGlobal("MediaStreamTrackGenerator", class extends Track {
+    stopped = false;
+    writable = new WritableStream();
+    constructor() { super(); generators.push(this); }
+    override stop() { this.stopped = true; super.stop(); }
+  });
+  replaceGlobal("OffscreenCanvas", class {});
+  replaceGlobal("VideoFrame", class {});
+  return generators;
+}
+
+test("HDR correction can be switched on and off during a share without restarting capture", async () => {
+  const generators = installFrameProcessing();
+  const capture = stream();
+  Object.assign(navigator.mediaDevices, { getDisplayMedia: async () => capture });
+  await controller.api.startScreenShare(true, { hdrCorrection: 0.5 });
+  assert.equal(controller.api.screenShareHdrActive.value, true);
+  confirmStart("hdr");
+  controller.handleMessage({ type: "screenShareSignal", streamId: "hdr", fromPeerId: "viewer", signal: { kind: "offer", sdp: "offer" } });
+  await nextTurn();
+  const sender = Peer.instances[0]!.getSenders()[0]!;
+  assert.equal(sender.track, generators[0], "viewers receive the corrected track");
+  assert.equal(Peer.instances[0]!.parameters?.encodings[0]?.scaleResolutionDownBy, undefined, "limits come from the 1920x1080 source");
+
+  await controller.api.updateScreenShareOutputSettings({});
+  assert.equal(sender.track, capture.track, "switching off restores the original track");
+  assert.equal(generators[0]!.stopped, true);
+  assert.equal(controller.api.screenShareHdrActive.value, false);
+
+  await controller.api.updateScreenShareOutputSettings({ hdrCorrection: 0.8 });
+  assert.equal(sender.track, generators[1]);
+  controller.api.stopScreenShare();
+  assert.equal(generators[1]!.stopped, true, "stopping the share releases the correction");
+  assert.equal(capture.track.readyState, "ended");
 });
 
 test("invalid capture without a video track still releases every returned track", async () => {

@@ -6989,6 +6989,19 @@
   cursor: pointer;
 }
 
+/* Quality settings while sharing sit opposite the stop button. */
+:deep(.screen-share-stop-button.screen-share-live-settings-button) {
+  right: -5px;
+  left: auto;
+  color: var(--text-muted);
+}
+
+:deep(.screen-share-stop-button.screen-share-live-settings-button:hover) {
+  color: #fff;
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
 :deep(.screen-share-stop-button:hover) {
   color: #fff;
   border-color: var(--danger);
@@ -7177,6 +7190,49 @@
 :deep(.screen-share-settings-fields select:focus-visible) {
   outline: 2px solid color-mix(in srgb, var(--accent) 48%, transparent);
   outline-offset: 1px;
+}
+
+:deep(.screen-share-hdr) {
+  display: grid;
+  gap: 7px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+:deep(.screen-share-settings-fields .screen-share-hdr-toggle) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+:deep(.screen-share-hdr-toggle input) {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+:deep(.screen-share-hdr-hint) {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+:deep(.screen-share-hdr-warning) {
+  color: #b2453e;
+}
+
+:deep(.screen-share-hdr-strength input[type="range"]) {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 :deep(.screen-share-settings-note) {

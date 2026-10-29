@@ -913,6 +913,7 @@
     <ScreenShareSettingsDialog
       v-if="screenShareSettingsOpen"
       :model="screenShareControls"
+      :hdr-active="screenShareHdrActive"
       :t="t"
       @close="screenShareSettingsOpen = false"
     />
@@ -1139,6 +1140,8 @@ const {
   stopAccompaniment,
   startScreenShare,
   stopScreenShare,
+  updateScreenShareOutputSettings,
+  screenShareHdrActive,
   joinScreenShare,
   leaveScreenShare,
   checkSupport,
@@ -1368,6 +1371,8 @@ const screenShareControls = useWebClientScreenShare({
   error: screenShareError,
   errorCode: screenShareErrorCode,
   startScreenShare,
+  updateScreenShareOutputSettings,
+  sharing: screenShareActive,
   joinScreenShare,
   leaveScreenShare,
   nickname,

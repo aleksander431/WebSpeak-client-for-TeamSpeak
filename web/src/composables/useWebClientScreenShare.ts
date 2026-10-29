@@ -1,7 +1,10 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch, type Ref } from "vue";
 import type { ChannelMember, ScreenShareOutputSettings, ScreenShareStream } from "./useVoiceWebSocket.js";
+import { DEFAULT_HDR_CORRECTION_STRENGTH, isHdrCorrectionSupported } from "../voice/hdr-correction.js";
 
-export type ScreenShareResolutionPreset = "source" | "720p" | "1080p";
+export type ScreenShareResolutionPreset = "source" | "720p" | "1080p" | "1440p";
+
+export type ScreenSharePriority = "auto" | "detail" | "motion";
 
 export type ScreenShareBitratePreset = "auto" | "1.5" | "3" | "5" | "8" | "12";
 
@@ -27,6 +30,10 @@ interface UseWebClientScreenShareOptions {
   error: Ref<string>;
   errorCode: Ref<string>;
   startScreenShare: (audio?: boolean, settings?: ScreenShareOutputSettings) => Promise<void>;
+  /** Re-applies output settings to a running share; optional for older callers. */
+  updateScreenShareOutputSettings?: (settings: ScreenShareOutputSettings) => Promise<void>;
+  /** True while this browser is sharing. */
+  sharing?: Readonly<Ref<boolean>>;
   joinScreenShare: (streamId: string) => void;
   leaveScreenShare: () => void;
   nickname: Ref<string>;
@@ -45,6 +52,8 @@ export function useWebClientScreenShare({
   error,
   errorCode,
   startScreenShare,
+  updateScreenShareOutputSettings,
+  sharing,
   joinScreenShare,
   leaveScreenShare,
   nickname,
@@ -59,6 +68,7 @@ export function useWebClientScreenShare({
     { value: "source", label: "screenShareResolutionSource" },
     { value: "720p", width: 1280, height: 720, label: "screenShareResolution720p" },
     { value: "1080p", width: 1920, height: 1080, label: "screenShareResolution1080p" },
+    { value: "1440p", width: 2560, height: 1440, label: "screenShareResolution1440p" },
   ];
   const frameRateOptions = [5, 10, 15, 24, 30, 60];
   const bitrateOptions: ScreenShareBitrateOption[] = [
@@ -72,9 +82,23 @@ export function useWebClientScreenShare({
   const storedResolution = localStorage.getItem("webspeak:screen-share-resolution") as ScreenShareResolutionPreset | null;
   const resolutionPreset = ref<ScreenShareResolutionPreset>(resolutionOptions.some((option) => option.value === storedResolution) ? storedResolution! : "1080p");
   const storedFrameRate = Number(localStorage.getItem("webspeak:screen-share-framerate"));
-  const frameRate = ref(frameRateOptions.includes(storedFrameRate) ? storedFrameRate : 15);
+  const frameRate = ref(frameRateOptions.includes(storedFrameRate) ? storedFrameRate : 30);
   const storedBitrate = localStorage.getItem("webspeak:screen-share-bitrate") as ScreenShareBitratePreset | null;
   const bitratePreset = ref<ScreenShareBitratePreset>(bitrateOptions.some((option) => option.value === storedBitrate) ? storedBitrate! : "auto");
+  const priorityOptions: Array<{ value: ScreenSharePriority; label: string }> = [
+    { value: "auto", label: "screenSharePriorityAuto" },
+    { value: "detail", label: "screenSharePriorityDetail" },
+    { value: "motion", label: "screenSharePriorityMotion" },
+  ];
+  const storedPriority = localStorage.getItem("webspeak:screen-share-priority") as ScreenSharePriority | null;
+  const priority = ref<ScreenSharePriority>(priorityOptions.some((option) => option.value === storedPriority) ? storedPriority! : "auto");
+  const hdrSupported = isHdrCorrectionSupported();
+  const hdrEnabled = ref(hdrSupported && localStorage.getItem("webspeak:screen-share-hdr") === "1");
+  const storedHdrStrength = Number(localStorage.getItem("webspeak:screen-share-hdr-strength"));
+  /** Slider value in percent. */
+  const hdrStrength = ref(Number.isFinite(storedHdrStrength) && storedHdrStrength >= 5 && storedHdrStrength <= 100
+    ? Math.round(storedHdrStrength)
+    : Math.round(DEFAULT_HDR_CORRECTION_STRENGTH * 100));
   const settingsOpen = ref(false);
   const activeStream = computed<ScreenShareStream | null>(() => streams.find((stream) => stream.streamId === viewingStreamId.value) ?? null);
   const viewers = computed(() =>
@@ -142,20 +166,43 @@ export function useWebClientScreenShare({
     }
   }
 
-  async function startWithSettings(): Promise<void> {
+  function currentSettings(): ScreenShareOutputSettings {
     const preset = resolutionOptions.find((option) => option.value === resolutionPreset.value);
     const bitrateOption = bitrateOptions.find((option) => option.value === bitratePreset.value);
-    const settings: ScreenShareOutputSettings = {
+    return {
       ...(preset?.width && preset.height ? { maxWidth: preset.width, maxHeight: preset.height } : {}),
       maxFrameRate: frameRate.value,
       ...(bitrateOption?.bitrate ? { maxBitrate: bitrateOption.bitrate } : {}),
+      ...(priority.value !== "auto" ? { priority: priority.value } : {}),
+      // Omitted when off; a missing value also switches correction off live.
+      ...(hdrSupported && hdrEnabled.value ? { hdrCorrection: hdrStrength.value / 100 } : {}),
     };
-    localStorage.setItem("webspeak:screen-share-resolution", resolutionPreset.value);
-    localStorage.setItem("webspeak:screen-share-framerate", String(frameRate.value));
-    localStorage.setItem("webspeak:screen-share-bitrate", bitratePreset.value);
-    settingsOpen.value = false;
-    await startScreenShare(true, settings);
   }
+
+  function persistSettings(): void {
+    try {
+      localStorage.setItem("webspeak:screen-share-resolution", resolutionPreset.value);
+      localStorage.setItem("webspeak:screen-share-framerate", String(frameRate.value));
+      localStorage.setItem("webspeak:screen-share-bitrate", bitratePreset.value);
+      localStorage.setItem("webspeak:screen-share-priority", priority.value);
+      localStorage.setItem("webspeak:screen-share-hdr", hdrEnabled.value ? "1" : "0");
+      localStorage.setItem("webspeak:screen-share-hdr-strength", String(hdrStrength.value));
+    } catch { /* settings still apply to this share */ }
+  }
+
+  async function startWithSettings(): Promise<void> {
+    persistSettings();
+    settingsOpen.value = false;
+    await startScreenShare(true, currentSettings());
+  }
+
+  // While sharing, every change in the dialog applies at once, including the
+  // HDR slider, so the sharer can tune it while watching the result.
+  watch([resolutionPreset, frameRate, bitratePreset, priority, hdrEnabled, hdrStrength], () => {
+    if (!sharing?.value || !updateScreenShareOutputSettings) return;
+    persistSettings();
+    void updateScreenShareOutputSettings(currentSettings());
+  });
 
   watch([videoElement, remoteStream, remoteVolume], ([video, stream, volume]) => {
     if (!video) return;
@@ -175,6 +222,12 @@ export function useWebClientScreenShare({
   });
 
   return {
+    priorityOptions,
+    priority,
+    hdrSupported,
+    hdrEnabled,
+    hdrStrength,
+    sharing,
     videoElement,
     playerElement,
     fullscreen,

@@ -1,5 +1,6 @@
 import { computed, reactive, ref } from "vue";
 import { parseScreenShareStream, parseScreenShareViewers, type ServerMessage } from "../../../src/shared/server-messages.js";
+import { createHdrCorrection, isHdrCorrectionSupported, type HdrCorrection } from "./hdr-correction.js";
 import { normalizeScreenShareIceServers, type ScreenShareIceServer, type ScreenShareClientMessage, type ScreenShareStreamDescription as ScreenShareStream, type ScreenSharePeerSignal as ScreenShareSignal } from "../../../src/shared/screen-share.js";
 
 const SCREEN_SHARE_NEGOTIATION_TIMEOUT_MS = 15_000;
@@ -16,6 +17,13 @@ export interface ScreenShareOutputSettings {
   maxHeight?: number;
   maxFrameRate?: number;
   maxBitrate?: number;
+  /**
+   * What the encoder keeps when bandwidth runs short: "detail" keeps text
+   * sharp and lowers the frame rate, "motion" keeps it smooth (games, video).
+   */
+  priority?: "detail" | "motion";
+  /** HDR wash-out correction strength, 0 (off) to 1; see hdr-correction.ts. */
+  hdrCorrection?: number;
 }
 
 export interface ScreenShareCaptureStats {
@@ -71,6 +79,10 @@ export function createScreenShareController(transport: ScreenShareTransport) {
   const screenShareErrorCode = ref("");
   const screenShareRemoteVolume = ref(1);
   let screenShareLocalStream: MediaStream | null = null;
+  /** Corrected video replacing the captured track on every sender, when enabled. */
+  let screenShareHdr: HdrCorrection | null = null;
+  /** Whether frames are currently being HDR-corrected (false when unsupported or failed). */
+  const screenShareHdrActive = ref(false);
   // These are encoder/output limits. The display track itself must keep the
   // source resolution so selecting a high-resolution desktop or game window
   // never changes that source before capture.
@@ -342,7 +354,10 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       const localTracks = [...(screenShareLocalStream?.getTracks() ?? [])];
       localTracks.sort((left, right) => left.kind === right.kind ? 0 : left.kind === "video" ? -1 : 1);
       for (const track of localTracks) {
-        const sender = peer.addTrack(track, screenShareLocalStream!);
+        // Video goes out corrected when HDR correction runs; limits are still
+        // derived from the captured source track's real size and frame rate.
+        const outgoing = track.kind === "video" ? screenShareSendVideoTrack() ?? track : track;
+        const sender = peer.addTrack(outgoing, screenShareLocalStream!);
         const transceiver = peer.getTransceivers().find((candidate) => candidate.sender === sender);
         if (transceiver) transceiver.direction = "sendonly";
         if (track.kind === "video") void configureScreenShareVideoSender(sender, track);
@@ -448,10 +463,10 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       );
       firstEncoding.maxBitrate = maxBitrate;
       parameters.encodings = [firstEncoding, ...encodings.slice(1)];
-      // Prefer keeping resolution/detail crisp under pressure and let the
-      // encoder drop frame rate instead; screen share quality is judged by
-      // readability of the shared content.
-      parameters.degradationPreference = "maintain-resolution";
+      // By default keep resolution/detail crisp under pressure and let the
+      // encoder drop frame rate instead, since shared content is usually read.
+      // The "motion" priority (games, video) keeps the frame rate instead.
+      parameters.degradationPreference = requested?.priority === "motion" ? "maintain-framerate" : "maintain-resolution";
       await sender.setParameters(parameters);
     } catch {
       // Older browsers may reject one of the optional sender parameters. The
@@ -657,6 +672,94 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     return active?.ownerPeerId ?? "";
   }
 
+  /** The video track senders should carry: the corrected one when HDR correction runs. */
+  function screenShareSendVideoTrack(): MediaStreamTrack | null {
+    return screenShareHdr?.track ?? screenShareLocalStream?.getVideoTracks()[0] ?? null;
+  }
+
+  function applyScreenShareContentHint(track: MediaStreamTrack | undefined, settings: ScreenShareOutputSettings | null): void {
+    if (!track || !("contentHint" in track)) return;
+    const displaySurface = track.getSettings().displaySurface;
+    track.contentHint = settings?.priority === "motion" ? "motion"
+      : settings?.priority === "detail" ? "detail"
+        : displaySurface === "browser" ? "detail" : "motion";
+  }
+
+  function disposeScreenShareHdr(): void {
+    screenShareHdr?.dispose();
+    screenShareHdr = null;
+    screenShareHdrActive.value = false;
+  }
+
+  /** Stop the capture and anything derived from it. */
+  function releaseScreenShareCapture(): void {
+    disposeScreenShareHdr();
+    for (const track of screenShareLocalStream?.getTracks() ?? []) track.stop();
+    screenShareLocalStream = null;
+  }
+
+  /** Start correction on the captured track; failure leaves the original picture. */
+  function startScreenShareHdr(strength: number): boolean {
+    const source = screenShareLocalStream?.getVideoTracks()[0];
+    if (!source || !isHdrCorrectionSupported()) return false;
+    try {
+      const correction = createHdrCorrection(source, strength, {
+        onFailure: () => {
+          // GPU trouble mid-stream: frames pass through unchanged from now on.
+          if (screenShareHdr === correction) screenShareHdrActive.value = false;
+        },
+      });
+      screenShareHdr = correction;
+      screenShareHdrActive.value = true;
+      if ("contentHint" in correction.track) correction.track.contentHint = source.contentHint;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Point every owner sender at the current outgoing video track. */
+  async function replaceScreenShareVideoTrack(): Promise<void> {
+    const track = screenShareSendVideoTrack();
+    if (!track) return;
+    await Promise.all([...screenSharePeers].map(async ([peerId, peer]) => {
+      if (screenSharePeerRoles.get(peerId) !== "owner") return;
+      const sender = peer.getSenders().find((candidate) => candidate.track?.kind === "video");
+      if (!sender || sender.track === track) return;
+      try { await sender.replaceTrack(track); } catch { /* the peer may be closing */ }
+    }));
+  }
+
+  /**
+   * Change quality while sharing: resolution, frame rate, bitrate and priority
+   * are re-applied to every viewer's sender, and HDR correction is switched or
+   * re-tuned without restarting the capture.
+   */
+  async function updateScreenShareOutputSettings(settings: ScreenShareOutputSettings): Promise<void> {
+    screenShareOutputSettings = { ...settings };
+    if (!screenShareLocalStream) return;
+    const source = screenShareLocalStream.getVideoTracks()[0];
+    applyScreenShareContentHint(source, screenShareOutputSettings);
+    const strength = settings.hdrCorrection ?? 0;
+    if (strength > 0) {
+      if (screenShareHdr) screenShareHdr.setStrength(strength);
+      else if (startScreenShareHdr(strength)) await replaceScreenShareVideoTrack();
+    } else if (screenShareHdr) {
+      const previous = screenShareHdr;
+      screenShareHdr = null;
+      screenShareHdrActive.value = false;
+      await replaceScreenShareVideoTrack();
+      previous.dispose();
+    }
+    if (screenShareHdr && "contentHint" in screenShareHdr.track && source) screenShareHdr.track.contentHint = source.contentHint;
+    if (!source) return;
+    await Promise.all([...screenSharePeers].map(async ([peerId, peer]) => {
+      if (screenSharePeerRoles.get(peerId) !== "owner") return;
+      const sender = peer.getSenders().find((candidate) => candidate.track?.kind === "video");
+      if (sender) await configureScreenShareVideoSender(sender, source);
+    }));
+  }
+
   async function startScreenShare(audio = true, settings?: ScreenShareOutputSettings): Promise<void> {
     if (!transport.isOpen() || screenShareActive.value || screenShareStarting.value) return;
     if (!navigator.mediaDevices?.getDisplayMedia) {
@@ -691,9 +794,9 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       }
       const videoTrack = stream.getVideoTracks()[0];
       if (!videoTrack) throw new Error("NO_VIDEO_TRACK");
-      const displaySurface = videoTrack.getSettings().displaySurface;
-      if ("contentHint" in videoTrack) videoTrack.contentHint = displaySurface === "browser" ? "detail" : "motion";
+      applyScreenShareContentHint(videoTrack, screenShareOutputSettings);
       screenShareLocalStream = stream;
+      if ((settings?.hdrCorrection ?? 0) > 0) startScreenShareHdr(settings!.hdrCorrection!);
       screenShareRequestSequence = (screenShareRequestSequence + 1) % 1_000_000;
       screenSharePendingStartId = `screen-start-${screenShareRequestSequence}`;
       for (const track of stream.getTracks()) track.addEventListener("ended", () => {
@@ -701,6 +804,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       }, { once: true });
       sendScreenShareMessage({ type: "screenShareStart", requestId: screenSharePendingStartId, audio: stream.getAudioTracks().length > 0, name: "我的屏幕" });
     } catch (error: unknown) {
+      if (acquiredStream && screenShareLocalStream === acquiredStream) disposeScreenShareHdr();
       acquiredStream?.getTracks().forEach(track => track.stop());
       if (startGeneration !== screenShareStartGeneration) return;
       screenShareLocalStream = null;
@@ -718,8 +822,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     if (screenShareStarting.value) screenShareStartCancelled = true;
     if (screenShareActive.value && screenShareActiveStreamId.value) sendScreenShareMessage({ type: "screenShareStop", streamId: screenShareActiveStreamId.value });
     closeAllScreenSharePeers();
-    screenShareLocalStream?.getTracks().forEach((track) => track.stop());
-    screenShareLocalStream = null;
+    releaseScreenShareCapture();
     screenShareOutputSettings = null;
     screenShareStarting.value = false;
     screenSharePendingStartId = "";
@@ -748,8 +851,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     if (sendStop && screenShareActive.value && screenShareActiveStreamId.value) sendScreenShareMessage({ type: "screenShareStop", streamId: screenShareActiveStreamId.value });
     if (screenShareStarting.value) screenShareStartCancelled = true;
     closeAllScreenSharePeers();
-    screenShareLocalStream?.getTracks().forEach((track) => track.stop());
-    screenShareLocalStream = null;
+    releaseScreenShareCapture();
     screenShareOutputSettings = null;
     screenShareStarting.value = false;
     screenSharePendingStartId = "";
@@ -814,8 +916,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
           screenShareStartCancelled = false;
           screenShareActive.value = false;
           screenShareActiveStreamId.value = "";
-          screenShareLocalStream?.getTracks().forEach((track) => track.stop());
-          screenShareLocalStream = null;
+          releaseScreenShareCapture();
           screenShareOutputSettings = null;
         }
         if (screenShareViewingStreamId.value === streamId) {
@@ -866,8 +967,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
           screenShareStarting.value = false;
           screenSharePendingStartId = "";
           screenShareStartCancelled = false;
-          screenShareLocalStream?.getTracks().forEach((track) => track.stop());
-          screenShareLocalStream = null;
+          releaseScreenShareCapture();
           screenShareOutputSettings = null;
         }
         if (screenShareViewing.value) {
@@ -897,6 +997,8 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       screenShareWebRtcStats,
       startScreenShare,
       stopScreenShare,
+      updateScreenShareOutputSettings,
+      screenShareHdrActive,
       joinScreenShare,
       leaveScreenShare,
     },

@@ -54,7 +54,7 @@ test("the standard member panel uses the same spacer display and hides only empt
   assert.equal((html.match(/noMembersInChannel/g) ?? []).length, 1);
 });
 
-function mount(t, initialStream = null, memberAvatar = () => "") {
+function mount(t, initialStream = null, memberAvatar = () => "", extra = {}) {
   const listeners = new Set(), starts = [], storage = new Map(); let exits = 0, ui;
   class Element {}
   class Video extends Element { srcObject = null; volume = 1; plays = 0; async play() { this.plays++; } }
@@ -65,7 +65,7 @@ function mount(t, initialStream = null, memberAvatar = () => "") {
     t.after(() => { if (original) Object.defineProperty(globalThis, key, original); else delete globalThis[key]; });
   }
   const viewing = shallowRef(true), stream = shallowRef(initialStream), volume = shallowRef(.4), streams = [];
-  const app = renderer.createApp({ setup() { ui = useWebClientScreenShare({ streams, viewing, viewingStreamId: shallowRef("s"), remoteStream: stream, remoteVolume: volume, error: shallowRef(""), errorCode: shallowRef(""), startScreenShare: async (...args) => starts.push(args), joinScreenShare() {}, leaveScreenShare() {}, nickname: shallowRef("Self"), avatarStyle: () => ({}), memberAvatar, t: key => key }); return () => null; } });
+  const app = renderer.createApp({ setup() { ui = useWebClientScreenShare({ streams, viewing, viewingStreamId: shallowRef("s"), remoteStream: stream, remoteVolume: volume, error: shallowRef(""), errorCode: shallowRef(""), startScreenShare: async (...args) => starts.push(args), joinScreenShare() {}, leaveScreenShare() {}, nickname: shallowRef("Self"), avatarStyle: () => ({}), memberAvatar, t: key => key, ...extra }); return () => null; } });
   app.mount({});
   return { ui, app, doc, viewing, stream, volume, streams, starts, storage, listeners, exits: () => exits, video: () => markRaw(new Video()), player: () => markRaw(new Element()) };
 }
@@ -242,6 +242,30 @@ test("a skin can explicitly opt the member-card widget out of screen-share UI", 
   }));
 
   assert.doesNotMatch(html, /screen-share-live-indicator|screen-share-card-button/);
+});
+
+test("share settings default to 30 FPS and send 1440p with the chosen priority", async t => {
+  const f = mount(t);
+  try {
+    assert.equal(f.ui.frameRate.value, 30);
+    f.ui.resolutionPreset.value = "1440p"; f.ui.priority.value = "motion"; await f.ui.startWithSettings();
+    assert.deepEqual(f.starts, [[true, { maxWidth: 2560, maxHeight: 1440, maxFrameRate: 30, priority: "motion" }]]);
+    assert.equal(f.storage.get("webspeak:screen-share-priority"), "motion");
+    assert.equal(f.ui.hdrSupported, false, "HDR correction needs Chromium's frame processing");
+  } finally { f.app.unmount(); }
+});
+
+test("while sharing, changed settings apply to the running share at once", async t => {
+  const updates = [], sharing = shallowRef(false);
+  const f = mount(t, null, () => "", { sharing, updateScreenShareOutputSettings: async settings => { updates.push(settings); } });
+  try {
+    f.ui.frameRate.value = 60; await nextTick();
+    assert.deepEqual(updates, [], "nothing is sent before sharing starts");
+    sharing.value = true;
+    f.ui.frameRate.value = 15; f.ui.resolutionPreset.value = "720p"; await nextTick();
+    assert.deepEqual(updates, [{ maxWidth: 1280, maxHeight: 720, maxFrameRate: 15 }]);
+    assert.equal(f.storage.get("webspeak:screen-share-framerate"), "15");
+  } finally { f.app.unmount(); }
 });
 
 test("share settings submit the selected resolution and frame rate", async t => {
