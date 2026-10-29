@@ -332,6 +332,7 @@ export function useVoiceWebSocket() {
     getVolume: clientId => (volumes[clientId] ?? 1) * effectiveOutputVolume(),
     onDecodeError: () => audioDiagnostics.count("decodeErrors"),
     onDrop: () => audioDiagnostics.count("framesDropped"),
+    onUnderrun: () => audioDiagnostics.count("underruns"),
   });
   let webRtcStunServer = "";
   const webrtc = createWebRtcTransport({

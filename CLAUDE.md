@@ -106,9 +106,9 @@ When enabled by the administrator, WebRTC provides a separate voice transport be
 
 Screen sharing has its own peer connections. The gateway coordinates stream membership and SDP/ICE signaling between browsers and supported TeamSpeak 6 clients. Screen media travels directly or through an externally configured TURN server; the WebSpeak gateway does not carry screen media.
 
-Preserve bounded audio buffering and stale-playback recovery. Audio counters stay in memory and are exposed in session diagnostics. Do not add per-frame persistent logging to the voice path.
+Preserve bounded audio buffering and stale-playback recovery. The WebRTC mixer gives each speaker a `SpeakerJitterBuffer` (`src/server/speaker-jitter-buffer.ts`): a 60 ms prefill, at most 160 ms queued, a 5 ms fade instead of hard silence on underrun and a cross-fade at every discontinuity. Audio counters stay in memory and are exposed in session diagnostics. Do not add per-frame persistent logging to the voice path.
 
-Remote playback owns each speaker's decoder, gain and source nodes as one resource set. Member departure, decoder failure and session teardown release that set; queued callbacks must not touch its replacement. Preserve the 80 ms playback window and three-frame decoder queue threshold unless audio validation justifies changing them.
+Remote playback owns each speaker's decoder, gain and source nodes as one resource set. Member departure, decoder failure, a stalled decoder (25 queued frames) and session teardown release that set; queued callbacks must not touch its replacement. Playback starts or resumes after a 60 ms cushion with a 5 ms fade-in and keeps at most 250 ms scheduled; a burst beyond that or a busy decoder (8 queued frames) drops input instead of resetting the decoder. The previous 80 ms window without a cushion turned ordinary network jitter into audible clicks.
 
 Microphone recording tests own their recorder, timeout and object URL, while the capture layer owns the microphone stream. A normal stop may publish its final recording; replacement and session teardown discard late results and revoke the old URL. Stopping a test while connected must preserve room capture. Test cancellation and stale permission failures must not change a newer test's state.
 

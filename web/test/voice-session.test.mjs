@@ -1746,7 +1746,7 @@ test("session recovery resets compatibility diagnostics without mutating old sna
   await nextTurn();
   const current = await audioSample(socket);
   assert.notEqual(current.scopeId, previous.scopeId);
-  assert.deepEqual(current.fallbackPlayback, { framesReceived: 0, framesDropped: 0, decodeErrors: 0 });
+  assert.deepEqual(current.fallbackPlayback, { framesReceived: 0, framesDropped: 0, decodeErrors: 0, underruns: 0 });
   assert.equal(previous.fallbackPlayback.framesReceived, 2);
 });
 
@@ -1836,11 +1836,26 @@ test("an offer rejected after a new connection opens cannot report a microphone 
 });
 
 
-test("resetting an overloaded remote decoder disconnects its old gain", async () => {
+test("a busy decoder skips input instead of discarding its playback", async () => {
+  const socket = await connect();
+  socket.receive({ type: "connected", tsClientId: 1 });
+  await nextTurn();
+  receiveAudio(socket);
+  const gain = AudioContextStub.gains.at(-1);
+  const decoder = AudioDecoderStub.instances.at(-1);
+  decoder.decodeQueueSize = 8;
+  receiveAudio(socket);
+  assert.equal(gain.disconnects, 0);
+  assert.equal(AudioDecoderStub.instances.length, 1);
+  assert.equal(decoder.closed, 0);
+  assert.equal((await audioSample(socket)).fallbackPlayback.framesDropped, 1);
+});
+
+test("resetting a stalled remote decoder disconnects its old gain", async () => {
   const socket = await connect();
   receiveAudio(socket);
   const gain = AudioContextStub.gains.at(-1);
-  AudioDecoderStub.instances.at(-1).decodeQueueSize = 3;
+  AudioDecoderStub.instances.at(-1).decodeQueueSize = 25;
   receiveAudio(socket);
   assert.equal(gain.disconnects, 1);
   assert.equal(AudioDecoderStub.instances.length, 2);
@@ -1852,7 +1867,7 @@ test("an old source ending cannot hide replacement playback from session cleanup
   const first = AudioDecoderStub.instances.at(-1);
   first.callbacks.output(decodedChunk());
   const oldSource = AudioContextStub.sources.at(-1);
-  first.decodeQueueSize = 3;
+  first.decodeQueueSize = 25;
   receiveAudio(socket);
   AudioDecoderStub.instances.at(-1).callbacks.output(decodedChunk());
   const replacement = AudioContextStub.sources.at(-1);
@@ -1933,7 +1948,7 @@ test("remote playback preserves member volume through output mute and decoder re
   voice.toggleOutputMute();
   assert.deepEqual(AudioContextStub.gains.map(node => node.gain.value), [0, 0]);
   const old = AudioDecoderStub.instances[0];
-  old.decodeQueueSize = 3;
+  old.decodeQueueSize = 25;
   receiveAudio(socket, 7);
   const replacement = AudioDecoderStub.instances.at(-1);
   old.callbacks.error(new Error("stale decoder error"));
@@ -1944,21 +1959,22 @@ test("remote playback preserves member volume through output mute and decoder re
   assert.equal(AudioContextStub.gains[1].gain.value, 0.5);
 });
 
-test("decoded audio stays within the 80 ms playback window and recovers after overflow", async () => {
+test("decoded audio starts after a 60 ms cushion and a burst past 250 ms drops frames, not the stream", async () => {
   const socket = await connect();
+  socket.receive({ type: "connected", tsClientId: 1 });
+  await nextTurn();
   receiveAudio(socket);
   const decoder = AudioDecoderStub.instances[0];
-  const chunks = Array.from({ length: 5 }, decodedChunk);
+  const chunks = Array.from({ length: 12 }, decodedChunk);
   for (const chunk of chunks) decoder.callbacks.output(chunk);
-  assert.deepEqual(AudioContextStub.sources.map(source => source.startedAt), [0, 0.02, 0.04, 0.06]);
-  assert.equal(decoder.closed, 1);
-  assert.ok(AudioContextStub.sources.every(source => source.stopped === 1));
+  const starts = AudioContextStub.sources.map(source => Math.round(source.startedAt * 1000));
+  assert.deepEqual(starts, [60, 80, 100, 120, 140, 160, 180, 200, 220]);
+  assert.equal(decoder.closed, 0, "the decoder keeps its state");
+  assert.ok(AudioContextStub.sources.every(source => !source.stopped), "already scheduled audio keeps playing");
   assert.ok(chunks.every(chunk => chunk.closed === 1));
+  assert.equal((await audioSample(socket)).fallbackPlayback.framesDropped, 3);
   receiveAudio(socket);
-  const replacement = AudioDecoderStub.instances.at(-1);
-  replacement.callbacks.output(decodedChunk());
-  assert.notEqual(replacement, decoder);
-  assert.equal(AudioContextStub.sources.at(-1).startedAt, 0);
+  assert.equal(AudioDecoderStub.instances.at(-1), decoder);
 });
 
 test("old socket audio cannot create a decoder in a replacement session", async () => {

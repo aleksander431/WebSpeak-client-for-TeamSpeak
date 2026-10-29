@@ -5,6 +5,7 @@ import pino from "pino";
 import { RTCPeerConnection, useOPUS, usePCMU, type RtpPacket } from "werift";
 import { OpusEncoder } from "./opus-codec.js";
 import { WebRtcAudioSession } from "./webrtc-audio.js";
+import { SpeakerJitterBuffer } from "./speaker-jitter-buffer.js";
 
 test("configured STUN is actually queried and contributes srflx candidates", async t => {
   const stun = createSocket("udp4");
@@ -114,7 +115,7 @@ function fixture() {
   // Exercise the real close path with failures at codec/track/peer boundaries.
   const resources = {
     closed: false, closePromise: null, audioTimer: null, activityTimer: undefined,
-    pendingFrames: new Map([[1, []]]), memberVolumes: new Map([[1, 1]]),
+    speakerBuffers: new Map([[1, new SpeakerJitterBuffer()]]), memberVolumes: new Map([[1, 1]]),
     partialPcmByClient: new Map([[1, Buffer.alloc(2)]]), activeSpeakerIds: new Set([1]),
     decoderByClient: new Map([
       [1, { dispose() { released.push("decoder-1"); throw new Error("Decoder failed"); } }],
@@ -134,7 +135,7 @@ test("WebRTC close releases remaining codecs, track and peer after disposal fail
   await f.session.close();
   assert.deepEqual(f.released, ["decoder-1", "decoder-2", "encoder", "track", "peer"]);
   assert.equal(f.resources.decoderByClient.size, 0);
-  assert.equal(f.resources.pendingFrames.size, 0);
+  assert.equal(f.resources.speakerBuffers.size, 0);
   assert.equal(f.resources.memberVolumes.size, 0);
   assert.equal(f.resources.partialPcmByClient.size, 0);
   assert.equal(f.resources.activeSpeakerIds.size, 0);
@@ -204,7 +205,7 @@ test("an unavailable mixer encoder closes the half-built peer before the constru
 
 test("removeClient releases only the leaving speaker's decoder and buffered state", () => {
   const f = fixture();
-  f.resources.pendingFrames.set(2, []);
+  f.resources.speakerBuffers.set(2, new SpeakerJitterBuffer());
   f.resources.memberVolumes.set(2, 0.5);
   f.resources.partialPcmByClient.set(2, Buffer.alloc(2));
   f.resources.activeSpeakerIds.add(2);
@@ -213,12 +214,12 @@ test("removeClient releases only the leaving speaker's decoder and buffered stat
 
   assert.deepEqual(f.released, ["decoder-1"]);
   assert.equal(f.resources.decoderByClient.has(1), false);
-  assert.equal(f.resources.pendingFrames.has(1), false);
+  assert.equal(f.resources.speakerBuffers.has(1), false);
   assert.equal(f.resources.partialPcmByClient.has(1), false);
   assert.equal(f.resources.memberVolumes.has(1), false);
   assert.equal(f.resources.activeSpeakerIds.has(1), false);
   assert.equal(f.resources.decoderByClient.has(2), true);
-  assert.equal(f.resources.pendingFrames.has(2), true);
+  assert.equal(f.resources.speakerBuffers.has(2), true);
   assert.equal(f.resources.partialPcmByClient.has(2), true);
   assert.equal(f.resources.memberVolumes.has(2), true);
   assert.equal(f.resources.activeSpeakerIds.has(2), true);

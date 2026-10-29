@@ -28,7 +28,7 @@ export interface VoiceAudioStatusSample {
   playbackState: "playing" | "paused" | "unavailable" | null;
   bridge: VoiceAudioBridgeStats;
   browser: BrowserVoiceAudioStats | null;
-  fallbackPlayback: { framesReceived: number; framesDropped: number; decodeErrors: number };
+  fallbackPlayback: { framesReceived: number; framesDropped: number; decodeErrors: number; underruns: number };
 }
 
 interface DiagnosticSource {
@@ -104,7 +104,7 @@ function sameSource(left: DiagnosticSource | null, right: DiagnosticSource | nul
 
 export function createAudioDiagnostics(options: DiagnosticOptions) {
   const pending = new Map<string, { receive(bridge: VoiceAudioBridgeStats): void; finish(sample: VoiceAudioStatusSample | null): void }>();
-  const fallback = { framesReceived: 0, framesDropped: 0, decodeErrors: 0 };
+  const fallback = { framesReceived: 0, framesDropped: 0, decodeErrors: 0, underruns: 0 };
   let sequence = 0;
   let scopeId = 0;
   let previousSource: DiagnosticSource | null = null;
@@ -163,6 +163,7 @@ export function createAudioDiagnostics(options: DiagnosticOptions) {
       fallback.framesReceived = 0;
       fallback.framesDropped = 0;
       fallback.decodeErrors = 0;
+      fallback.underruns = 0;
     },
   };
 }

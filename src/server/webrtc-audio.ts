@@ -10,9 +10,9 @@ import type { Logger as LoggerType } from "../logger.js";
 import type { TSVoiceData } from "./ts-client.js";
 import { WEBRTC_UDP_PORT_RANGE } from "./webrtc-config.js";
 import { OpusEncoder } from "./opus-codec.js";
+import { SpeakerJitterBuffer } from "./speaker-jitter-buffer.js";
 import type { WebRtcSessionDescription } from "../shared/webrtc.js";
 export type { WebRtcSessionDescription } from "../shared/webrtc.js";
-
 export { DEFAULT_WEBRTC_UDP_PORT_RANGE, WEBRTC_UDP_PORT_RANGE } from "./webrtc-config.js";
 
 const AUDIO_SAMPLE_RATE = 48_000;
@@ -21,10 +21,7 @@ const AUDIO_FRAME_BYTES = AUDIO_FRAME_SAMPLES * 2;
 const DEFAULT_WEBRTC_OPUS_PAYLOAD_TYPE = 111;
 const AUDIO_CLOCK_INTERVAL_MS = 20;
 const SPEAKER_ACTIVITY_INTERVAL_MS = 100;
-const MAX_MIXER_QUEUE_FRAMES = 4;
 const MAX_MIXER_PACER_LAG_MS = AUDIO_CLOCK_INTERVAL_MS * 2;
-const MAX_MIXER_FRAME_AGE_MS = MAX_MIXER_QUEUE_FRAMES * AUDIO_CLOCK_INTERVAL_MS;
-const MIXER_UNDERRUN_WINDOW_MS = 200;
 // This threshold is used only for the speaking indicator. It must never decide
 // whether a media packet is forwarded or queued: quiet/comfort-noise Opus
 // packets are still valid media and dropping them can break decoder continuity.
@@ -81,11 +78,6 @@ export interface WebRtcAudioStats {
   webrtcDownlinkShortFrames: number;
 }
 
-interface PendingAudioFrame {
-  pcm: Buffer;
-  receivedAt: number;
-}
-
 /**
  * One low-latency WebRTC audio session for one browser connection.
  *
@@ -103,7 +95,8 @@ export class WebRtcAudioSession {
   private readonly outgoingTrack: MediaStreamTrack;
   private readonly decoderByClient = new Map<number, OpusEncoder>();
   private readonly partialPcmByClient = new Map<number, Buffer>();
-  private readonly pendingFrames = new Map<number, PendingAudioFrame[]>();
+  /** Per-speaker jitter buffers; see speaker-jitter-buffer.ts. */
+  private readonly speakerBuffers = new Map<number, SpeakerJitterBuffer>();
   private readonly memberVolumes = new Map<number, number>();
   private readonly activeSpeakerIds = new Set<number>();
   private readonly opusPayloadTypes = new Set<number>();
@@ -119,7 +112,6 @@ export class WebRtcAudioSession {
   private nextAudioDeadline = 0;
   private lastIngressRtpAt: number | null = null;
   private lastEgressRtpAt: number | null = null;
-  private lastQueueEnqueuedAt: number | null = null;
   private microphoneMuted: boolean;
   private accompanimentActive: boolean;
   private readonly stats: WebRtcAudioStats = {
@@ -281,27 +273,24 @@ export class WebRtcAudioSession {
       if (rms >= SPEAKER_ACTIVITY_RMS) this.activeSpeakerIds.add(data.clientId);
       let offset = 0;
       let enqueued = false;
-      let queue = this.pendingFrames.get(data.clientId);
+      let buffer = this.speakerBuffers.get(data.clientId);
+      const receivedAt = performance.now();
       while (offset + AUDIO_FRAME_BYTES <= combined.length) {
-        if (!queue) {
-          queue = [];
-          this.pendingFrames.set(data.clientId, queue);
+        if (!buffer) {
+          buffer = new SpeakerJitterBuffer();
+          this.speakerBuffers.set(data.clientId, buffer);
         }
-        if (queue.length >= MAX_MIXER_QUEUE_FRAMES) {
-          queue.shift();
-          this.stats.webrtcQueueDroppedFrames++;
-        }
-        queue.push({
-          pcm: Buffer.from(combined.subarray(offset, offset + AUDIO_FRAME_BYTES)),
-          receivedAt: performance.now(),
-        });
+        const samples = new Int16Array(AUDIO_FRAME_SAMPLES);
+        for (let index = 0; index < AUDIO_FRAME_SAMPLES; index++) samples[index] = combined.readInt16LE(offset + index * 2);
+        const droppedBefore = buffer.stats.dropped;
+        buffer.push(samples, receivedAt);
+        this.stats.webrtcQueueDroppedFrames += buffer.stats.dropped - droppedBefore;
         enqueued = true;
         offset += AUDIO_FRAME_BYTES;
       }
       if (offset < combined.length) this.partialPcmByClient.set(data.clientId, Buffer.from(combined.subarray(offset)));
       else this.partialPcmByClient.delete(data.clientId);
       if (enqueued) {
-        this.lastQueueEnqueuedAt = performance.now();
         this.stats.webrtcQueuePeakFrames = Math.max(this.stats.webrtcQueuePeakFrames, this.getQueueFrameCount());
       }
     } catch {
@@ -317,7 +306,7 @@ export class WebRtcAudioSession {
     if (this.audioTimer) clearTimeout(this.audioTimer);
     this.audioTimer = null;
     clearInterval(this.activityTimer);
-    this.pendingFrames.clear();
+    this.speakerBuffers.clear();
     this.memberVolumes.clear();
     this.partialPcmByClient.clear();
     this.activeSpeakerIds.clear();
@@ -363,19 +352,17 @@ export class WebRtcAudioSession {
     if (!this.encoder) {
       return;
     }
-    if (!this.pendingFrames.size) {
-      if (this.lastQueueEnqueuedAt !== null && performance.now() - this.lastQueueEnqueuedAt <= MIXER_UNDERRUN_WINDOW_MS) {
-        this.stats.webrtcQueueUnderrunTicks++;
-      }
-    }
+    const now = performance.now();
     const mixed = new Int32Array(AUDIO_FRAME_SAMPLES);
-    for (const [clientId, queue] of this.pendingFrames) {
-      const frame = queue.shift();
-      if (queue.length === 0) this.pendingFrames.delete(clientId);
+    for (const [clientId, buffer] of this.speakerBuffers) {
+      const underrunsBefore = buffer.stats.underruns;
+      const frame = buffer.pull(now);
+      this.stats.webrtcQueueUnderrunTicks += buffer.stats.underruns - underrunsBefore;
+      if (buffer.idle) this.speakerBuffers.delete(clientId);
       if (!frame) continue;
       const volume = this.memberVolumes.get(clientId) ?? 1;
       for (let index = 0; index < AUDIO_FRAME_SAMPLES; index++) {
-        mixed[index] += Math.round(frame.pcm.readInt16LE(index * 2) * volume);
+        mixed[index] += Math.round(frame[index]! * volume);
       }
     }
 
@@ -443,7 +430,7 @@ export class WebRtcAudioSession {
 
   removeClient(clientId: number): void {
     if (!Number.isInteger(clientId) || clientId <= 0 || clientId > 65535) return;
-    this.pendingFrames.delete(clientId);
+    this.speakerBuffers.delete(clientId);
     this.partialPcmByClient.delete(clientId);
     this.memberVolumes.delete(clientId);
     this.activeSpeakerIds.delete(clientId);
@@ -465,23 +452,17 @@ export class WebRtcAudioSession {
   }
 
   private trimQueuesAfterLateTick(): void {
-    const now = performance.now();
-    for (const [clientId, queue] of this.pendingFrames) {
-      while (queue.length > 1) {
-        queue.shift();
-        this.stats.webrtcQueueDroppedFrames++;
-      }
-      if (queue[0] && now - queue[0].receivedAt > MAX_MIXER_FRAME_AGE_MS) {
-        queue.shift();
-        this.stats.webrtcQueueDroppedFrames++;
-      }
-      if (queue.length === 0) this.pendingFrames.delete(clientId);
+    // A stalled clock let frames pile up; keep the normal cushion, not more.
+    for (const buffer of this.speakerBuffers.values()) {
+      const droppedBefore = buffer.stats.dropped;
+      buffer.trim();
+      this.stats.webrtcQueueDroppedFrames += buffer.stats.dropped - droppedBefore;
     }
   }
 
   private getQueueFrameCount(): number {
     let count = 0;
-    for (const queue of this.pendingFrames.values()) count += queue.length;
+    for (const buffer of this.speakerBuffers.values()) count += buffer.size;
     return count;
   }
 

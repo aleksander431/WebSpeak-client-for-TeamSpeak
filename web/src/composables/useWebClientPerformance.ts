@@ -128,7 +128,10 @@ export function useWebClientPerformance(
           + (counterDelta(bridge.webrtcQueueDroppedFrames, previousBridge.webrtcQueueDroppedFrames) ?? 0)
           + (counterDelta(current?.fallbackPlayback.framesDropped ?? 0, previous?.fallbackPlayback.framesDropped ?? 0) ?? 0)
         : null,
-      queueUnderruns: bridge && previousBridge ? counterDelta(bridge.webrtcQueueUnderrunTicks, previousBridge.webrtcQueueUnderrunTicks) : null,
+      queueUnderruns: bridge && previousBridge
+        ? (counterDelta(bridge.webrtcQueueUnderrunTicks, previousBridge.webrtcQueueUnderrunTicks) ?? 0)
+          + (counterDelta(current?.fallbackPlayback.underruns ?? 0, previous?.fallbackPlayback.underruns ?? 0) ?? 0)
+        : null,
       ingressMaxGapMs: bridge?.ingressMaxGapMs ?? null,
       egressMaxGapMs: bridge?.egressMaxGapMs ?? null,
     };
