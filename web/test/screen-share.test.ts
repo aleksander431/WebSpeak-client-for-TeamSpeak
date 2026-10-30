@@ -206,6 +206,20 @@ test("HDR correction can be switched on and off during a share without restartin
   assert.equal(capture.track.readyState, "ended");
 });
 
+test("a new calibration reaches the running correction without restarting it", async () => {
+  const generators = installFrameProcessing();
+  await controller.api.startScreenShare(true, { hdrCorrection: 0.5 });
+  const identity = Array.from({ length: 256 }, (_, value) => value);
+  await controller.api.updateScreenShareOutputSettings({ hdrCorrection: 1, hdrCalibration: { r: identity, g: identity, b: identity } });
+  assert.equal(generators.length, 1, "the same corrected track keeps flowing");
+  assert.equal(generators[0]!.stopped, false);
+  assert.equal(controller.api.screenShareHdrActive.value, true);
+});
+
+test("calibration without a running capture fails with a clear code", async () => {
+  await assert.rejects(controller.api.measureHdrCalibration({ async show() {} }), (error: unknown) => (error as { code?: string }).code === "NO_FRAMES");
+});
+
 test("invalid capture without a video track still releases every returned track", async () => {
   const capture = stream();
   Object.assign(navigator.mediaDevices, { getDisplayMedia: async () => ({ ...capture, getVideoTracks: () => [] }) });

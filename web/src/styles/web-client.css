@@ -7235,6 +7235,31 @@
   accent-color: var(--accent);
 }
 
+:deep(.screen-share-hdr-calibration) {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+
+:deep(.screen-share-hdr-calibration-actions) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+:deep(.screen-share-hdr-calibrate) {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 10px;
+}
+
+:deep(.screen-share-hdr-reset) {
+  font-size: 10px;
+}
+
 :deep(.screen-share-settings-note) {
   margin: 15px 0 0;
   color: var(--text-muted);

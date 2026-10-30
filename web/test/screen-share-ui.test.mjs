@@ -54,12 +54,12 @@ test("the standard member panel uses the same spacer display and hides only empt
   assert.equal((html.match(/noMembersInChannel/g) ?? []).length, 1);
 });
 
-function mount(t, initialStream = null, memberAvatar = () => "", extra = {}) {
-  const listeners = new Set(), starts = [], storage = new Map(); let exits = 0, ui;
+function mount(t, initialStream = null, memberAvatar = () => "", extra = {}, initialStorage = {}) {
+  const listeners = new Set(), starts = [], storage = new Map(Object.entries(initialStorage)); let exits = 0, ui;
   class Element {}
   class Video extends Element { srcObject = null; volume = 1; plays = 0; async play() { this.plays++; } }
   const doc = { fullscreenElement: null, addEventListener: (_event, fn) => listeners.add(fn), removeEventListener: (_event, fn) => listeners.delete(fn), async exitFullscreen() { exits++; doc.fullscreenElement = null; for (const fn of listeners) fn(); } };
-  for (const [key, value] of Object.entries({ HTMLElement: Element, HTMLVideoElement: Video, document: doc, localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) } })) {
+  for (const [key, value] of Object.entries({ HTMLElement: Element, HTMLVideoElement: Video, document: doc, localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) } })) {
     const original = Object.getOwnPropertyDescriptor(globalThis, key);
     Object.defineProperty(globalThis, key, { configurable: true, value });
     t.after(() => { if (original) Object.defineProperty(globalThis, key, original); else delete globalThis[key]; });
@@ -265,6 +265,96 @@ test("while sharing, changed settings apply to the running share at once", async
     f.ui.frameRate.value = 15; f.ui.resolutionPreset.value = "720p"; await nextTick();
     assert.deepEqual(updates, [{ maxWidth: 1280, maxHeight: 720, maxFrameRate: 15 }]);
     assert.equal(f.storage.get("webspeak:screen-share-framerate"), "15");
+  } finally { f.app.unmount(); }
+});
+
+function fakeOverlay() {
+  const state = { opened: 0, closed: 0, levels: [], controller: null };
+  return {
+    state,
+    open() {
+      state.opened++;
+      state.controller = new AbortController();
+      return { signal: state.controller.signal, async show(level) { state.levels.push(level); }, setProgress() {}, close() { state.closed++; } };
+    },
+  };
+}
+const identityCurve = Array.from({ length: 256 }, (_, value) => value);
+/** Pretend to be Chromium so HDR correction and calibration are offered. */
+function pretendChromium(t) {
+  for (const name of ["MediaStreamTrackProcessor", "MediaStreamTrackGenerator", "OffscreenCanvas", "VideoFrame"]) {
+    const original = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: class {} });
+    t.after(() => { if (original) Object.defineProperty(globalThis, name, original); else delete globalThis[name]; });
+  }
+}
+
+test("calibration applies the measured curve at full strength and remembers it", async t => {
+  const updates = [], sharing = shallowRef(true), overlay = fakeOverlay();
+  const curve = { version: 1, r: identityCurve, g: identityCurve.map(value => Math.max(0, value - 40)), b: identityCurve, clipLevel: 216, createdAt: "now" };
+  const f = mount(t, null, () => "", {
+    sharing, updateScreenShareOutputSettings: async settings => { updates.push(settings); },
+    measureHdrCalibration: async display => { await display.show(128); display.setProgress(22, 22); return curve; },
+    openCalibrationDisplay: () => overlay.open(),
+  });
+  try {
+    // hdrSupported is false in Node; the controller must refuse instead of measuring.
+    await f.ui.calibrateHdr();
+    assert.equal(overlay.state.opened, 0);
+    assert.equal(f.ui.canCalibrate.value, false);
+  } finally { f.app.unmount(); }
+});
+test("a successful calibration is applied live at full strength and stored", async t => {
+  pretendChromium(t);
+  const updates = [], sharing = shallowRef(true), overlay = fakeOverlay();
+  const curve = { version: 1, r: identityCurve, g: identityCurve.map(value => Math.max(0, value - 40)), b: identityCurve, clipLevel: 216, createdAt: "now" };
+  const f = mount(t, null, () => "", {
+    sharing, updateScreenShareOutputSettings: async settings => { updates.push(settings); },
+    measureHdrCalibration: async display => { await display.show(128); display.setProgress(22, 22); return curve; },
+    openCalibrationDisplay: () => overlay.open(),
+  });
+  try {
+    assert.equal(f.ui.canCalibrate.value, true);
+    await f.ui.calibrateHdr();
+    await nextTick();
+    assert.deepEqual(overlay.state.levels, [128]);
+    assert.equal(overlay.state.closed, 1, "the overlay always closes");
+    assert.equal(f.ui.calibrationState.value, "done");
+    assert.equal(f.ui.hdrEnabled.value, true);
+    assert.equal(f.ui.hdrStrength.value, 100);
+    const last = updates.at(-1);
+    assert.equal(last.hdrCorrection, 1);
+    assert.equal(last.hdrCalibration.g[200], 160, "viewers get the measured curve");
+    assert.equal(JSON.parse(f.storage.get("webspeak:screen-share-hdr-calibration")).clipLevel, 216);
+
+    f.ui.resetHdrCalibration();
+    await nextTick();
+    assert.equal(updates.at(-1).hdrCalibration, undefined, "reset returns to the generic curve");
+    assert.equal(f.storage.has("webspeak:screen-share-hdr-calibration"), false);
+  } finally { f.app.unmount(); }
+});
+
+test("a stored calibration is restored, and failed or cancelled runs keep it", async t => {
+  pretendChromium(t);
+  const overlay = fakeOverlay();
+  const stored = { version: 1, r: identityCurve, g: identityCurve, b: identityCurve, clipLevel: 255, createdAt: "earlier" };
+  let failWith = "NOT_VISIBLE";
+  const { HdrCalibrationError } = await vite.ssrLoadModule("/src/voice/hdr-calibration.ts");
+  const f = mount(t, null, () => "", {
+    sharing: shallowRef(true), updateScreenShareOutputSettings: async () => {},
+    measureHdrCalibration: async () => { throw new HdrCalibrationError(failWith); },
+    openCalibrationDisplay: () => overlay.open(),
+  }, { "webspeak:screen-share-hdr-calibration": JSON.stringify(stored) });
+  try {
+    assert.equal(f.ui.hdrCalibration.value?.createdAt, "earlier");
+    await f.ui.calibrateHdr();
+    assert.equal(f.ui.calibrationState.value, "failed");
+    assert.equal(f.ui.calibrationError.value, "NOT_VISIBLE");
+    assert.equal(f.ui.hdrCalibration.value?.createdAt, "earlier", "a failed run keeps the previous calibration");
+    failWith = "CANCELLED";
+    await f.ui.calibrateHdr();
+    assert.equal(f.ui.calibrationState.value, "idle", "Esc is not reported as an error");
+    assert.equal(overlay.state.closed, 2);
   } finally { f.app.unmount(); }
 });
 

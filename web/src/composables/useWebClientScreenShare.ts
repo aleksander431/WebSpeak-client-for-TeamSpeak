@@ -1,6 +1,10 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch, type Ref } from "vue";
 import type { ChannelMember, ScreenShareOutputSettings, ScreenShareStream } from "./useVoiceWebSocket.js";
 import { DEFAULT_HDR_CORRECTION_STRENGTH, isHdrCorrectionSupported } from "../voice/hdr-correction.js";
+import { HdrCalibrationError, parseHdrCalibration, type CalibrationDisplay, type HdrCalibrationErrorCode, type HdrCalibrationResult } from "../voice/hdr-calibration.js";
+import { openCalibrationOverlay, type CalibrationOverlay, type CalibrationOverlayTexts } from "../voice/hdr-calibration-overlay.js";
+
+const CALIBRATION_STORAGE_KEY = "webspeak:screen-share-hdr-calibration";
 
 export type ScreenShareResolutionPreset = "source" | "720p" | "1080p" | "1440p";
 
@@ -34,6 +38,10 @@ interface UseWebClientScreenShareOptions {
   updateScreenShareOutputSettings?: (settings: ScreenShareOutputSettings) => Promise<void>;
   /** True while this browser is sharing. */
   sharing?: Readonly<Ref<boolean>>;
+  /** Measures the running capture; see screen-share.ts. */
+  measureHdrCalibration?: (display: CalibrationDisplay, signal?: AbortSignal) => Promise<HdrCalibrationResult>;
+  /** Replaceable for tests; must open synchronously inside the click handler. */
+  openCalibrationDisplay?: (texts: CalibrationOverlayTexts) => CalibrationOverlay;
   joinScreenShare: (streamId: string) => void;
   leaveScreenShare: () => void;
   nickname: Ref<string>;
@@ -54,6 +62,8 @@ export function useWebClientScreenShare({
   startScreenShare,
   updateScreenShareOutputSettings,
   sharing,
+  measureHdrCalibration,
+  openCalibrationDisplay = openCalibrationOverlay,
   joinScreenShare,
   leaveScreenShare,
   nickname,
@@ -99,6 +109,10 @@ export function useWebClientScreenShare({
   const hdrStrength = ref(Number.isFinite(storedHdrStrength) && storedHdrStrength >= 5 && storedHdrStrength <= 100
     ? Math.round(storedHdrStrength)
     : Math.round(DEFAULT_HDR_CORRECTION_STRENGTH * 100));
+  const hdrCalibration = ref<HdrCalibrationResult | null>(readCalibration());
+  const calibrationState = ref<"idle" | "running" | "done" | "failed">("idle");
+  const calibrationError = ref<HdrCalibrationErrorCode | "">("");
+  const calibrationProgress = ref(0);
   const settingsOpen = ref(false);
   const activeStream = computed<ScreenShareStream | null>(() => streams.find((stream) => stream.streamId === viewingStreamId.value) ?? null);
   const viewers = computed(() =>
@@ -176,6 +190,7 @@ export function useWebClientScreenShare({
       ...(priority.value !== "auto" ? { priority: priority.value } : {}),
       // Omitted when off; a missing value also switches correction off live.
       ...(hdrSupported && hdrEnabled.value ? { hdrCorrection: hdrStrength.value / 100 } : {}),
+      ...(hdrSupported && hdrEnabled.value && hdrCalibration.value ? { hdrCalibration: hdrCalibration.value } : {}),
     };
   }
 
@@ -198,7 +213,53 @@ export function useWebClientScreenShare({
 
   // While sharing, every change in the dialog applies at once, including the
   // HDR slider, so the sharer can tune it while watching the result.
-  watch([resolutionPreset, frameRate, bitratePreset, priority, hdrEnabled, hdrStrength], () => {
+  function readCalibration(): HdrCalibrationResult | null {
+    try {
+      const stored = localStorage.getItem(CALIBRATION_STORAGE_KEY);
+      return stored ? parseHdrCalibration(JSON.parse(stored)) : null;
+    } catch { return null; }
+  }
+
+  /**
+   * Show grey levels full-screen and measure the live capture. Call from the
+   * click handler directly: the overlay needs the gesture for fullscreen.
+   */
+  async function calibrateHdr(): Promise<void> {
+    if (!sharing?.value || !measureHdrCalibration || !hdrSupported || calibrationState.value === "running") return;
+    const overlay = openCalibrationDisplay({ progress: (done, total) => `${t("screenShareHdrCalibrating")} ${done}/${total} · Esc` });
+    calibrationState.value = "running";
+    calibrationError.value = "";
+    calibrationProgress.value = 0;
+    const display: CalibrationDisplay = {
+      show: (level) => overlay.show(level),
+      setProgress: (done, total) => { overlay.setProgress?.(done, total); calibrationProgress.value = Math.round(done / total * 100); },
+    };
+    try {
+      const result = await measureHdrCalibration(display, overlay.signal);
+      hdrCalibration.value = result;
+      try {
+        localStorage.setItem(CALIBRATION_STORAGE_KEY, JSON.stringify({ ...result, r: Array.from(result.r), g: Array.from(result.g), b: Array.from(result.b) }));
+      } catch { /* applies to this share even if it cannot be remembered */ }
+      // A measured curve is meant to be applied fully.
+      hdrEnabled.value = true;
+      hdrStrength.value = 100;
+      calibrationState.value = "done";
+    } catch (error: unknown) {
+      calibrationError.value = error instanceof HdrCalibrationError ? error.code : "NO_FRAMES";
+      calibrationState.value = calibrationError.value === "CANCELLED" ? "idle" : "failed";
+    } finally {
+      overlay.close();
+    }
+  }
+
+  function resetHdrCalibration(): void {
+    hdrCalibration.value = null;
+    calibrationState.value = "idle";
+    calibrationError.value = "";
+    try { localStorage.removeItem(CALIBRATION_STORAGE_KEY); } catch { /* nothing stored */ }
+  }
+
+  watch([resolutionPreset, frameRate, bitratePreset, priority, hdrEnabled, hdrStrength, hdrCalibration], () => {
     if (!sharing?.value || !updateScreenShareOutputSettings) return;
     persistSettings();
     void updateScreenShareOutputSettings(currentSettings());
@@ -222,6 +283,13 @@ export function useWebClientScreenShare({
   });
 
   return {
+    hdrCalibration,
+    calibrationState,
+    calibrationError,
+    calibrationProgress,
+    canCalibrate: computed(() => Boolean(hdrSupported && measureHdrCalibration && sharing?.value)),
+    calibrateHdr,
+    resetHdrCalibration,
     priorityOptions,
     priority,
     hdrSupported,

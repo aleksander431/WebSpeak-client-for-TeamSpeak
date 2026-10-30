@@ -12,7 +12,12 @@
  *
  * Uses MediaStreamTrackProcessor/Generator (Chromium: Chrome, Edge, Yandex,
  * Opera). Other browsers report it as unsupported and share unmodified.
+ *
+ * The GPU applies a 256-entry lookup table per channel. It is built either
+ * from the manual curve below or from a measured calibration
+ * (hdr-calibration.ts), and `strength` blends it with the unchanged picture.
  */
+import type { HdrCalibrationCurve } from "./hdr-calibration.js";
 
 /** Default strength; adjustable live from 0 (off) to 1. */
 export const DEFAULT_HDR_CORRECTION_STRENGTH = 0.5;
@@ -54,6 +59,8 @@ export interface HdrCorrection {
   readonly track: MediaStreamTrack;
   setStrength(strength: number): void;
   readonly strength: number;
+  /** Use a measured curve instead of the manual one; null returns to the manual curve. */
+  setCalibration(calibration: HdrCalibrationCurve | null): void;
   /** Stops processing and the corrected track; the source track is left to its owner. */
   dispose(): void;
 }
@@ -68,21 +75,44 @@ void main() {
 }`;
 
 export const FRAGMENT_SHADER = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 uniform sampler2D u_frame;
-uniform float u_strength;
+uniform sampler2D u_lut;
 varying vec2 v_uv;
-vec3 toLinear(vec3 c) {
-  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
-}
-vec3 toSrgb(vec3 c) {
-  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+// The LUT is 256x1: entry k sits at the centre of texel k.
+float lookup(float value, int channel) {
+  vec4 entry = texture2D(u_lut, vec2((floor(value * 255.0 + 0.5) + 0.5) / 256.0, 0.5));
+  return channel == 0 ? entry.r : channel == 1 ? entry.g : entry.b;
 }
 void main() {
-  vec3 color = toLinear(texture2D(u_frame, v_uv).rgb);
-  color = pow(color, vec3(1.0 + ${HDR_GAMMA_BOOST.toFixed(2)} * u_strength));
-  gl_FragColor = vec4(toSrgb(clamp(color, 0.0, 1.0)), 1.0);
+  vec3 color = texture2D(u_frame, v_uv).rgb;
+  gl_FragColor = vec4(lookup(color.r, 0), lookup(color.g, 1), lookup(color.b, 2), 1.0);
 }`;
+
+/**
+ * The per-channel table the GPU applies (RGBA, 256 entries). With a
+ * calibration it is that curve blended with the identity by `strength`;
+ * without one it is the manual curve at that strength.
+ */
+export function buildCorrectionLut(strength: number, calibration: HdrCalibrationCurve | null): Uint8Array {
+  const lut = new Uint8Array(256 * 4);
+  for (let value = 0; value < 256; value++) {
+    if (calibration) {
+      lut[value * 4] = Math.round(value + (calibration.r[value]! - value) * strength);
+      lut[value * 4 + 1] = Math.round(value + (calibration.g[value]! - value) * strength);
+      lut[value * 4 + 2] = Math.round(value + (calibration.b[value]! - value) * strength);
+    } else {
+      const corrected = Math.round(correctChannel(value / 255, strength) * 255);
+      lut[value * 4] = lut[value * 4 + 1] = lut[value * 4 + 2] = corrected;
+    }
+    lut[value * 4 + 3] = 255;
+  }
+  return lut;
+}
 
 /** The same curve as the shader, for one 0..1 sRGB channel value (used by tests and docs). */
 export function correctChannel(value: number, strength: number): number {
@@ -93,7 +123,8 @@ export function correctChannel(value: number, strength: number): number {
 }
 
 interface Renderer {
-  render(frame: VideoFrame, strength: number): void;
+  /** `lut` is uploaded only when `lutVersion` changes. */
+  render(frame: VideoFrame, lut: Uint8Array, lutVersion: number): void;
   dispose(): void;
 }
 
@@ -119,28 +150,42 @@ function createRenderer(canvas: OffscreenCanvas): Renderer {
   const position = gl.getAttribLocation(program, "a_position");
   gl.enableVertexAttribArray(position);
   gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-  const texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  const strengthLocation = gl.getUniformLocation(program, "u_strength");
+  const createTexture = (unit: number, filter: number) => {
+    const created = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D, created);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return created;
+  };
+  const lutTexture = createTexture(1, gl.NEAREST);
+  const texture = createTexture(0, gl.LINEAR);
   gl.uniform1i(gl.getUniformLocation(program, "u_frame"), 0);
+  gl.uniform1i(gl.getUniformLocation(program, "u_lut"), 1);
+  let uploadedLut = -1;
   return {
-    render(frame, strength) {
+    render(frame, lut, lutVersion) {
       const width = frame.displayWidth, height = frame.displayHeight;
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
       }
+      if (uploadedLut !== lutVersion) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, lutTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut);
+        uploadedLut = lutVersion;
+      }
       gl.viewport(0, 0, width, height);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame as unknown as TexImageSource);
-      gl.uniform1f(strengthLocation, strength);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     },
     dispose() {
-      try { gl.deleteTexture(texture); gl.deleteBuffer(buffer); gl.deleteProgram(program); } catch { /* context may be lost */ }
+      try { gl.deleteTexture(texture); gl.deleteTexture(lutTexture); gl.deleteBuffer(buffer); gl.deleteProgram(program); } catch { /* context may be lost */ }
       try { gl.getExtension("WEBGL_lose_context")?.loseContext(); } catch { /* optional */ }
     },
   };
@@ -153,7 +198,12 @@ function createRenderer(canvas: OffscreenCanvas): Renderer {
 export function createHdrCorrection(
   source: MediaStreamTrack,
   initialStrength = DEFAULT_HDR_CORRECTION_STRENGTH,
-  options: { onFailure?(error: unknown): void; environment?: Environment; renderer?: (canvas: OffscreenCanvas) => Renderer } = {},
+  options: {
+    onFailure?(error: unknown): void;
+    environment?: Environment;
+    renderer?: (canvas: OffscreenCanvas) => Renderer;
+    calibration?: HdrCalibrationCurve | null;
+  } = {},
 ): HdrCorrection {
   const environment = options.environment ?? browserEnvironment();
   if (!environment) throw new Error("HDR_CORRECTION_UNSUPPORTED");
@@ -165,13 +215,17 @@ export function createHdrCorrection(
   let renderer: Renderer | null = null;
   let rendererFailed = false;
   let strength = clampStrength(initialStrength);
+  let calibration = options.calibration ?? null;
+  let lut = buildCorrectionLut(strength, calibration);
+  let lutVersion = 0;
   let disposed = false;
+  const rebuildLut = () => { lut = buildCorrectionLut(strength, calibration); lutVersion++; };
 
   function process(frame: VideoFrame): VideoFrame {
     if (strength <= 0.001 || rendererFailed) return frame;
     try {
       renderer ??= (options.renderer ?? createRenderer)(canvas);
-      renderer.render(frame, strength);
+      renderer.render(frame, lut, lutVersion);
       const corrected = environment!.createFrame(canvas, {
         timestamp: frame.timestamp,
         ...(frame.duration !== null && frame.duration !== undefined ? { duration: frame.duration } : {}),
@@ -207,7 +261,16 @@ export function createHdrCorrection(
   return {
     track: generator,
     get strength() { return strength; },
-    setStrength(value: number) { strength = clampStrength(value); },
+    setStrength(value: number) {
+      const next = clampStrength(value);
+      if (next === strength) return;
+      strength = next;
+      rebuildLut();
+    },
+    setCalibration(value: HdrCalibrationCurve | null) {
+      calibration = value;
+      rebuildLut();
+    },
     dispose() {
       if (disposed) return;
       disposed = true;

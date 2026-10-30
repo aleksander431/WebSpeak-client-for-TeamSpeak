@@ -1,6 +1,7 @@
 import { computed, reactive, ref } from "vue";
 import { parseScreenShareStream, parseScreenShareViewers, type ServerMessage } from "../../../src/shared/server-messages.js";
 import { createHdrCorrection, isHdrCorrectionSupported, type HdrCorrection } from "./hdr-correction.js";
+import { createFrameSampler, HdrCalibrationError, runHdrCalibration, type CalibrationDisplay, type HdrCalibrationCurve, type HdrCalibrationResult } from "./hdr-calibration.js";
 import { normalizeScreenShareIceServers, type ScreenShareIceServer, type ScreenShareClientMessage, type ScreenShareStreamDescription as ScreenShareStream, type ScreenSharePeerSignal as ScreenShareSignal } from "../../../src/shared/screen-share.js";
 
 const SCREEN_SHARE_NEGOTIATION_TIMEOUT_MS = 15_000;
@@ -24,6 +25,8 @@ export interface ScreenShareOutputSettings {
   priority?: "detail" | "motion";
   /** HDR wash-out correction strength, 0 (off) to 1; see hdr-correction.ts. */
   hdrCorrection?: number;
+  /** Measured curve from an HDR calibration; the manual curve is used without it. */
+  hdrCalibration?: HdrCalibrationCurve;
 }
 
 export interface ScreenShareCaptureStats {
@@ -699,11 +702,12 @@ export function createScreenShareController(transport: ScreenShareTransport) {
   }
 
   /** Start correction on the captured track; failure leaves the original picture. */
-  function startScreenShareHdr(strength: number): boolean {
+  function startScreenShareHdr(strength: number, calibration: HdrCalibrationCurve | null = null): boolean {
     const source = screenShareLocalStream?.getVideoTracks()[0];
     if (!source || !isHdrCorrectionSupported()) return false;
     try {
       const correction = createHdrCorrection(source, strength, {
+        calibration,
         onFailure: () => {
           // GPU trouble mid-stream: frames pass through unchanged from now on.
           if (screenShareHdr === correction) screenShareHdrActive.value = false;
@@ -741,9 +745,12 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     const source = screenShareLocalStream.getVideoTracks()[0];
     applyScreenShareContentHint(source, screenShareOutputSettings);
     const strength = settings.hdrCorrection ?? 0;
+    const calibration = settings.hdrCalibration ?? null;
     if (strength > 0) {
-      if (screenShareHdr) screenShareHdr.setStrength(strength);
-      else if (startScreenShareHdr(strength)) await replaceScreenShareVideoTrack();
+      if (screenShareHdr) {
+        screenShareHdr.setCalibration(calibration);
+        screenShareHdr.setStrength(strength);
+      } else if (startScreenShareHdr(strength, calibration)) await replaceScreenShareVideoTrack();
     } else if (screenShareHdr) {
       const previous = screenShareHdr;
       screenShareHdr = null;
@@ -758,6 +765,21 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       const sender = peer.getSenders().find((candidate) => candidate.track?.kind === "video");
       if (sender) await configureScreenShareVideoSender(sender, source);
     }));
+  }
+
+  /**
+   * Measure how this capture distorts known greys (see hdr-calibration.ts).
+   * Reads the raw captured track, so the running correction does not affect it.
+   */
+  async function measureHdrCalibration(display: CalibrationDisplay, signal?: AbortSignal): Promise<HdrCalibrationResult> {
+    const source = screenShareLocalStream?.getVideoTracks()[0];
+    if (!source || source.readyState === "ended") throw new HdrCalibrationError("NO_FRAMES");
+    const sampler = createFrameSampler(source);
+    try {
+      return await runHdrCalibration({ sampler, display, now: () => performance.now(), signal });
+    } finally {
+      sampler.dispose();
+    }
   }
 
   async function startScreenShare(audio = true, settings?: ScreenShareOutputSettings): Promise<void> {
@@ -796,7 +818,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       if (!videoTrack) throw new Error("NO_VIDEO_TRACK");
       applyScreenShareContentHint(videoTrack, screenShareOutputSettings);
       screenShareLocalStream = stream;
-      if ((settings?.hdrCorrection ?? 0) > 0) startScreenShareHdr(settings!.hdrCorrection!);
+      if ((settings?.hdrCorrection ?? 0) > 0) startScreenShareHdr(settings!.hdrCorrection!, settings!.hdrCalibration ?? null);
       screenShareRequestSequence = (screenShareRequestSequence + 1) % 1_000_000;
       screenSharePendingStartId = `screen-start-${screenShareRequestSequence}`;
       for (const track of stream.getTracks()) track.addEventListener("ended", () => {
@@ -998,6 +1020,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       startScreenShare,
       stopScreenShare,
       updateScreenShareOutputSettings,
+      measureHdrCalibration,
       screenShareHdrActive,
       joinScreenShare,
       leaveScreenShare,

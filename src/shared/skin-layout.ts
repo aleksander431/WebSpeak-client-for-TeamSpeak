@@ -326,6 +326,7 @@ const PUBLIC_PART_IDS = new Set<string>([
   "voice.screen-share-settings.actions",
   "voice.screen-share-settings.fields",
   "voice.screen-share-settings.hdr",
+  "voice.screen-share-settings.hdr-calibration",
   "voice.screen-share-settings.heading",
   "voice.screen-share-settings.note",
   "voice.scroll",

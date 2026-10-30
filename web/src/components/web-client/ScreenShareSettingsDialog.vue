@@ -118,6 +118,48 @@
             role="status"
             >{{ t("screenShareHdrFailed") }}</p
           >
+          <div
+            v-if="hdrSupported"
+            class="screen-share-hdr-calibration"
+            data-ws-part="voice.screen-share-settings.hdr-calibration"
+            :data-ws-state="calibrationState"
+          >
+            <p class="screen-share-hdr-hint">{{
+              hdrCalibration ? t("screenShareHdrCalibrated") : t("screenShareHdrNotCalibrated")
+            }}<template v-if="hdrCalibration && hdrCalibration.clipLevel < 235"
+              ><br /><span class="screen-share-hdr-warning">{{ clipWarning }}</span></template
+            ></p>
+            <p
+              v-if="calibrationState === 'failed'"
+              class="screen-share-hdr-hint screen-share-hdr-warning"
+              role="alert"
+              >{{ t(calibrationErrorKey) }}</p
+            >
+            <p
+              v-else-if="calibrationState === 'done'"
+              class="screen-share-hdr-hint"
+              role="status"
+              >{{ t("screenShareHdrCalibrationDone") }}</p
+            >
+            <div class="screen-share-hdr-calibration-actions">
+              <button
+                type="button"
+                class="secondary-button screen-share-hdr-calibrate"
+                :disabled="!canCalibrate || calibrationState === 'running'"
+                @click="calibrateHdr"
+                >{{ calibrationState === "running" ? `${t("screenShareHdrCalibrating")} ${calibrationProgress}%` : t("screenShareHdrCalibrate") }}</button
+              >
+              <button
+                v-if="hdrCalibration"
+                type="button"
+                class="text-button screen-share-hdr-reset"
+                :disabled="calibrationState === 'running'"
+                @click="resetHdrCalibration"
+                >{{ t("screenShareHdrCalibrationReset") }}</button
+              >
+            </div>
+            <p class="screen-share-hdr-hint">{{ t(canCalibrate ? "screenShareHdrCalibrateHint" : "screenShareHdrCalibrateNeedsShare") }}</p>
+          </div>
         </div>
       </div>
       <p
@@ -165,17 +207,27 @@ import type { useWebClientScreenShare } from "../../composables/useWebClientScre
 const props = defineProps<{
   model: Pick<ReturnType<typeof useWebClientScreenShare>,
     "resolutionOptions" | "frameRateOptions" | "bitrateOptions" | "priorityOptions" | "resolutionPreset" | "frameRate" | "bitratePreset"
-    | "priority" | "hdrSupported" | "hdrEnabled" | "hdrStrength" | "sharing" | "startWithSettings">;
+    | "priority" | "hdrSupported" | "hdrEnabled" | "hdrStrength" | "sharing" | "startWithSettings"
+    | "hdrCalibration" | "calibrationState" | "calibrationError" | "calibrationProgress" | "canCalibrate" | "calibrateHdr" | "resetHdrCalibration">;
   /** Whether frames are actually being corrected right now. */
   hdrActive?: boolean;
-  t: (key: string) => string;
+  t: (key: string, vars?: Record<string, string | number>) => string;
 }>();
 const {
   resolutionOptions: screenShareResolutionOptions, frameRateOptions: screenShareFrameRateOptions, bitrateOptions: screenShareBitrateOptions,
   priorityOptions: screenSharePriorityOptions, resolutionPreset: screenShareResolutionPreset, frameRate: screenShareFrameRate,
   bitratePreset: screenShareBitratePreset, priority: screenSharePriority, hdrSupported, hdrEnabled, hdrStrength,
   startWithSettings: startScreenShareWithSettings,
+  hdrCalibration, calibrationState, calibrationError, calibrationProgress, canCalibrate, calibrateHdr, resetHdrCalibration,
 } = props.model;
+const calibrationErrorKey = computed(() => ({
+  NOT_VISIBLE: "screenShareHdrCalibrationNotVisible",
+  NO_FRAMES: "screenShareHdrCalibrationNoFrames",
+  UNSTABLE: "screenShareHdrCalibrationUnstable",
+  UNSUPPORTED: "screenShareHdrUnsupported",
+  CANCELLED: "screenShareHdrCalibrationNoFrames",
+} as const)[calibrationError.value || "NO_FRAMES"]);
+const clipWarning = computed(() => props.t("screenShareHdrClipWarning", { percent: Math.round((hdrCalibration.value?.clipLevel ?? 255) / 255 * 100) }));
 const sharing = computed(() => Boolean(props.model.sharing?.value));
 const emit = defineEmits<{ close: [] }>();
 const dialog = ref<HTMLElement | null>(null);

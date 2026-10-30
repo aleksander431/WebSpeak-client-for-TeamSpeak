@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { correctChannel, createHdrCorrection, isHdrCorrectionSupported } from "./hdr-correction.js";
+import { buildCorrectionLut, correctChannel, createHdrCorrection, isHdrCorrectionSupported } from "./hdr-correction.js";
 
 interface FakeFrame { id: string; timestamp: number; duration: number | null; displayWidth: number; displayHeight: number; closed: boolean; close(): void }
 
@@ -55,7 +55,7 @@ test("corrected frames keep the capture timestamp and release the original", asy
   const fake = environment();
   const correction = createHdrCorrection(source, 0.5, {
     environment: fake.env,
-    renderer: () => ({ render: (_frame, strength) => { assert.equal(strength, 0.5); fake.state.rendered++; }, dispose() {} }),
+    renderer: () => ({ render: (_frame, lut) => { assert.equal(lut[128 * 4], Math.round(correctChannel(128 / 255, 0.5) * 255)); fake.state.rendered++; }, dispose() {} }),
   });
   const original = frame("a", 4242);
   fake.push(original);
@@ -119,4 +119,33 @@ test("the curve deepens washed-out mid-tones but keeps black and white", () => {
   assert.ok(correctChannel(0.5, 0.5) < 0.5);
   assert.ok(correctChannel(0.5, 1) < correctChannel(0.5, 0.5));
   assert.ok(Math.abs(correctChannel(0.5, 0) - 0.5) < 1e-9);
+});
+
+test("the lookup table follows the manual curve or blends in a calibration", () => {
+  const manual = buildCorrectionLut(0.5, null);
+  assert.equal(manual[200 * 4], Math.round(correctChannel(200 / 255, 0.5) * 255));
+  assert.equal(manual[3], 255);
+  const inverse = Array.from({ length: 256 }, (_, value) => Math.max(0, value - 60));
+  const calibrated = buildCorrectionLut(1, { r: inverse, g: inverse, b: inverse });
+  assert.equal(calibrated[200 * 4 + 1], 140);
+  const half = buildCorrectionLut(0.5, { r: inverse, g: inverse, b: inverse });
+  assert.equal(half[200 * 4 + 2], 170, "strength blends between the original and the calibration");
+});
+
+test("switching calibration on a running correction rebuilds the table it renders with", async () => {
+  const fake = environment();
+  const seen: number[] = [];
+  const correction = createHdrCorrection(source, 1, {
+    environment: fake.env,
+    renderer: () => ({ render: (_frame, lut, version) => { seen.push(lut[200 * 4]! * 1000 + version); }, dispose() {} }),
+  });
+  fake.push(frame("a", 1));
+  await tick();
+  const inverse = Array.from({ length: 256 }, (_, value) => Math.max(0, value - 60));
+  correction.setCalibration({ r: inverse, g: inverse, b: inverse });
+  fake.push(frame("b", 2));
+  await tick();
+  assert.equal(Math.floor(seen[1]! / 1000), 140);
+  assert.ok(seen[1]! % 1000 > seen[0]! % 1000, "a new table version is uploaded");
+  correction.dispose();
 });
