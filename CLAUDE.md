@@ -44,6 +44,7 @@ WebSpeak connects browser users to TeamSpeak 3 and TeamSpeak 6 through a self-ho
 | `web/src/components/admin/` | Server settings, operations and skin presentation; the parent page retains the feature controller instances across subroute changes |
 | `web/src/composables/useAdminI18n.ts`, `web/src/i18n/admin.ts` | Admin formatting and error/status mappings; all five languages explicitly implement the same translation keys |
 | `src/mobile/`, `mobile/`, `web/android/` | Android loopback gateway, asset packaging and Capacitor container |
+| `desktop/` | Windows Electron shell: opens the configured server, tray, autostart, global hotkeys, screen picker, electron-updater from GitHub releases; the page side is `web/src/composables/useDesktopBridge.ts` |
 
 ## Connection and control protocol
 
@@ -178,6 +179,10 @@ The Android app starts an embedded Node.js gateway on `127.0.0.1:3040` and opens
 See `mobile/README.md` for build steps and recorded limitations. The embedded Node.js version, SDK compatibility, real-device connections, background audio and native screen sharing require their own validation. Do not present these capabilities as production-ready based on desktop tests.
 
 Platform startup owns its message listener, polling interval and deadline, including slow listener registration. Release them on success, failure, timeout and page exit. The retry button repeats the readiness handshake; it does not restart the embedded Node.js runtime.
+
+## Desktop client
+
+`desktop/` is a thin Electron shell for Windows; the interface is always the configured server's own web build, so it needs no release when the site changes. It has its own dependencies (`npm --prefix desktop ci`), builds with `npm --prefix desktop run dist` on Windows and is packaged by the `desktop` job of the release workflow as an NSIS installer plus `latest.yml` for electron-updater. Global hotkeys and tray items call `window.__webspeakDesktopAction` through `executeJavaScript(…, true)` so getDisplayMedia has a user gesture; the display-media handler shows the shell's own picker (or the primary screen for the stream hotkey when chosen). The preload exposes only `webspeakDesktop.reportState/openSettings`, and the main process accepts them only from the main window on the server origin; the window cannot navigate elsewhere and permissions are granted to the server origin only. Keep the sandbox and context isolation on.
 
 ## Repository maintenance
 

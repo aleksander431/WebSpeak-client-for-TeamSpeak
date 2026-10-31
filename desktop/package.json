@@ -1,0 +1,48 @@
+{
+  "name": "webspeak-desktop",
+  "productName": "WebSpeak",
+  "version": "0.3.0",
+  "description": "WebSpeak desktop client: tray, autostart, global hotkeys and automatic updates",
+  "author": "aleksander431",
+  "license": "MIT",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && electron .",
+    "test": "node --import tsx --test src/*.test.ts",
+    "dist": "npm run build && electron-builder --win --publish never"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "electron": "44.9.3",
+    "electron-builder": "26.18.0",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  },
+  "build": {
+    "appId": "space.afire-server.webspeak",
+    "productName": "WebSpeak",
+    "copyright": "WebSpeak contributors",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["dist/**/*", "static/**/*", "package.json"],
+    "asar": true,
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.ico",
+      "artifactName": "webspeak-desktop-setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "WebSpeak",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [{ "provider": "github", "owner": "aleksander431", "repo": "WebSpeak-client-for-TeamSpeak", "releaseType": "release" }]
+  }
+}

@@ -1041,6 +1041,7 @@ import VisitorCount from "../components/web-client/VisitorCount.vue";
 import ScreenShareSettingsDialog from "../components/web-client/ScreenShareSettingsDialog.vue";
 import WhiteboardPanel from "../components/web-client/WhiteboardPanel.vue";
 import { WhiteboardClient } from "../whiteboard/whiteboard-client.js";
+import { useDesktopBridge } from "../composables/useDesktopBridge.js";
 import ScreenSharePlayer from "../components/web-client/ScreenSharePlayer.vue";
 import AudioDock from "../components/web-client/AudioDock.vue";
 import WhisperControls from "../components/web-client/WhisperControls.vue";
@@ -1426,6 +1427,20 @@ const screenShareControls = useWebClientScreenShare({
 });
 const { settingsOpen: screenShareSettingsOpen, errorText: screenShareErrorText } = screenShareControls;
 const memberSharingState = { screenShareActive, screenShareStarting, screenShareViewingStreamId, settingsOpen: screenShareSettingsOpen };
+// Desktop client: global hotkeys and tray actions, and state for the tray icon.
+useDesktopBridge({
+  state: () => ({
+    connected: voiceState.connected,
+    micMuted: microphoneMuted.value,
+    soundMuted: outputMuted.value,
+    streaming: screenShareActive.value,
+  }),
+  toggleMicrophone: () => toggleMicrophone(),
+  toggleSound: () => toggleOutputMute(),
+  startStream: () => screenShareControls.startWithSettings(),
+  stopStream: () => stopScreenShare(),
+  streamStarting: () => screenShareStarting.value,
+});
 const {
   channelTree,
   currentChannel,

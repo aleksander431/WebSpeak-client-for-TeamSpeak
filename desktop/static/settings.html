@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'">
+<title>WebSpeak</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+<form id="form" novalidate>
+  <h1 data-t="settingsTitle"></h1>
+
+  <section>
+    <h2 data-t="server"></h2>
+    <input type="url" id="serverUrl" spellcheck="false" autocomplete="off">
+    <p class="hint" data-t="serverHint"></p>
+    <p class="error" id="serverError" hidden data-t="serverInvalid"></p>
+  </section>
+
+  <section>
+    <h2 data-t="startup"></h2>
+    <label class="check"><input type="checkbox" id="launchAtLogin"> <span data-t="launchAtLogin"></span></label>
+    <label class="check"><input type="checkbox" id="startHidden"> <span data-t="startHidden"></span></label>
+    <label class="check"><input type="checkbox" id="closeToTray"> <span data-t="closeToTray"></span></label>
+  </section>
+
+  <section>
+    <h2 data-t="hotkeys"></h2>
+    <p class="hint" data-t="hotkeysHint"></p>
+    <div class="hotkeys" id="hotkeys"></div>
+    <label class="field"><span data-t="streamSource"></span>
+      <select id="streamHotkeySource">
+        <option value="picker" data-t="streamSourcePicker"></option>
+        <option value="screen" data-t="streamSourceScreen"></option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="hotkeySounds"> <span data-t="hotkeySounds"></span></label>
+  </section>
+
+  <section>
+    <h2 data-t="updates"></h2>
+    <div class="update-row">
+      <span id="version"></span>
+      <span id="updateStatus" class="hint"></span>
+      <button type="button" class="button" id="updateButton"></button>
+    </div>
+  </section>
+
+  <footer>
+    <span id="savedNote" class="saved" hidden data-t="saved"></span>
+    <button type="button" class="button" id="close" data-t="cancel"></button>
+    <button type="submit" class="button primary" id="save" data-t="save"></button>
+  </footer>
+</form>
+<script src="settings.js"></script>
+</body>
+</html>

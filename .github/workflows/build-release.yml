@@ -279,9 +279,50 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+  desktop:
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.2
+          architecture: x64
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Build Windows desktop installer
+        shell: pwsh
+        working-directory: desktop
+        env:
+          RELEASE_REF: ${{ inputs.version || github.ref_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $releaseVersion = $env:RELEASE_REF -replace '^v', ''
+          npm ci --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $currentVersion = node -p "require('./package.json').version"
+          if ($currentVersion -ne $releaseVersion) {
+            npm version --no-git-tag-version $releaseVersion
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          npm run dist
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # The updater reads latest.yml from the release; it must name the uploaded installer.
+          $latest = Get-Content -Raw release/latest.yml
+          if ($latest -notmatch "webspeak-desktop-setup-$([regex]::Escape($releaseVersion)).exe") { throw "latest.yml does not describe the installer" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: |
+            desktop/release/webspeak-desktop-setup-*.exe
+            desktop/release/webspeak-desktop-setup-*.exe.blockmap
+            desktop/release/latest.yml
+          if-no-files-found: error
+          compression-level: 0
+
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, linux, android]
+    needs: [windows, linux, android, desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write

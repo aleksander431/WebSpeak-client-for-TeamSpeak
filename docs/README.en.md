@@ -199,6 +199,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 #### New features
 
+- Windows desktop client (`webspeak-desktop-setup-*.exe`): a window for your WebSpeak server, minimizing to the tray, autostart, automatic updates from releases, global hotkeys for microphone, sound and screen sharing (also inside games) and its own window/screen picker for sharing.
 - A shared whiteboard for every channel: pen, lines, arrows, rectangles, ellipses, text, eraser, select with move and resize, pasting images and text from the clipboard, undo and redo, other people's cursors and PNG export. A board has several sheets: add new ones while keeping the old, rename and delete them. Boards are stored on the server.
 - New browsers need administrator approval; approved browsers are remembered.
 - Nicknames can be protected with a password for signing in on other devices without another approval.
