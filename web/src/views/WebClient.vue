@@ -977,6 +977,7 @@
       v-if="settingsOpen"
       :model="audioSettingsState"
       :controls="audioControls"
+      :hotkeys="hotkeys"
       :microphone-error="voiceState.microphoneError"
       :t="t"
       :localized-message="localizedMessage"
@@ -1041,6 +1042,7 @@ import { useWebClientAudioControls } from "../composables/useWebClientAudioContr
 import { useWebClientChannels, type TreeChannel } from "../composables/useWebClientChannels.js";
 import { useWebClientConnection } from "../composables/useWebClientConnection.js";
 import { useDeviceApproval } from "../composables/useDeviceApproval.js";
+import { useWebClientHotkeys } from "../composables/useWebClientHotkeys.js";
 import AccountPasswordDialog from "../components/web-client/AccountPasswordDialog.vue";
 import { useWebClientMembers } from "../composables/useWebClientMembers.js";
 import { useVoiceWebSocket, type ChannelMember, type ChatMessage } from "../composables/useVoiceWebSocket.js";
@@ -1498,6 +1500,21 @@ const deviceApproval = useDeviceApproval({
   connected: computed(() => voiceState.connected),
   approvalRequired: deviceApprovalRequired,
   onAccountCreated: () => showToast(t("accountCreatedToast")),
+});
+
+// Room shortcuts (mute, mute sound, screen share); configurable in audio settings.
+const hotkeys = useWebClientHotkeys({
+  connected: computed(() => voiceState.connected),
+  microphoneMuted,
+  outputMuted,
+  screenShareActive,
+  screenShareStarting,
+  setMicrophoneMuted,
+  toggleOutputMute,
+  startScreenShare: () => screenShareControls.startWithSettings(),
+  stopScreenShare,
+  showToast,
+  t,
 });
 
 const voiceWorkspace = useVoiceWorkspace({

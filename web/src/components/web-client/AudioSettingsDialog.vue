@@ -234,6 +234,12 @@
                 :size="16"
               /><span>{{ t("audioPrivacy") }}</span></div
             ></section
+          ><template v-if="hotkeys"
+            ><div class="settings-separator"></div
+            ><HotkeySettings
+              :hotkeys="hotkeys"
+              :t="t"
+          /></template
           ></div
         ></div
         ><footer class="settings-footer"
@@ -252,6 +258,8 @@
 import { computed, ref, type CSSProperties } from "vue";
 import Icon from "../Icon.vue";
 import AudioDeviceSelect from "./AudioDeviceSelect.vue";
+import HotkeySettings from "./HotkeySettings.vue";
+import type { WebClientHotkeys } from "../../composables/useWebClientHotkeys.js";
 import { useDialogFocus } from "../../composables/useDialogFocus.js";
 import type { useVoiceWebSocket } from "../../composables/useVoiceWebSocket.js";
 import type { useWebClientAudioControls } from "../../composables/useWebClientAudioControls.js";
@@ -295,6 +303,8 @@ const props = defineProps<{
   t: (key: string, variables?: Record<string, string | number>) => string;
   localizedMessage: (message: string) => string;
   rangeStyle: (value: number, max: number) => CSSProperties;
+  /** Optional: shortcuts are shown when the page provides them. */
+  hotkeys?: WebClientHotkeys;
 }>();
 const emit = defineEmits<{ close: [] }>();
 const dialog = ref<HTMLElement | null>(null);
