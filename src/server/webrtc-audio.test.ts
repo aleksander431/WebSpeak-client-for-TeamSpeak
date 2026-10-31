@@ -5,7 +5,7 @@ import pino from "pino";
 import { RTCPeerConnection, useOPUS, usePCMU, type RtpPacket } from "werift";
 import { OpusEncoder } from "./opus-codec.js";
 import { WebRtcAudioSession } from "./webrtc-audio.js";
-import { SpeakerJitterBuffer } from "./speaker-jitter-buffer.js";
+import { PREFILL_FRAMES, SpeakerJitterBuffer } from "./speaker-jitter-buffer.js";
 
 test("configured STUN is actually queried and contributes srflx candidates", async t => {
   const stun = createSocket("udp4");
@@ -80,6 +80,9 @@ for (const scenario of ["silence gaps", "alternating speakers", "volume changes"
     const source = [new OpusEncoder(48000, 1), new OpusEncoder(48000, 1)];
     const receiver = new OpusEncoder(48000, 1);
     t.after(async () => { source.forEach(codec => codec.dispose()); receiver.dispose(); await session.close(); });
+    // Freeze the clock so only the explicit mixer ticks below advance audio:
+    // the jitter buffer's prefill timeout cannot fire on a slow machine.
+    t.mock.method(performance, "now", () => 1_000);
     // Advance the real mixer explicitly so network/timer jitter cannot hide
     // codec-state discontinuities. Encoding and decoding remain native Opus.
     const mixer = session as unknown as {
@@ -91,18 +94,47 @@ for (const scenario of ["silence gaps", "alternating speakers", "volume changes"
     let level = 0;
     mixer.outgoingTrack.writeRtp = packet => { level = rms(receiver.decode(packet.payload)); };
     for (let tick = 0; tick < 50; tick++) mixer.mixAndSendAudio();
+
+    // Reference model of the per-speaker cushion (PREFILL_FRAMES = 3): a
+    // speaker starts after three queued frames and stops when it runs dry.
+    const model = [{ queued: 0, playing: false }, { queued: 0, playing: false }];
+    const tickModel = () => model.map(speaker => {
+      if (!speaker.playing && speaker.queued < PREFILL_FRAMES) return false;
+      speaker.playing = speaker.queued > 0;
+      if (!speaker.playing) return false;
+      speaker.queued--;
+      return true;
+    }).some(Boolean);
+    let gain = 1;
+    let audible = 0;
+    const mixAndCheck = (label: string) => {
+      const expected = tickModel();
+      mixer.mixAndSendAudio();
+      if (!expected) return;
+      audible++;
+      assert.ok(level > 500 * gain, `${scenario}, ${label}: unexpectedly quiet RMS ${level}`);
+    };
+
+    // Talk spurts: pauses between them, two speakers taking turns, or one
+    // continuous stream whose volume changes every frame.
+    const spurt = scenario === "volume changes" ? 50 : scenario === "alternating speakers" ? 5 : 10;
     for (let frame = 0; frame < 50; frame++) {
-      const speaker = scenario === "alternating speakers" ? frame % 2 : 0;
-      const gain = scenario === "volume changes" && frame % 2 === 1 ? 0.5 : 1;
-      session.setMemberVolume(speaker + 2, gain);
+      const speaker = scenario === "alternating speakers" ? Math.floor(frame / spurt) % 2 : 0;
+      if (scenario === "volume changes") {
+        gain = frame % 2 === 1 ? 0.5 : 1;
+        session.setMemberVolume(2, gain);
+      }
       const pcm = Buffer.alloc(1920);
       const frequency = speaker === 0 ? 660 : 440;
       for (let sample = 0; sample < 960; sample++) pcm.writeInt16LE(Math.round(1800 * Math.sin(2 * Math.PI * frequency * (frame * 960 + sample) / 48000)), sample * 2);
       session.pushTeamSpeakVoice({ clientId: speaker + 2, codec: 4, data: source[speaker]!.encode(pcm) });
-      mixer.mixAndSendAudio();
-      assert.ok(level > 500 * gain, `${scenario}, frame ${frame}: unexpectedly quiet RMS ${level}`);
-      if (scenario === "silence gaps") mixer.mixAndSendAudio();
+      model[speaker]!.queued++;
+      mixAndCheck(`frame ${frame}`);
+      if (scenario === "silence gaps" && frame % spurt === spurt - 1) for (let gap = 0; gap < 6; gap++) mixAndCheck(`gap after frame ${frame}`);
     }
+    for (let tail = 0; tail < 6; tail++) mixAndCheck(`drain ${tail}`);
+
+    assert.equal(audible, 50, "every received frame is played exactly once");
     const stats = session.getStats();
     assert.equal(stats.webrtcDownlinkDecodedFrames, 50);
     assert.equal(stats.webrtcDownlinkDecodeErrors, 0);
