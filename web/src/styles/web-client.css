@@ -1553,6 +1553,32 @@
   font-size: 10px;
 }
 
+:deep(.section-heading-actions) {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+:deep(.whiteboard-open-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 10px;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+:deep(.whiteboard-open-button:hover) {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
 :deep(.voice-grid) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(142px, 1fr));

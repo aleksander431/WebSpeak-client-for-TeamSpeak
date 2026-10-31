@@ -31,6 +31,7 @@ async function main() {
     import("./admin/admin-service.js"),
     import("./server/join-ticket.js"),
   ]);
+  const { SqliteWhiteboardStore } = await import("./server/whiteboard-store.js");
   const logger = createLogger(LOG_DIR);
   const database = new WebSpeakDatabase(path.join(DATA_DIR, "webspeak.db"));
   const masterSecret = loadOrCreateMasterSecret(path.join(DATA_DIR, "master.key"));
@@ -67,6 +68,7 @@ async function main() {
       // in the visitor UI after an administrator disables it.
       acceleration: () => adminService.getAccelerationRelayOptions(),
       accelerationName: () => adminService.getAccelerationRelayName(),
+      whiteboardStore: new SqliteWhiteboardStore(database),
     },
     adminService,
     skinRegistry: new SkinRegistry(path.join(DATA_DIR, "skins")),

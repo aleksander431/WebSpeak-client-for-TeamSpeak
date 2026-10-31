@@ -665,9 +665,21 @@
                 ><div
                   ><span class="section-kicker">{{ t("voiceActivity") }}</span
                   ><h2>{{ t("speakingNow") }}</h2></div
-                ><span class="section-counter">{{
+                ><span class="section-heading-actions"
+                  ><button
+                    v-if="voiceState.connected"
+                    type="button"
+                    class="whiteboard-open-button"
+                    data-ws-part="voice.whiteboard-open"
+                    :title="t('whiteboardOpenHint')"
+                    @click="openWhiteboard"
+                    ><Icon
+                      name="whiteboard"
+                      :size="14"
+                    /> <span>{{ t("whiteboard") }}</span></button
+                  ><span class="section-counter">{{
                   t("onlineShort", { count: currentMembers.length })
-                }}</span></div
+                }}</span></span></div
               >
               <div
                 v-if="screenShareError"
@@ -910,6 +922,15 @@
       @file="readIdentityFile"
     />
 
+    <WhiteboardPanel
+      v-if="whiteboardOpen"
+      :client="whiteboardClient"
+      :channel-name="currentChannelName"
+      :connected="voiceState.connected"
+      :t="t"
+      @close="closeWhiteboard"
+    />
+
     <ScreenShareSettingsDialog
       v-if="screenShareSettingsOpen"
       :model="screenShareControls"
@@ -1018,6 +1039,8 @@ import VoiceServerHeader from "../components/web-client/VoiceServerHeader.vue";
 import VoiceServerBanner from "../components/web-client/VoiceServerBanner.vue";
 import VisitorCount from "../components/web-client/VisitorCount.vue";
 import ScreenShareSettingsDialog from "../components/web-client/ScreenShareSettingsDialog.vue";
+import WhiteboardPanel from "../components/web-client/WhiteboardPanel.vue";
+import { WhiteboardClient } from "../whiteboard/whiteboard-client.js";
 import ScreenSharePlayer from "../components/web-client/ScreenSharePlayer.vue";
 import AudioDock from "../components/web-client/AudioDock.vue";
 import WhisperControls from "../components/web-client/WhisperControls.vue";
@@ -1067,6 +1090,7 @@ import { combineTeamSpeakTarget, DEFAULT_TEAM_SPEAK_PORT, isValidTeamSpeakPort, 
 
 const {
   state: voiceState,
+  whiteboard: whiteboardTransport,
   serverInfo: voiceServerInfo,
   sessionEpoch,
   memberConversationKey,
@@ -1150,6 +1174,24 @@ const {
   measureVoiceAudioStatus,
 } = useVoiceWebSocket();
 const performance = useWebClientPerformance(computed(() => voiceState.connected), measureVoiceAudioStatus);
+
+// Channel whiteboard: one board per channel, shared by browser users.
+const whiteboardClient = new WhiteboardClient({ transport: whiteboardTransport });
+const stopWhiteboardMessages = whiteboardTransport.subscribe(message => whiteboardClient.receive(message));
+const whiteboardOpen = ref(false);
+watch(() => voiceState.connected, connected => {
+  whiteboardClient.setConnected(connected);
+  if (!connected && !voiceState.reconnecting) whiteboardOpen.value = false;
+});
+function openWhiteboard() {
+  whiteboardOpen.value = true;
+  whiteboardClient.open();
+}
+function closeWhiteboard() {
+  whiteboardOpen.value = false;
+  whiteboardClient.close();
+}
+onUnmounted(stopWhiteboardMessages);
 const { panelOpen: performancePanelOpen } = performance;
 
 const query = new URLSearchParams(location.search);

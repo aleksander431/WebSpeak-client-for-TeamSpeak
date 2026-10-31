@@ -6,7 +6,7 @@ import type { AdminCredential } from "../security/admin-password.js";
 import type { TeamSpeakProtocol } from "../server/teamspeak-adapter.js";
 import { DEFAULT_WEBRTC_UDP_PORT_RANGE } from "../server/webrtc-config.js";
 
-export const DATABASE_SCHEMA_VERSION = 14;
+export const DATABASE_SCHEMA_VERSION = 15;
 export type AccessMode = "fixed" | "open";
 
 export interface PersistedSettings {
@@ -613,6 +613,62 @@ export class WebSpeakDatabase {
     return Number(result.changes ?? 0) === 1;
   }
 
+  listWhiteboardSheets(boardKey: string): Array<{ id: string; name: string; createdAt: number }> {
+    const rows = this.database.prepare(
+      "SELECT id, name, created_at FROM whiteboard_sheets WHERE board_key = ? ORDER BY created_at ASC, id ASC",
+    ).all(boardKey) as Array<{ id: string; name: string; created_at: number }>;
+    return rows.map((row) => ({ id: row.id, name: row.name, createdAt: Number(row.created_at) }));
+  }
+
+  createWhiteboardSheet(boardKey: string, sheet: { id: string; name: string; createdAt: number }): void {
+    this.database.prepare("INSERT INTO whiteboard_sheets (board_key, id, name, created_at) VALUES (?, ?, ?, ?)")
+      .run(boardKey, sheet.id, sheet.name, sheet.createdAt);
+  }
+
+  renameWhiteboardSheet(boardKey: string, id: string, name: string): boolean {
+    const result = this.database.prepare("UPDATE whiteboard_sheets SET name = ? WHERE board_key = ? AND id = ?").run(name, boardKey, id) as { changes?: number | bigint };
+    return Number(result.changes ?? 0) === 1;
+  }
+
+  deleteWhiteboardSheet(boardKey: string, id: string): boolean {
+    let removed = false;
+    this.transaction(() => {
+      this.database.prepare("DELETE FROM whiteboard_elements WHERE board_key = ? AND sheet_id = ?").run(boardKey, id);
+      const result = this.database.prepare("DELETE FROM whiteboard_sheets WHERE board_key = ? AND id = ?").run(boardKey, id) as { changes?: number | bigint };
+      removed = Number(result.changes ?? 0) === 1;
+    });
+    return removed;
+  }
+
+  loadWhiteboardElements(boardKey: string, sheetId: string): string[] {
+    const rows = this.database.prepare(
+      "SELECT data FROM whiteboard_elements WHERE board_key = ? AND sheet_id = ? ORDER BY updated_at ASC",
+    ).all(boardKey, sheetId) as Array<{ data: string }>;
+    return rows.map((row) => row.data);
+  }
+
+  saveWhiteboardElements(boardKey: string, sheetId: string, elements: Array<{ id: string; data: string }>): void {
+    const now = Date.now();
+    this.transaction(() => {
+      const statement = this.database.prepare(
+        `INSERT INTO whiteboard_elements (board_key, sheet_id, id, data, updated_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(board_key, sheet_id, id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+      );
+      for (const element of elements) statement.run(boardKey, sheetId, element.id, element.data, now);
+    });
+  }
+
+  deleteWhiteboardElements(boardKey: string, sheetId: string, ids: readonly string[]): void {
+    this.transaction(() => {
+      const statement = this.database.prepare("DELETE FROM whiteboard_elements WHERE board_key = ? AND sheet_id = ? AND id = ?");
+      for (const id of ids) statement.run(boardKey, sheetId, id);
+    });
+  }
+
+  clearWhiteboardSheet(boardKey: string, sheetId: string): void {
+    this.database.prepare("DELETE FROM whiteboard_elements WHERE board_key = ? AND sheet_id = ?").run(boardKey, sheetId);
+  }
+
   exportBackup(): Buffer {
     const exportPath = `${this.path}.export-${randomBytes(8).toString("hex")}.db`;
     try {
@@ -941,6 +997,31 @@ export class WebSpeakDatabase {
           this.database.exec("ALTER TABLE device_access ADD COLUMN account_id TEXT");
         }
         this.database.exec("CREATE INDEX IF NOT EXISTS device_access_account_idx ON device_access(account_id); PRAGMA user_version = 14;");
+      });
+      version = 14;
+    }
+    if (version === 14) {
+      this.transaction(() => {
+        // Shared whiteboards: one board per TeamSpeak server and channel,
+        // split into sheets. Elements are stored as validated JSON.
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS whiteboard_sheets (
+            board_key TEXT NOT NULL,
+            id TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (board_key, id)
+          );
+          CREATE TABLE IF NOT EXISTS whiteboard_elements (
+            board_key TEXT NOT NULL,
+            sheet_id TEXT NOT NULL,
+            id TEXT NOT NULL,
+            data TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (board_key, sheet_id, id)
+          );
+          PRAGMA user_version = 15;
+        `);
       });
     }
   }

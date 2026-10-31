@@ -105,6 +105,10 @@
       <path d="m5.8 18.55-2.1 2.1 3.75-.45m10.75-1.65 2.1 2.1-3.75-.45" fill="#f2a53d" stroke="#f2a53d" stroke-width="1.5" />
     </template>
     <path v-else-if="name === 'check'" d="m5 12 4 4L19 6" />
+    <template v-else-if="name === 'whiteboard'">
+      <rect x="3" y="4" width="18" height="13" rx="1.5" />
+      <path d="M8 21l2-4m6 4-2-4M7 13l3-3 2 2 4-4" />
+    </template>
     <circle v-else cx="12" cy="12" r="8" />
   </svg>
 </template>

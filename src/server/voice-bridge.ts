@@ -1,6 +1,9 @@
 import { SessionAudioTransport } from "./session-audio.js";
 import { SessionEventCoordinator, type SessionDirectoryState } from "./session-events.js";
 import { ScreenShareCoordinator } from "./screen-share-coordinator.js";
+import { WhiteboardCoordinator, whiteboardBoardKey } from "./whiteboard-coordinator.js";
+import { MemoryWhiteboardStore, type WhiteboardStore } from "./whiteboard-store.js";
+import { parseWhiteboardClientMessage } from "../shared/whiteboard.js";
 import { handleCommand } from "./voice-commands.js";
 import { createAudioFlowStats, snapshotAudioStats, type AudioFlowStats } from "./audio-stats.js";
 export type { AudioFlowStats } from "./audio-stats.js";
@@ -58,6 +61,8 @@ export interface VoiceBridgeOptions {
   // only, which covers a reverse proxy on the same host (including the
   // published host-network container).
   trustedProxies?: readonly string[];
+  /** Where channel whiteboards are kept; defaults to memory (lost on restart). */
+  whiteboardStore?: WhiteboardStore;
 }
 
 interface VoiceBridgeDependencies {
@@ -113,6 +118,7 @@ export class VoiceBridge {
   private readonly sessionManager = new SessionManager();
   private readonly entries = new Map<string, WebClientEntry>();
   private readonly screenShares: ScreenShareCoordinator;
+  private readonly whiteboards: WhiteboardCoordinator;
   private readonly identityLeases = new IdentityLeaseStore();
   private wss: WebSocketServer | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -147,12 +153,26 @@ export class VoiceBridge {
       }
       return false;
     }, this.logger);
+    this.whiteboards = new WhiteboardCoordinator({
+      store: options.whiteboardStore ?? new MemoryWhiteboardStore(),
+      send: (entryId, message) => {
+        const entry = this.entries.get(entryId);
+        if (entry?.ws.readyState !== WebSocket.OPEN) return;
+        try {
+          entry.ws.send(JSON.stringify(message));
+        } catch (error: unknown) {
+          this.logger.warn({ entryId, messageType: message.type, errorName: error instanceof Error ? error.name : "unknown" }, "Could not send whiteboard message to browser");
+        }
+      },
+      logger: { warn: (message, details) => this.logger.warn(details ?? {}, message) },
+    });
   }
 
   attach(server: Server): void {
     // Avatar data is delivered as a data URL in a memberAvatar message. Keep
     // the frame limit above the encoded avatar ceiling with room for JSON.
-    this.wss = new WebSocketServer({ server, path: "/ws/voice", maxPayload: 512 * 1024 });
+    // Whiteboard images are re-encoded in the browser to stay under ~2.2 MB.
+    this.wss = new WebSocketServer({ server, path: "/ws/voice", maxPayload: 3 * 1024 * 1024 });
     this.startHeartbeat();
 
     this.wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
@@ -492,7 +512,12 @@ export class VoiceBridge {
           this.screenShares.onClientLeave(entry!, id);
           entry!.webrtc?.removeClient(id);
         },
-        onClientMove: (id, channelId) => this.screenShares.onClientMove(entry!, id, channelId),
+        onClientMove: (id, channelId) => {
+          this.screenShares.onClientMove(entry!, id, channelId);
+          if (id === tsClient.getClientId()) {
+            this.whiteboards.onBoardChanged({ entryId, nickname: entry!.nickname, boardKey: whiteboardBoardKey(teamSpeakTargetKey(entry!.target), channelId) });
+          }
+        },
         onNotification: notification => this.screenShares.handleNotification(entry!, notification),
         onVoice: data => entry!.audioTransport?.receiveTeamSpeak(data),
         onAvatarError: (clientId, uid, error) => this.logger.debug({
@@ -544,6 +569,7 @@ export class VoiceBridge {
           }
           if (session.state !== "connected") return;
           this.screenShares.removePeer(entryId);
+          this.whiteboards.removePeer(entryId);
           resetDirectoryForReconnect();
           sendJson({ type: "disconnected", recoverable: isRecoverable(normalized) });
           scheduleReconnect(normalized);
@@ -594,6 +620,28 @@ export class VoiceBridge {
             return;
           }
           this.screenShares.handleMessage(entry!, screenShareMessage, sendJson);
+          return;
+        }
+        const whiteboardMessage = parseWhiteboardClientMessage(rawMessage);
+        if (whiteboardMessage) {
+          // Whiteboard errors go back as whiteboardError so the browser can
+          // resynchronise its queue of unconfirmed changes.
+          const rejectWhiteboard = (code: string) => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "whiteboardError", code }));
+          };
+          if ("error" in whiteboardMessage) {
+            rejectWhiteboard(whiteboardMessage.error.code);
+            return;
+          }
+          if (!tsReady || session.state !== "connected") {
+            rejectWhiteboard("SESSION_NOT_READY");
+            return;
+          }
+          this.whiteboards.handleMessage({
+            entryId,
+            nickname: entry!.nickname,
+            boardKey: whiteboardBoardKey(teamSpeakTargetKey(entry!.target), tsClient.getChannelId()),
+          }, whiteboardMessage);
           return;
         }
         const command = parseClientCommand(rawMessage);
@@ -712,6 +760,7 @@ export class VoiceBridge {
 
   private async cleanupEntry(entry: WebClientEntry, reason: SessionTeardownReason): Promise<void> {
     this.screenShares.removePeer(entry.id);
+    this.whiteboards.removePeer(entry.id);
     if (this.entries.get(entry.id) === entry) this.entries.delete(entry.id);
     entry.events?.close();
     entry.events = null;

@@ -16,6 +16,7 @@ import { createScreenShareController } from "../voice/screen-share.js";
 import { requestMediaBeforeAudioResume } from "../services/microphone-start.js";
 export type { ScreenShareOutputSettings, ScreenShareCaptureStats, ScreenSharePeerStats, ScreenShareWebRtcStats } from "../voice/screen-share.js";
 import { parseServerMessage } from "../../../src/shared/server-messages.js";
+import { parseWhiteboardServerMessage, type WhiteboardClientMessage, type WhiteboardServerMessage } from "../../../src/shared/whiteboard.js";
 import type { ChatMessage } from "../../../src/shared/voice-models.js";
 import type { ClientCommandPayloads, ClientCommandType } from "../../../src/shared/client-commands.js";
 export type { ScreenShareStreamDescription as ScreenShareStream, ScreenShareViewerDescription as ScreenShareViewer, ScreenSharePeerSignal as ScreenShareSignal } from "../../../src/shared/screen-share.js";
@@ -269,6 +270,18 @@ export function useVoiceWebSocket() {
     isOpen: () => ws.value?.readyState === WebSocket.OPEN,
     send: message => ws.value?.send(JSON.stringify(message)),
   });
+  // Whiteboard frames share the voice socket but are handled by their own client.
+  const whiteboardListeners = new Set<(message: WhiteboardServerMessage) => void>();
+  const whiteboard = {
+    isOpen: () => ws.value?.readyState === WebSocket.OPEN && state.connected,
+    send(message: WhiteboardClientMessage) {
+      if (ws.value?.readyState === WebSocket.OPEN) ws.value.send(JSON.stringify(message));
+    },
+    subscribe(listener: (message: WhiteboardServerMessage) => void): () => void {
+      whiteboardListeners.add(listener);
+      return () => { whiteboardListeners.delete(listener); };
+    },
+  };
   const inputDevices = reactive<AudioInputDevice[]>([]);
   const outputDevices = reactive<AudioOutputDevice[]>([]);
   const selectedInputDeviceId = ref(typeof localStorage !== "undefined" ? localStorage.getItem("webspeak:input-device") ?? "" : "");
@@ -1048,6 +1061,12 @@ export function useVoiceWebSocket() {
   }
 
   function handleMessage(raw: unknown): void {
+    const rawType = raw && typeof raw === "object" ? (raw as { type?: unknown }).type : undefined;
+    if (typeof rawType === "string" && rawType.startsWith("whiteboard")) {
+      const message = parseWhiteboardServerMessage(raw);
+      if (message) for (const listener of whiteboardListeners) listener(message);
+      return;
+    }
     const msg = parseServerMessage(raw);
     if (!msg || screenShare.handleMessage(msg) || sessionState.receive(msg)) return;
     switch (msg.type) {
@@ -1422,6 +1441,7 @@ export function useVoiceWebSocket() {
 
   return {
     ...screenShare.api,
+    whiteboard,
     ws,
     state,
     serverInfo,

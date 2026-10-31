@@ -15,7 +15,7 @@ test("relay voice endpoint is stored by the current database migration", (contex
     rmSync(directory, { recursive: true, force: true });
   });
 
-  assert.equal(DATABASE_SCHEMA_VERSION, 14);
+  assert.equal(DATABASE_SCHEMA_VERSION, 15);
   assert.equal(database.schemaVersion, DATABASE_SCHEMA_VERSION);
   assert.equal(database.getTsAdminSettings().transport, "web");
   assert.equal(database.getTsAdminSettings().enabled, false);

@@ -332,6 +332,15 @@ const PUBLIC_PART_IDS = new Set<string>([
   "voice.scroll",
   "voice.shell",
   "voice.whisper-strip",
+  "voice.whiteboard",
+  "voice.whiteboard.canvas",
+  "voice.whiteboard.close",
+  "voice.whiteboard.header",
+  "voice.whiteboard.sheets",
+  "voice.whiteboard.style",
+  "voice.whiteboard.tools",
+  "voice.whiteboard.zoom",
+  "voice.whiteboard-open",
   "voice.workspace",
 ]);
 
@@ -376,6 +385,7 @@ const ACTION_PART_IDS = new Set([
   "voice.favorite-servers.strip.server", "demo.voice-card", "home.identity-import.drop-zone",
   "voice.channel-group", "voice.member-row", "voice.server-switcher.trigger", "voice.server-switcher.item",
   "voice.channel-tree.expander", "voice.channel-tree.row", "demo.skin-switcher", "demo.language-switcher",
+  "voice.whiteboard-open", "voice.whiteboard.close",
 ]);
 const INTERACTIVE_PART_IDS = new Set([
   "voice.connection-status.nickname.input", "voice.connection-status.reconnect",
@@ -394,7 +404,7 @@ const INTERACTIVE_PART_IDS = new Set([
   "voice.audio-settings.device-select-trigger",
   "voice.screen-player.exit", "voice.screen-player.fullscreen", "demo.voice-card",
   "home.identity-import.drop-zone", "voice.channel-group", "voice.member-row", "demo.skin-switcher",
-  "demo.language-switcher",
+  "demo.language-switcher", "voice.whiteboard-open", "voice.whiteboard.close",
 ]);
 const IDENTITY_PART_IDS = new Set([
   "home.identity", "home.identity-actions", "home.identity-export.button", "home.identity-import-dialog",
