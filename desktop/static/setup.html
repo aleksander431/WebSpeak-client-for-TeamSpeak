@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'">
+<title>WebSpeak</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="setup.css">
+</head>
+<body>
+<main>
+  <form id="form" novalidate>
+    <img src="icon.png" alt="" width="88" height="88">
+    <h1 id="title"></h1>
+    <p id="body"></p>
+    <input id="url" type="url" spellcheck="false" autocomplete="url" required>
+    <p id="hint" class="hint"></p>
+    <p id="status" class="status" role="status"></p>
+    <button type="submit" class="button primary" id="next"></button>
+  </form>
+</main>
+<script src="setup.js"></script>
+</body>
+</html>

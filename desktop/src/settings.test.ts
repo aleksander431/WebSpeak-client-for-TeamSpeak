@@ -22,7 +22,7 @@ test("server addresses are normalised and only http(s) is accepted", () => {
 
 test("stored settings are merged over defaults and invalid values dropped", () => {
   const settings = sanitizeSettings({ serverUrl: "ftp://x", launchAtLogin: "yes", closeToTray: false, hotkeys: { mic: "Q", sound: "Alt+F10", stream: "Alt+F10" }, streamHotkeySource: "everything", window: { width: 100, height: 99999, x: 10, y: 20, maximized: true } });
-  assert.equal(settings.serverUrl, DEFAULT_SETTINGS.serverUrl);
+  assert.equal(settings.serverUrl, "", "no server until the user enters one");
   assert.equal(settings.launchAtLogin, true);
   assert.equal(settings.closeToTray, false);
   assert.equal(settings.hotkeys.mic, DEFAULT_SETTINGS.hotkeys.mic, "a bare letter is refused");
@@ -37,6 +37,7 @@ test("the settings file survives restarts and damaged files fall back to default
   const file = join(directory, "settings.json");
   const store = new SettingsStore(file);
   assert.deepEqual(store.value, sanitizeSettings({}));
+  assert.equal(store.value.serverUrl, "", "a fresh install has no server");
   store.update({ serverUrl: "voice.example.org", hotkeys: { mic: "Alt+F9" } as never });
   const reopened = new SettingsStore(file);
   assert.equal(reopened.value.serverUrl, "https://voice.example.org");
@@ -44,7 +45,7 @@ test("the settings file survives restarts and damaged files fall back to default
   assert.equal(reopened.value.hotkeys.sound, DEFAULT_SETTINGS.hotkeys.sound, "other hotkeys are kept");
   assert.ok(JSON.parse(readFileSync(file, "utf8")));
   writeFileSync(file, "{ not json");
-  assert.equal(new SettingsStore(file).value.serverUrl, DEFAULT_SETTINGS.serverUrl);
+  assert.equal(new SettingsStore(file).value.serverUrl, "");
 });
 
 test("hotkeys report taken keys, ignore auto-repeat and re-register cleanly", () => {

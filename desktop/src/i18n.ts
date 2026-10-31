@@ -1,6 +1,14 @@
 /** Desktop shell strings. The web interface brings its own translations. */
 
 const en = {
+  setupTitle: "Welcome to WebSpeak",
+  setupBody: "Enter the address of your WebSpeak server. You only need to do this once; it can be changed later in Settings.",
+  setupPlaceholder: "webspeak.example.com",
+  setupContinue: "Continue",
+  setupChecking: "Checking the server…",
+  setupUnreachable: "The server did not answer as a WebSpeak server. Check the address or save it anyway.",
+  setupSaveAnyway: "Save anyway",
+  setupHint: "You can find the address in your browser when you open WebSpeak.",
   open: "Open WebSpeak",
   micOff: "Mute microphone",
   micOn: "Unmute microphone",
@@ -71,6 +79,14 @@ const en = {
 type Strings = typeof en;
 
 const ru: Strings = {
+  setupTitle: "Добро пожаловать в WebSpeak",
+  setupBody: "Укажите адрес вашего сервера WebSpeak. Это нужно сделать один раз, потом адрес можно поменять в настройках.",
+  setupPlaceholder: "webspeak.example.com",
+  setupContinue: "Продолжить",
+  setupChecking: "Проверка сервера…",
+  setupUnreachable: "Сервер не ответил как сервер WebSpeak. Проверьте адрес или сохраните его всё равно.",
+  setupSaveAnyway: "Всё равно сохранить",
+  setupHint: "Адрес — тот же, по которому вы открываете WebSpeak в браузере.",
   open: "Открыть WebSpeak",
   micOff: "Выключить микрофон",
   micOn: "Включить микрофон",
@@ -136,6 +152,14 @@ const ru: Strings = {
 };
 
 const de: Strings = {
+  setupTitle: "Willkommen bei WebSpeak",
+  setupBody: "Gib die Adresse deines WebSpeak-Servers ein. Das ist nur einmal nötig; später kannst du sie in den Einstellungen ändern.",
+  setupPlaceholder: "webspeak.example.com",
+  setupContinue: "Weiter",
+  setupChecking: "Server wird geprüft…",
+  setupUnreachable: "Der Server hat nicht wie ein WebSpeak-Server geantwortet. Prüfe die Adresse oder speichere sie trotzdem.",
+  setupSaveAnyway: "Trotzdem speichern",
+  setupHint: "Es ist dieselbe Adresse, unter der du WebSpeak im Browser öffnest.",
   open: "WebSpeak öffnen",
   micOff: "Mikrofon stummschalten",
   micOn: "Mikrofon einschalten",
@@ -201,6 +225,14 @@ const de: Strings = {
 };
 
 const zh: Strings = {
+  setupTitle: "欢迎使用 WebSpeak",
+  setupBody: "请输入你的 WebSpeak 服务器地址。只需设置一次，之后可在设置中更改。",
+  setupPlaceholder: "webspeak.example.com",
+  setupContinue: "继续",
+  setupChecking: "正在检查服务器…",
+  setupUnreachable: "该服务器没有以 WebSpeak 服务器的方式响应。请检查地址，或仍然保存。",
+  setupSaveAnyway: "仍然保存",
+  setupHint: "即你在浏览器中打开 WebSpeak 时使用的地址。",
   open: "打开 WebSpeak",
   micOff: "关闭麦克风",
   micOn: "开启麦克风",
@@ -266,6 +298,14 @@ const zh: Strings = {
 };
 
 const ja: Strings = {
+  setupTitle: "WebSpeak へようこそ",
+  setupBody: "WebSpeak サーバーのアドレスを入力してください。設定は一度だけで、後から設定画面で変更できます。",
+  setupPlaceholder: "webspeak.example.com",
+  setupContinue: "続ける",
+  setupChecking: "サーバーを確認中…",
+  setupUnreachable: "WebSpeak サーバーとして応答がありませんでした。アドレスを確認するか、そのまま保存してください。",
+  setupSaveAnyway: "そのまま保存",
+  setupHint: "ブラウザーで WebSpeak を開くときと同じアドレスです。",
   open: "WebSpeak を開く",
   micOff: "マイクをミュート",
   micOn: "マイクのミュートを解除",

@@ -6,6 +6,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  net,
   nativeImage,
   Notification,
   screen,
@@ -60,12 +61,13 @@ let directScreenRequest = false;
 let translator = createTranslator("en");
 const t: typeof translator.t = (key, variables) => translator.t(key, variables);
 
-function serverOrigin(): string {
-  return new URL(settings.value.serverUrl).origin;
+function serverOrigin(): string | null {
+  try { return settings.value.serverUrl ? new URL(settings.value.serverUrl).origin : null; } catch { return null; }
 }
 
 function isServerUrl(url: string): boolean {
-  try { return new URL(url).origin === serverOrigin(); } catch { return false; }
+  const origin = serverOrigin();
+  try { return origin !== null && new URL(url).origin === origin; } catch { return false; }
 }
 
 // ---------------------------------------------------------------- window
@@ -150,6 +152,8 @@ function createMainWindow(): BrowserWindow {
 function loadServer(window: BrowserWindow): void {
   webState = { connected: false, micMuted: false, soundMuted: false, streaming: false };
   refreshTray();
+  // First start: ask for the server once; it is remembered afterwards.
+  if (!settings.value.serverUrl) { void window.loadFile(join(STATIC, "setup.html")); return; }
   void window.loadURL(settings.value.serverUrl).catch(() => { /* did-fail-load shows the offline page */ });
 }
 
@@ -341,10 +345,7 @@ function applySettings(next: DesktopSettings, previous: DesktopSettings): void {
     app.setLoginItemSettings({ openAtLogin: next.launchAtLogin, path: process.execPath, args: ["--hidden"] });
   }
   hotkeyStatus = hotkeys.apply(next.hotkeys);
-  if (next.serverUrl !== previous.serverUrl && mainWindow) {
-    configureSession(session.fromPartition(PARTITION));
-    loadServer(mainWindow);
-  }
+  if (next.serverUrl !== previous.serverUrl && mainWindow) loadServer(mainWindow);
   refreshTray();
 }
 
@@ -378,6 +379,36 @@ function registerIpc(): void {
   });
   ipcMain.on("webspeak:open-settings", (event) => {
     if (mainWindow && event.sender === mainWindow.webContents) openSettings();
+  });
+
+  ipcMain.handle("setup:strings", (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return null;
+    return {
+      title: t("setupTitle"), body: t("setupBody"), placeholder: t("setupPlaceholder"), next: t("setupContinue"),
+      checking: t("setupChecking"), unreachable: t("setupUnreachable"), anyway: t("setupSaveAnyway"), invalid: t("serverInvalid"),
+      hint: t("setupHint"), value: settings.value.serverUrl,
+    };
+  });
+  // Check the address answers like a WebSpeak gateway before saving it.
+  ipcMain.handle("setup:check", async (event, value: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return { ok: false, reason: "invalid" };
+    const url = normalizeServerUrl(value);
+    if (!url) return { ok: false, reason: "invalid" };
+    try {
+      const response = await net.fetch(`${new URL(url).origin}/api/health`, { signal: AbortSignal.timeout(8000), cache: "no-store" });
+      const body = await response.json().catch(() => null) as { status?: unknown } | null;
+      return { ok: response.ok && body?.status === "ok", url };
+    } catch {
+      return { ok: false, url, reason: "unreachable" };
+    }
+  });
+  ipcMain.handle("setup:save", (event, value: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+    const url = normalizeServerUrl(value);
+    if (!url) return false;
+    const previous = settings.value;
+    applySettings(settings.update({ serverUrl: url }), previous);
+    return true;
   });
 
   ipcMain.on("offline:retry", (event) => {

@@ -2,7 +2,7 @@
 
 A small Electron shell around the WebSpeak site of your server:
 
-- opens the configured server (default `https://webts.afire-server.space`, changeable in Settings);
+- asks for the server address on first start, remembers it and opens it from then on (changeable in Settings);
 - keeps running in the tray, starts with Windows (minimized), one instance only;
 - global hotkeys for microphone, sound and screen sharing that also work inside games
   (a game running as administrator needs WebSpeak started as administrator too);

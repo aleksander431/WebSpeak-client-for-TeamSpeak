@@ -9,6 +9,12 @@ import { contextBridge, ipcRenderer } from "electron";
 const isFile = location.protocol === "file:";
 
 if (isFile) {
+  // First-start page asking for the server address.
+  contextBridge.exposeInMainWorld("webspeakSetup", {
+    strings: () => ipcRenderer.invoke("setup:strings"),
+    check: (url: string) => ipcRenderer.invoke("setup:check", url),
+    save: (url: string) => ipcRenderer.invoke("setup:save", url),
+  });
   // The offline page shown when the server cannot be reached.
   contextBridge.exposeInMainWorld("webspeakOffline", {
     strings: () => ipcRenderer.invoke("offline:strings"),

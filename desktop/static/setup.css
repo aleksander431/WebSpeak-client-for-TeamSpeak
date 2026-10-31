@@ -1,0 +1,10 @@
+main { display: grid; place-items: center; height: 100%; padding: 24px; }
+form { display: grid; justify-items: center; gap: 12px; width: min(440px, 100%); text-align: center; }
+h1 { margin: 6px 0 0; font-size: 22px; font-weight: 600; }
+p { margin: 0; }
+#body { color: var(--muted); }
+input { width: 100%; min-height: 42px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font-size: 15px; text-align: center; }
+.hint { color: var(--muted); font-size: 12px; }
+.status { min-height: 18px; font-size: 13px; color: var(--muted); }
+.status.error { color: var(--warning); }
+#next { min-width: 180px; min-height: 40px; }

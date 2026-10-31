@@ -5,7 +5,7 @@ export const HOTKEY_ACTIONS = ["mic", "sound", "stream"] as const;
 export type HotkeyAction = typeof HOTKEY_ACTIONS[number];
 
 export interface DesktopSettings {
-  /** Address of the WebSpeak server the window opens. */
+  /** Address of the WebSpeak server the window opens; empty until the user enters one. */
   serverUrl: string;
   /** Start with Windows. */
   launchAtLogin: boolean;
@@ -25,10 +25,8 @@ export interface DesktopSettings {
   trayHintShown: boolean;
 }
 
-export const DEFAULT_SERVER_URL = "https://webts.afire-server.space";
-
 export const DEFAULT_SETTINGS: DesktopSettings = Object.freeze({
-  serverUrl: DEFAULT_SERVER_URL,
+  serverUrl: "",
   launchAtLogin: true,
   startHidden: true,
   closeToTray: true,
@@ -94,7 +92,7 @@ export function sanitizeSettings(value: unknown, base: DesktopSettings = DEFAULT
     seen.add(key);
   }
   const settings: DesktopSettings = {
-    serverUrl: normalizeServerUrl(input.serverUrl) ?? base.serverUrl,
+    serverUrl: input.serverUrl === "" ? "" : normalizeServerUrl(input.serverUrl) ?? base.serverUrl,
     launchAtLogin: bool("launchAtLogin"),
     startHidden: bool("startHidden"),
     closeToTray: bool("closeToTray"),
