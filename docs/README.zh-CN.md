@@ -199,6 +199,20 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
+### [v0.3.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.0) · 2026-11-01
+
+#### 新功能
+
+- 每个频道都有共享白板：画笔、直线、箭头、矩形、椭圆、文字、橡皮擦、选择后移动和缩放、从剪贴板粘贴图片和文字、撤销与重做、显示他人光标以及导出 PNG。白板支持多个页面：可新建页面并保留旧页面，也可重命名和删除。白板保存在服务器上。
+- 新浏览器需经管理员批准，已批准的浏览器会被记住。
+- 昵称可设置密码，在其他设备上登录时无需再次批准。
+- 屏幕共享设置：分辨率、帧率、码率以及清晰度/流畅度优先可实时调整。
+- 屏幕共享的 HDR 校正（Chromium），可手动调节强度或使用实测的屏幕校准。
+
+#### 修复
+
+- 语音播放加入抖动缓冲，消除浏览器中的咔嗒声和噼啪声。
+
 ### [v0.2.9](https://github.com/EchoSixHIYA/WebSpeak-client-for-TeamSpeak/releases/tag/v0.2.9) · 2026-10-24
 
 #### 功能增强

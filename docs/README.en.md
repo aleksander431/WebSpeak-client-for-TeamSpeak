@@ -195,6 +195,20 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
+### [v0.3.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.0) · 2026-11-01
+
+#### New features
+
+- A shared whiteboard for every channel: pen, lines, arrows, rectangles, ellipses, text, eraser, select with move and resize, pasting images and text from the clipboard, undo and redo, other people's cursors and PNG export. A board has several sheets: add new ones while keeping the old, rename and delete them. Boards are stored on the server.
+- New browsers need administrator approval; approved browsers are remembered.
+- Nicknames can be protected with a password for signing in on other devices without another approval.
+- Screen sharing settings: resolution, frame rate, bitrate and sharpness/smoothness priority change live.
+- HDR correction for screen sharing (Chromium) with a manual strength or a measured screen calibration.
+
+#### Fixes
+
+- Jitter buffers in voice playback remove clicks and crackle in the browser.
+
 ### [v0.2.9](https://github.com/EchoSixHIYA/WebSpeak-client-for-TeamSpeak/releases/tag/v0.2.9) · 2026-10-24
 
 #### Enhancements

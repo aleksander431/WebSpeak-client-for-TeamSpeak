@@ -185,6 +185,20 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v0.3.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.0) · 2026-11-01
+
+#### Neue Funktionen
+
+- Ein gemeinsames Whiteboard für jeden Kanal: Stift, Linien, Pfeile, Rechtecke, Ellipsen, Text, Radierer, Auswahl mit Verschieben und Skalieren, Einfügen von Bildern und Text aus der Zwischenablage, Rückgängig und Wiederholen, Cursor der anderen und PNG-Export. Ein Whiteboard hat mehrere Blätter: neue anlegen und alte behalten, umbenennen und löschen. Whiteboards werden auf dem Server gespeichert.
+- Neue Browser benötigen die Freigabe eines Administrators; freigegebene Browser werden gespeichert.
+- Spitznamen lassen sich mit einem Passwort schützen, um sich ohne erneute Freigabe auf anderen Geräten anzumelden.
+- Einstellungen der Bildschirmfreigabe: Auflösung, Bildrate, Bitrate und Priorität (Schärfe oder Flüssigkeit) ändern sich live.
+- HDR-Korrektur für die Bildschirmfreigabe (Chromium) mit manueller Stärke oder gemessener Bildschirmkalibrierung.
+
+#### Fehlerbehebungen
+
+- Jitter-Puffer in der Sprachwiedergabe beseitigen Klicken und Knistern im Browser.
+
 ### [v0.2.9](https://github.com/EchoSixHIYA/WebSpeak-client-for-TeamSpeak/releases/tag/v0.2.9) · 2026-10-24
 
 #### Erweiterungen
