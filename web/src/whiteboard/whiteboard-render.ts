@@ -129,6 +129,43 @@ export function measureText(context: CanvasRenderingContext2D, text: string, fon
   return { w: Math.ceil(width) + 2, h: Math.ceil(lines.length * fontSize * TEXT_LINE_HEIGHT) };
 }
 
+/** Board colours: the paper and the dot grid behind the drawing. */
+export interface WhiteboardTheme {
+  dark: boolean;
+  background: string;
+  grid: string;
+}
+export const WHITEBOARD_LIGHT: WhiteboardTheme = { dark: false, background: "#ffffff", grid: "#d9dde3" };
+export const WHITEBOARD_DARK: WhiteboardTheme = { dark: true, background: "#1b1e22", grid: "#353a41" };
+
+const DARK_INK = "#1f2328";
+const LIGHT_INK = "#e8eaed";
+
+function luminance(color: string): number | null {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+  if (!match) return null;
+  const channel = (hex: string) => {
+    const value = parseInt(hex, 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(match[1]!) + 0.7152 * channel(match[2]!) + 0.0722 * channel(match[3]!);
+}
+
+/**
+ * The colour to paint with. Stored colours are the same for everybody; in
+ * the dark theme only "ink" and "paper" swap (near-black draws light,
+ * near-white draws dark) so a board stays readable in either theme while
+ * coloured strokes keep their colour.
+ */
+export function displayColor(color: string, dark: boolean): string {
+  if (!dark) return color;
+  const value = luminance(color);
+  if (value === null) return color;
+  if (value < 0.03) return LIGHT_INK;
+  if (value > 0.8) return DARK_INK;
+  return color;
+}
+
 /** Decoded images by data URL; `onLoad` asks for a redraw when one arrives. */
 export class WhiteboardImageCache {
   private readonly images = new Map<string, HTMLImageElement>();
@@ -161,7 +198,10 @@ function drawArrowHead(context: CanvasRenderingContext2D, x1: number, y1: number
   context.fill();
 }
 
-export function drawElement(context: CanvasRenderingContext2D, element: WhiteboardElement, images: WhiteboardImageCache | null): void {
+export function drawElement(context: CanvasRenderingContext2D, source: WhiteboardElement, images: WhiteboardImageCache | null, dark = false): void {
+  const element = dark
+    ? { ...source, stroke: displayColor(source.stroke, true), ...(source.fill ? { fill: displayColor(source.fill, true) } : {}) }
+    : source;
   context.save();
   context.strokeStyle = element.stroke;
   context.fillStyle = element.stroke;
@@ -234,7 +274,7 @@ export function drawElement(context: CanvasRenderingContext2D, element: Whiteboa
       const image = element.src && images ? images.get(element.src) : null;
       if (image) context.drawImage(image, element.x, element.y, element.w, element.h);
       else {
-        context.fillStyle = "#eef1f4";
+        context.fillStyle = dark ? "#2a2f35" : "#eef1f4";
         context.fillRect(element.x, element.y, element.w, element.h);
       }
       break;

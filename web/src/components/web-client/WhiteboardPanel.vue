@@ -1,6 +1,7 @@
 <template>
   <section
-    class="wb-panel"
+    ref="panel"
+    :class="['wb-panel', { 'wb-dark': dark }]"
     data-ws-part="voice.whiteboard"
     role="dialog"
     aria-modal="true"
@@ -27,6 +28,18 @@
         </button>
         <button type="button" class="wb-icon-button" :disabled="!canRedo" :title="`${t('whiteboardRedo')} (Ctrl+Y)`" :aria-label="t('whiteboardRedo')" @click="redo">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h3" /></svg>
+        </button>
+        <button
+          type="button"
+          class="wb-icon-button"
+          data-ws-part="voice.whiteboard.theme"
+          :title="`${t('whiteboardTheme')}: ${t(themeLabels[themeChoice])}`"
+          :aria-label="`${t('whiteboardTheme')}: ${t(themeLabels[themeChoice])}`"
+          @click="cycleTheme"
+        >
+          <svg v-if="themeChoice === 'dark'" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" /></svg>
+          <svg v-else-if="themeChoice === 'light'" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor" /></svg>
         </button>
         <button type="button" class="wb-icon-button" :title="t('whiteboardExport')" :aria-label="t('whiteboardExport')" @click="exportPng">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19v2h16v-2" /></svg>
@@ -98,7 +111,7 @@
             :key="swatch"
             type="button"
             :class="['wb-swatch', { active: color === swatch }]"
-            :style="{ background: swatch }"
+            :style="{ background: displayColor(swatch, dark) }"
             :aria-label="swatch"
             :title="swatch"
             @click="setColor(swatch)"
@@ -124,7 +137,7 @@
             :aria-label="t('whiteboardFill')"
             :aria-pressed="filled"
             @click="toggleFill"
-          ><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" :fill="filled ? color : 'none'" /></svg></button>
+          ><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" :fill="filled ? displayColor(color, dark) : 'none'" /></svg></button>
           <select class="wb-font" :value="fontSize" :title="t('whiteboardFontSize')" :aria-label="t('whiteboardFontSize')" @change="setFontSize(Number(($event.target as HTMLSelectElement).value))">
             <option v-for="size in fontSizes" :key="size" :value="size">{{ size }}px</option>
           </select>
@@ -219,6 +232,9 @@ import {
   translateElement,
   unionBounds,
   WhiteboardImageCache,
+  WHITEBOARD_DARK,
+  WHITEBOARD_LIGHT,
+  displayColor,
   WHITEBOARD_FONT,
   TEXT_LINE_HEIGHT,
   type Bounds,
@@ -265,6 +281,37 @@ const fontSize = ref(fontSizes.includes(prefs.fontSize ?? 0) ? prefs.fontSize! :
 watch([color, strokeWidth, filled, fontSize], () => {
   try { localStorage.setItem(PREFS_KEY, JSON.stringify({ color: color.value, width: strokeWidth.value, filled: filled.value, fontSize: fontSize.value })); } catch { /* private mode */ }
 });
+
+// Board theme: follow the page (auto) or force light/dark. Stored per browser.
+type ThemeChoice = "auto" | "light" | "dark";
+const THEME_KEY = "webspeak:whiteboard-theme";
+const themeLabels: Record<ThemeChoice, string> = { auto: "whiteboardThemeAuto", light: "whiteboardThemeLight", dark: "whiteboardThemeDark" };
+function loadTheme(): ThemeChoice {
+  try { const value = localStorage.getItem(THEME_KEY); return value === "light" || value === "dark" ? value : "auto"; } catch { return "auto"; }
+}
+const themeChoice = ref<ThemeChoice>(loadTheme());
+const panel = ref<HTMLElement | null>(null);
+const pageIsDark = ref(false);
+/** The page counts as dark when the panel's own background (from the active skin) is dark. */
+function detectPageTheme() {
+  const element = panel.value;
+  if (!element) return;
+  // Skins declare color-scheme (KAAK and the built-in dark skin say "dark").
+  const scheme = getComputedStyle(document.documentElement).colorScheme || "";
+  if (/\bdark\b/.test(scheme) && !/\blight\b/.test(scheme)) { pageIsDark.value = true; return; }
+  if (/\blight\b/.test(scheme) && !/\bdark\b/.test(scheme)) { pageIsDark.value = false; return; }
+  const match = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(element.parentElement ?? document.body).backgroundColor);
+  if (match && !/rgba\([^)]*,\s*0\)/.test(getComputedStyle(element.parentElement ?? document.body).backgroundColor)) {
+    pageIsDark.value = (0.299 * Number(match[1]) + 0.587 * Number(match[2]) + 0.114 * Number(match[3])) / 255 < 0.45;
+  } else pageIsDark.value = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+}
+const dark = computed(() => themeChoice.value === "dark" || (themeChoice.value === "auto" && pageIsDark.value));
+const boardTheme = computed(() => (dark.value ? WHITEBOARD_DARK : WHITEBOARD_LIGHT));
+function cycleTheme() {
+  themeChoice.value = themeChoice.value === "auto" ? (pageIsDark.value ? "light" : "dark") : themeChoice.value === "dark" ? "light" : "auto";
+  try { localStorage.setItem(THEME_KEY, themeChoice.value); } catch { /* private mode */ }
+}
+watch(dark, () => requestDraw());
 
 const canvas = ref<HTMLCanvasElement | null>(null);
 const stage = ref<HTMLDivElement | null>(null);
@@ -781,7 +828,7 @@ const textEditorStyle = computed(() => {
   const lines = Math.max(1, editor.value.split("\n").length);
   return {
     left: `${screen.x}px`, top: `${screen.y}px`,
-    font: `${size}px ${WHITEBOARD_FONT}`, lineHeight: String(TEXT_LINE_HEIGHT), color: editor.color,
+    font: `${size}px ${WHITEBOARD_FONT}`, lineHeight: String(TEXT_LINE_HEIGHT), color: displayColor(editor.color, dark.value),
     height: `${Math.ceil(lines * size * TEXT_LINE_HEIGHT) + 4}px`,
     minWidth: `${Math.max(40, size * 2)}px`,
   };
@@ -977,7 +1024,7 @@ function draw() {
   const context = element.getContext("2d");
   if (!context) return;
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.fillStyle = "#ffffff";
+  context.fillStyle = boardTheme.value.background;
   context.fillRect(0, 0, width, height);
   drawGrid(context, width, height);
 
@@ -990,7 +1037,7 @@ function draw() {
   for (const item of drawList()) {
     if (item.src) sources.add(item.src);
     if (erasing?.has(item.id)) context.globalAlpha = 0.25;
-    drawElement(context, item, images);
+    drawElement(context, item, images, dark.value);
     context.globalAlpha = 1;
   }
   images.retain(sources);
@@ -1009,7 +1056,7 @@ function draw() {
     const bounds = selectionBounds(selected)!;
     const pad = 6 / view.zoom, size = 8 / view.zoom;
     if (selected.length > 1) context.strokeRect(bounds.x - pad, bounds.y - pad, bounds.w + pad * 2, bounds.h + pad * 2);
-    context.fillStyle = "#ffffff";
+    context.fillStyle = boardTheme.value.background;
     for (const [hx, hy] of [[bounds.x - pad, bounds.y - pad], [bounds.x + bounds.w + pad, bounds.y - pad], [bounds.x - pad, bounds.y + bounds.h + pad], [bounds.x + bounds.w + pad, bounds.y + bounds.h + pad]] as const) {
       context.fillRect(hx - size / 2, hy - size / 2, size, size);
       context.strokeRect(hx - size / 2, hy - size / 2, size, size);
@@ -1053,7 +1100,7 @@ function drawGrid(context: CanvasRenderingContext2D, width: number, height: numb
   let spacing = 24 * view.zoom;
   while (spacing < 12) spacing *= 2;
   const offsetX = ((view.x % spacing) + spacing) % spacing, offsetY = ((view.y % spacing) + spacing) % spacing;
-  context.fillStyle = "#d9dde3";
+  context.fillStyle = boardTheme.value.grid;
   for (let x = offsetX; x < width; x += spacing) for (let y = offsetY; y < height; y += spacing) context.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
 }
 
@@ -1073,11 +1120,11 @@ function exportPng() {
   output.width = Math.ceil((bounds.w + margin * 2) * scale);
   output.height = Math.ceil((bounds.h + margin * 2) * scale);
   const context = output.getContext("2d")!;
-  context.fillStyle = "#ffffff";
+  context.fillStyle = boardTheme.value.background;
   context.fillRect(0, 0, output.width, output.height);
   context.scale(scale, scale);
   context.translate(margin - bounds.x, margin - bounds.y);
-  for (const element of list) drawElement(context, element, images);
+  for (const element of list) drawElement(context, element, images, dark.value);
   const index = sheets.value.findIndex((sheet) => sheet.id === sheetId.value);
   const label = index >= 0 ? sheetLabel(sheets.value[index]!, index) : "whiteboard";
   output.toBlob((blob) => {
@@ -1099,6 +1146,7 @@ watch(ready, (value) => {
   if (value && !centered) { centered = true; void nextTick(resetView); }
 });
 onMounted(() => {
+  detectPageTheme();
   window.addEventListener("keydown", onKeydown);
   window.addEventListener("keyup", onKeyup);
   document.addEventListener("paste", onPaste);
@@ -1133,13 +1181,19 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
 
 <style scoped>
 .wb-panel {
+  /* The board has its own light/dark chrome; light follows the page's palette. */
+  --wb-surface: var(--surface-1, #ffffff);
+  --wb-surface-2: var(--surface-2, #f3f6f5);
+  --wb-border: var(--border, #dfe5e2);
+  --wb-text: var(--text-primary, #1d2421);
+  --wb-muted: var(--text-muted, #6b7672);
   position: fixed;
   inset: 0;
   z-index: 60;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  color: var(--text-primary);
-  background: var(--surface-1, #fff);
+  color: var(--wb-text);
+  background: var(--wb-surface);
 }
 .wb-panel svg {
   width: 18px;
@@ -1156,7 +1210,7 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   gap: 12px;
   min-height: 52px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--wb-border);
 }
 .wb-title {
   display: grid;
@@ -1170,7 +1224,7 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   white-space: nowrap;
 }
 .wb-kicker {
-  color: var(--text-muted);
+  color: var(--wb-muted);
   font-size: 10px;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -1190,7 +1244,7 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   height: 28px;
   margin-left: -6px;
   color: #fff;
-  border: 2px solid var(--surface-1, #fff);
+  border: 2px solid var(--wb-surface);
   border-radius: 50%;
   font-size: 12px;
   font-weight: 700;
@@ -1209,7 +1263,7 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   min-width: 34px;
   height: 34px;
   padding: 0 6px;
-  color: var(--text-primary);
+  color: var(--wb-text);
   border: 1px solid transparent;
   border-radius: 9px;
   background: transparent;
@@ -1220,7 +1274,7 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
 .wb-tool:hover,
 .wb-zoom button:hover,
 .wb-sheet-add:hover:not(:disabled) {
-  background: var(--surface-2);
+  background: var(--wb-surface-2);
 }
 .wb-icon-button:disabled,
 .wb-sheet-add:disabled {
@@ -1242,17 +1296,17 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   gap: 4px;
   padding: 8px 6px;
   overflow-y: auto;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--wb-border);
 }
 .wb-tool.active {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--wb-border));
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .wb-tool-separator,
 .wb-style-separator {
   flex: 0 0 auto;
-  background: var(--border);
+  background: var(--wb-border);
 }
 .wb-tool-separator {
   height: 1px;
@@ -1425,10 +1479,10 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   z-index: 4;
   width: min(320px, calc(100% - 32px));
   padding: 16px;
-  color: var(--text-primary);
-  border: 1px solid var(--border);
+  color: var(--wb-text);
+  border: 1px solid var(--wb-border);
   border-radius: 14px;
-  background: var(--surface-1, #fff);
+  background: var(--wb-surface);
   box-shadow: 0 20px 60px rgba(15, 23, 42, .25);
   transform: translate(-50%, -50%);
 }
@@ -1443,7 +1497,7 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   gap: 8px;
 }
 .wb-confirm button {
-  border-color: var(--border);
+  border-color: var(--wb-border);
 }
 .wb-confirm button.danger {
   color: #fff;
@@ -1456,7 +1510,7 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   gap: 6px;
   min-height: 44px;
   padding: 5px 10px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--wb-border);
 }
 .wb-sheet-list {
   display: flex;
@@ -1470,14 +1524,14 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   flex: 0 0 auto;
   align-items: center;
   max-width: 220px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--wb-border);
   border-radius: 9px;
-  background: var(--surface-2);
+  background: var(--wb-surface-2);
 }
 .wb-sheet.active {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface-1, #fff));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--wb-border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--wb-surface));
 }
 .wb-sheet-name {
   min-width: 0;
@@ -1499,10 +1553,10 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   height: 28px;
   margin: 1px 4px;
   padding: 0 6px;
-  color: var(--text-primary);
+  color: var(--wb-text);
   border: 1px solid var(--accent);
   border-radius: 6px;
-  background: var(--surface-1, #fff);
+  background: var(--wb-surface);
   font: inherit;
   font-size: 12px;
 }
@@ -1514,7 +1568,7 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   height: 24px;
   margin-right: 3px;
   padding: 0;
-  color: var(--text-muted);
+  color: var(--wb-muted);
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -1532,13 +1586,42 @@ watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.valu
   display: flex;
   flex: 0 0 auto;
   gap: 5px;
-  border-color: var(--border);
+  border-color: var(--wb-border);
   font-size: 12px;
 }
+/* Dark board: chrome, drawing area and floating bars. */
+.wb-panel.wb-dark {
+  --wb-surface: #16191c;
+  --wb-surface-2: #22262b;
+  --wb-border: #30353b;
+  --wb-text: #e8eaed;
+  --wb-muted: #9aa1a9;
+  color-scheme: dark;
+}
+.wb-dark .wb-stage { background: #1b1e22; }
+.wb-dark .wb-style,
+.wb-dark .wb-zoom {
+  color: #e8eaed;
+  border-color: #353a41;
+  background: rgba(37, 41, 46, .96);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .35);
+}
+.wb-dark .wb-width,
+.wb-dark .wb-fill,
+.wb-dark .wb-zoom button { color: #e8eaed; }
+.wb-dark .wb-width i { background: #e8eaed; }
+.wb-dark .wb-zoom button:hover { background: #33383f; }
+.wb-dark .wb-font {
+  color: #e8eaed;
+  border-color: #353a41;
+  background: #1b1e22;
+}
+.wb-dark .wb-swatch { border-color: rgba(255, 255, 255, .25); }
+.wb-dark .wb-text-editor { background: rgba(27, 30, 34, .85); }
 @media (max-width: 640px) {
   .wb-top { gap: 6px; padding: 6px 8px; }
   .wb-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .wb-tools { flex-direction: row; padding: 4px 6px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  .wb-tools { flex-direction: row; padding: 4px 6px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--wb-border); }
   .wb-tool-separator { width: 1px; height: auto; margin: 2px 4px; }
   .wb-style { top: auto; bottom: 52px; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; }
   .wb-swatch, .wb-width, .wb-fill, .wb-font { flex: 0 0 auto; }

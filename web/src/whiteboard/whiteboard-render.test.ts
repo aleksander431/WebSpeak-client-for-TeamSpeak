@@ -31,3 +31,11 @@ test("moving and group resizing keep shapes consistent", () => {
   const pen: WhiteboardElement = { ...base, id: "p", type: "pen", x: 0, y: 0, w: 0, h: 0, points: [0, 0, 10, 10] };
   assert.deepEqual(elementBounds(scaleElement(pen, { x: 0, y: 0, w: 10, h: 10 }, { x: 10, y: 10, w: 30, h: 20 })), { x: 10, y: 10, w: 30, h: 20 });
 });
+
+test("the dark theme swaps only ink and paper colours", async () => {
+  const { displayColor } = await import("./whiteboard-render.js");
+  assert.equal(displayColor("#1f2328", false), "#1f2328");
+  assert.equal(displayColor("#1f2328", true), "#e8eaed", "black ink draws light");
+  assert.equal(displayColor("#ffffff", true), "#1f2328", "white draws dark");
+  for (const color of ["#e5484d", "#0090ff", "#30a46c", "#ffb224", "#8e4ec6"]) assert.equal(displayColor(color, true), color, `${color} keeps its colour`);
+});
