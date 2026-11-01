@@ -331,12 +331,15 @@ jobs:
           npm run dist
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path release/win-unpacked/resources/webspeak-audio-capture.exe)) { throw "The system-audio helper is missing from the package" }
-          # The helper must start on the runner (no audio device needed to load it).
-          & release/win-unpacked/resources/webspeak-audio-capture.exe 0 2>$null
-          if ($LASTEXITCODE -ne 2) { throw "The system-audio helper did not run (exit $LASTEXITCODE)" }
+          # The helper must start on the runner: with an invalid process id it
+          # exits with its usage code 2. Start-Process keeps that expected
+          # non-zero code from failing the step.
+          $helper = Start-Process -FilePath release/win-unpacked/resources/webspeak-audio-capture.exe -ArgumentList "0" -NoNewWindow -Wait -PassThru -RedirectStandardError "$env:RUNNER_TEMP/helper-stderr.txt"
+          if ($helper.ExitCode -ne 2) { throw "The system-audio helper did not run (exit $($helper.ExitCode))" }
           # The updater reads latest.yml from the release; it must name the uploaded installer.
           $latest = Get-Content -Raw release/latest.yml
           if ($latest -notmatch "webspeak-desktop-setup-$([regex]::Escape($releaseVersion)).exe") { throw "latest.yml does not describe the installer" }
+          exit 0
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-windows
