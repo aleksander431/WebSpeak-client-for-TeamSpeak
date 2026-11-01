@@ -40,7 +40,13 @@ export const DEFAULT_SETTINGS: DesktopSettings = Object.freeze({
 }) as DesktopSettings;
 
 const MODIFIERS = new Set(["CommandOrControl", "Control", "Ctrl", "Alt", "Shift", "Super", "Meta", "AltGr", "Option", "Command", "Cmd", "CmdOrCtrl"]);
-const KEY_PATTERN = /^(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|Plus|Space|Tab|Backspace|Delete|Insert|Return|Enter|Up|Down|Left|Right|Home|End|PageUp|PageDown|Escape|Esc|num[0-9]|numdec|numadd|numsub|nummult|numdiv|[`\-=[\]\\;',./]|MediaPlayPause|MediaNextTrack|MediaPreviousTrack|MediaStop|VolumeUp|VolumeDown|VolumeMute)$/;
+const KEY_PATTERN = /^(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|Plus|Space|Tab|Backspace|Delete|Insert|Return|Enter|Up|Down|Left|Right|Home|End|PageUp|PageDown|Escape|Esc|num[0-9]|numdec|numadd|numsub|nummult|numdiv|[`\-=[\]\\;',./]|Capslock|Numlock|Scrolllock|PrintScreen|MediaPlayPause|MediaNextTrack|MediaPreviousTrack|MediaStop|VolumeUp|VolumeDown|VolumeMute)$/;
+/**
+ * Keys that work alone. A global hotkey swallows its key in every program,
+ * so keys used for typing (letters, digits, punctuation, Space, Enter, arrows,
+ * editing keys) still need a modifier; everything else may stand alone.
+ */
+const TYPING_KEYS = /^(?:[A-Z0-9]|Plus|Space|Tab|Backspace|Delete|Return|Enter|Up|Down|Left|Right|Home|End|Escape|Esc|[`\-=[\]\\;',./])$/;
 
 /**
  * A usable global accelerator: one key, optionally with modifiers. A bare
@@ -56,8 +62,7 @@ export function isValidAccelerator(value: string): boolean {
   const modifiers = parts.slice(0, -1);
   if (!KEY_PATTERN.test(key) || modifiers.some((modifier) => !MODIFIERS.has(modifier))) return false;
   if (new Set(modifiers).size !== modifiers.length) return false;
-  const functionOrMedia = /^(?:F\d+|Media|Volume)/.test(key);
-  return modifiers.length > 0 || functionOrMedia;
+  return modifiers.length > 0 || !TYPING_KEYS.test(key);
 }
 
 /** Only http(s) origins; anything else falls back to the default server. */

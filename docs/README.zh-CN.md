@@ -199,6 +199,14 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
+### [v0.3.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.1) · 2026-11-01
+
+#### 新功能
+
+- 有人进入或离开你所在的频道时播放提示音（音量跟随通知音量滑块）。
+- KAAK 皮肤在房间标题栏的邀请链接旁和移动端房间菜单中新增白板按钮。
+- 桌面客户端：快捷键可以是单个按键——F1–F24、数字小键盘、Insert、Page Up/Down、Scroll Lock、媒体键；字母和输入键仍需配合修饰键。无法使用的按键会在设置中提示。
+
 ### [v0.3.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.0) · 2026-11-01
 
 #### 新功能

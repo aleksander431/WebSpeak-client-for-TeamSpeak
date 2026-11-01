@@ -17,6 +17,7 @@
     Space: "Space", Tab: "Tab", Backspace: "Backspace", Delete: "Delete", Insert: "Insert", Enter: "Enter", NumpadEnter: "Enter",
     ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", Home: "Home", End: "End", PageUp: "PageUp", PageDown: "PageDown",
     Backquote: "`", Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\", Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/",
+    CapsLock: "Capslock", NumLock: "Numlock", ScrollLock: "Scrolllock", PrintScreen: "PrintScreen",
     NumpadDecimal: "numdec", NumpadAdd: "numadd", NumpadSubtract: "numsub", NumpadMultiply: "nummult", NumpadDivide: "numdiv",
     MediaPlayPause: "MediaPlayPause", MediaTrackNext: "MediaNextTrack", MediaTrackPrevious: "MediaPreviousTrack", MediaStop: "MediaStop",
     AudioVolumeUp: "VolumeUp", AudioVolumeDown: "VolumeDown", AudioVolumeMute: "VolumeMute",
@@ -39,13 +40,17 @@
     parts.push(key);
     return parts.join("+");
   }
+  // Same rule as the main process: typing keys need a modifier, other keys may stand alone.
+  const TYPING_KEYS = /^(?:[A-Z0-9]|Space|Tab|Backspace|Delete|Enter|Up|Down|Left|Right|Home|End|[`\-=[\]\\;',./])$/;
   function isValid(accelerator) {
     if (!accelerator) return true;
     const parts = accelerator.split("+");
-    const key = parts[parts.length - 1];
-    return parts.length > 1 || /^(F\d+|Media|Volume)/.test(key);
+    return parts.length > 1 || !TYPING_KEYS.test(parts[parts.length - 1]);
   }
-  const label = (accelerator) => accelerator.replace(/CommandOrControl/g, "Ctrl").replace(/Super/g, "Win").replace(/\+/g, " + ");
+  const MODIFIER_CODES = /^(Control|Shift|Alt|Meta|OS)(Left|Right)?$/;
+  const NAMES = { numdec: "Num .", numadd: "Num +", numsub: "Num −", nummult: "Num *", numdiv: "Num /", Capslock: "Caps Lock", Numlock: "Num Lock", Scrolllock: "Scroll Lock", PrintScreen: "Print Screen", PageUp: "Page Up", PageDown: "Page Down" };
+  const label = (accelerator) => accelerator.split("+").map((part) => part === "CommandOrControl" ? "Ctrl" : part === "Super" ? "Win"
+    : /^num[0-9]$/.test(part) ? `Num ${part.slice(3)}` : NAMES[part] || part).join(" + ");
 
   // --- hotkey rows --------------------------------------------------------
   const rows = {};
@@ -87,7 +92,16 @@
     event.stopPropagation();
     if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.shiftKey) { stopListening(); return; }
     const accelerator = acceleratorFrom(event);
-    if (!accelerator) return; // a modifier on its own: keep waiting
+    if (!accelerator) {
+      // A modifier on its own: keep waiting. Any other unknown key: say so.
+      if (!MODIFIER_CODES.test(event.code)) {
+        const { status } = rows[listening];
+        status.className = "status hint invalid";
+        status.textContent = t("hotkeyUnsupported");
+        status.hidden = false;
+      }
+      return;
+    }
     const action = listening;
     draft.hotkeys[action] = accelerator;
     stopListening();

@@ -1,7 +1,7 @@
 {
   "name": "webspeak-desktop",
   "productName": "WebSpeak",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "WebSpeak desktop client: tray, autostart, global hotkeys and automatic updates",
   "author": "aleksander431",
   "license": "MIT",

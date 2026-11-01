@@ -8,9 +8,10 @@ import { HotkeyManager } from "./hotkeys.js";
 import { parseWebClientState } from "./state.js";
 import { ALL_LANGUAGES, createTranslator } from "./i18n.js";
 
-test("accelerators need a modifier unless they are F-keys or media keys", () => {
+test("typing keys need a modifier, other keys may stand alone", () => {
   for (const ok of ["", "CommandOrControl+Shift+M", "Alt+F9", "F13", "Super+Space", "MediaPlayPause", "Shift+num5"]) assert.ok(isValidAccelerator(ok), ok);
-  for (const bad of ["M", "5", "Ctrl+", "Shift+Shift+M", "Hyper+M", "CommandOrControl+Shift", "Alt++"]) assert.ok(!isValidAccelerator(bad), bad);
+  for (const bad of ["M", "5", "Space", "Enter", "Up", "`", "Ctrl+", "Shift+Shift+M", "Hyper+M", "CommandOrControl+Shift", "Alt++"]) assert.ok(!isValidAccelerator(bad), bad);
+  for (const single of ["Insert", "PageDown", "num5", "numadd", "Scrolllock", "PrintScreen", "F24"]) assert.ok(isValidAccelerator(single), `${single} works alone`);
 });
 
 test("server addresses are normalised and only http(s) is accepted", () => {

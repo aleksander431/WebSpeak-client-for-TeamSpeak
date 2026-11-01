@@ -195,6 +195,14 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
+### [v0.3.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.1) · 2026-11-01
+
+#### New features
+
+- A sound when someone joins or leaves your channel (volume follows the notification slider).
+- The KAAK skin has a whiteboard button in the room header next to the invite link and in the mobile room menu.
+- Desktop client: a hotkey can be a single key — F1–F24, numpad, Insert, Page Up/Down, Scroll Lock, media keys; letters and typing keys still need a modifier. Settings now say when a key cannot be used.
+
 ### [v0.3.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.0) · 2026-11-01
 
 #### New features
