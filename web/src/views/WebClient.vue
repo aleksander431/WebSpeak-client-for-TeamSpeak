@@ -1042,6 +1042,7 @@ import ScreenShareSettingsDialog from "../components/web-client/ScreenShareSetti
 import WhiteboardPanel from "../components/web-client/WhiteboardPanel.vue";
 import { WhiteboardClient } from "../whiteboard/whiteboard-client.js";
 import { useDesktopBridge } from "../composables/useDesktopBridge.js";
+import { createMemberPresenceTracker } from "../services/channel-presence-sound.js";
 import ScreenSharePlayer from "../components/web-client/ScreenSharePlayer.vue";
 import AudioDock from "../components/web-client/AudioDock.vue";
 import WhisperControls from "../components/web-client/WhisperControls.vue";
@@ -2232,6 +2233,20 @@ watch(() => voiceState.errorCode, (code) => {
 watch(() => showVoiceShell.value, (roomVisible) => {
   if (roomVisible) resetIdentityOperations();
 }, { flush: "sync" });
+
+// Sound when someone joins or leaves the channel you are in.
+const memberPresence = createMemberPresenceTracker();
+watch(() => {
+  if (!voiceState.connected) return { scope: "", ids: "" };
+  const selfId = voiceState.tsClientId;
+  const own = channelTree.value.find((item) => item.members.some((member) => member.id === selfId));
+  if (!own) return { scope: "", ids: "" };
+  const ids = own.members.filter((member) => member.id !== selfId).map((member) => member.id).sort((a, b) => a - b);
+  return { scope: `${sessionEpoch.value}:${own.id}`, ids: ids.join(",") };
+}, ({ scope, ids }) => {
+  const change = memberPresence.update(scope, ids ? ids.split(",").map(Number) : []);
+  if (change) playNotification(change === "joined" ? "memberJoined" : "memberLeft");
+});
 
 watch(() => voiceState.reconnecting, (reconnecting, wasReconnecting) => {
   if (reconnecting && !wasReconnecting) {

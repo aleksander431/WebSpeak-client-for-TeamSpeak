@@ -900,7 +900,7 @@ export function useVoiceWebSocket() {
     }
   }
 
-  function playNotification(kind: "connected" | "disconnected" | "poke" | "private" | "reconnectFailed"): void {
+  function playNotification(kind: "connected" | "disconnected" | "poke" | "private" | "reconnectFailed" | "memberJoined" | "memberLeft"): void {
     if (notificationVolume.value <= 0 || outputMuted.value || effectiveOutputVolume() <= 0 || typeof window === "undefined") return;
     try {
       const ctx = getAudioCtx();
@@ -911,6 +911,9 @@ export function useVoiceWebSocket() {
         poke: [740, 980],
         private: [600, 760],
         reconnectFailed: [300, 220],
+        // Someone entered or left your channel: softer and shorter than your own connection cues.
+        memberJoined: [587, 784],
+        memberLeft: [784, 587],
       };
       const oscillator = ctx.createOscillator();
       const gain = ctx.createGain();
