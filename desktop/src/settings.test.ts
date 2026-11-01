@@ -11,7 +11,8 @@ import { ALL_LANGUAGES, createTranslator } from "./i18n.js";
 test("typing keys need a modifier, other keys may stand alone", () => {
   for (const ok of ["", "CommandOrControl+Shift+M", "Alt+F9", "F13", "Super+Space", "MediaPlayPause", "Shift+num5"]) assert.ok(isValidAccelerator(ok), ok);
   for (const bad of ["M", "5", "Space", "Enter", "Up", "`", "Ctrl+", "Shift+Shift+M", "Hyper+M", "CommandOrControl+Shift", "Alt++"]) assert.ok(!isValidAccelerator(bad), bad);
-  for (const single of ["Insert", "PageDown", "num5", "numadd", "Scrolllock", "PrintScreen", "F24"]) assert.ok(isValidAccelerator(single), `${single} works alone`);
+  for (const single of ["Insert", "PageDown", "num5", "numadd", "Scrolllock", "PrintScreen", "F24", "Pause", "Mouse4", "Mouse5"]) assert.ok(isValidAccelerator(single), `${single} works alone`);
+  assert.ok(isValidAccelerator("CommandOrControl+Mouse5"));
 });
 
 test("server addresses are normalised and only http(s) is accepted", () => {
@@ -86,4 +87,34 @@ test("every language has every string and the locale picks a language", () => {
   assert.equal(createTranslator("ru-RU").language, "ru");
   assert.equal(createTranslator("pt-BR").language, "en");
   assert.equal(createTranslator("ru").t("installUpdate", { version: "1.2.3" }), "Перезапустить и обновить до 1.2.3");
+});
+
+test("Pause and mouse buttons go to the native helper and report its answers", () => {
+  const sets: { action: string; accelerator: string }[][] = [];
+  let helperAvailable = true;
+  const fired: string[] = [];
+  const changes: unknown[] = [];
+  let now = 0;
+  const manager = new HotkeyManager(
+    { register: () => true, unregister: () => {} },
+    (action) => fired.push(action),
+    () => now,
+    { set: (bindings) => { sets.push(bindings); return helperAvailable; } },
+    (status) => changes.push(status),
+  );
+  const status = manager.apply({ mic: "Pause", sound: "CommandOrControl+Shift+D", stream: "Mouse5" });
+  assert.deepEqual(status, { mic: "active", sound: "active", stream: "active" });
+  assert.deepEqual(sets.at(-1), [{ action: "mic", accelerator: "Pause" }, { action: "stream", accelerator: "Mouse5" }]);
+  manager.nativeResult("stream", "taken");
+  assert.equal(manager.statuses().stream, "taken");
+  manager.nativeResult("sound", "unsupported");
+  assert.equal(manager.statuses().sound, "active", "the helper cannot change keys it does not own");
+  manager.nativeFire("mic");
+  manager.nativeFire("sound");
+  assert.deepEqual(fired, ["mic"]);
+  assert.equal(changes.length, 1);
+  helperAvailable = false;
+  assert.equal(manager.apply({ mic: "Pause", sound: "", stream: "" }).mic, "unsupported", "no helper (not Windows) is reported");
+  manager.clear();
+  assert.deepEqual(sets.at(-1), [], "clearing stops the helper's hotkeys");
 });

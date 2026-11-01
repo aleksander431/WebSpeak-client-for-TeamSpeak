@@ -292,10 +292,14 @@ jobs:
           mkdir -p desktop/native/bin
           x86_64-w64-mingw32-g++ -municode -O2 -Wall -Wextra -Werror -static \
             -o desktop/native/bin/webspeak-audio-capture.exe desktop/native/audio-capture.cpp -lole32 -lmmdevapi -luuid
+          x86_64-w64-mingw32-g++ -municode -O2 -Wall -Wextra -Werror -static \
+            -o desktop/native/bin/webspeak-hotkeys.exe desktop/native/hotkeys.cpp -luser32
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-audio-helper
-          path: desktop/native/bin/webspeak-audio-capture.exe
+          path: |
+            desktop/native/bin/webspeak-audio-capture.exe
+            desktop/native/bin/webspeak-hotkeys.exe
           if-no-files-found: error
 
   desktop:
@@ -336,6 +340,9 @@ jobs:
           # non-zero code from failing the step.
           $helper = Start-Process -FilePath release/win-unpacked/resources/webspeak-audio-capture.exe -ArgumentList "0" -NoNewWindow -Wait -PassThru -RedirectStandardError "$env:RUNNER_TEMP/helper-stderr.txt"
           if ($helper.ExitCode -ne 2) { throw "The system-audio helper did not run (exit $($helper.ExitCode))" }
+          if (-not (Test-Path release/win-unpacked/resources/webspeak-hotkeys.exe)) { throw "The hotkey helper is missing from the package" }
+          $hotkeyHelper = Start-Process -FilePath release/win-unpacked/resources/webspeak-hotkeys.exe -ArgumentList "0" -NoNewWindow -Wait -PassThru -RedirectStandardError "$env:RUNNER_TEMP/hotkeys-stderr.txt"
+          if ($hotkeyHelper.ExitCode -ne 2) { throw "The hotkey helper did not run (exit $($hotkeyHelper.ExitCode))" }
           # The updater reads latest.yml from the release; it must name the uploaded installer.
           $latest = Get-Content -Raw release/latest.yml
           if ($latest -notmatch "webspeak-desktop-setup-$([regex]::Escape($releaseVersion)).exe") { throw "latest.yml does not describe the installer" }
@@ -369,7 +376,7 @@ jobs:
           set -euo pipefail
           cd release-assets
           # The audio helper ships inside the installer; it is not a download of its own.
-          rm -f webspeak-audio-capture.exe
+          rm -f webspeak-audio-capture.exe webspeak-hotkeys.exe
           sha256sum * > SHA256SUMS.txt
       - name: Publish GitHub release
         env:

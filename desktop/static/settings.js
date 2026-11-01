@@ -17,7 +17,7 @@
     Space: "Space", Tab: "Tab", Backspace: "Backspace", Delete: "Delete", Insert: "Insert", Enter: "Enter", NumpadEnter: "Enter",
     ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", Home: "Home", End: "End", PageUp: "PageUp", PageDown: "PageDown",
     Backquote: "`", Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\", Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/",
-    CapsLock: "Capslock", NumLock: "Numlock", ScrollLock: "Scrolllock", PrintScreen: "PrintScreen",
+    CapsLock: "Capslock", NumLock: "Numlock", ScrollLock: "Scrolllock", PrintScreen: "PrintScreen", Pause: "Pause",
     NumpadDecimal: "numdec", NumpadAdd: "numadd", NumpadSubtract: "numsub", NumpadMultiply: "nummult", NumpadDivide: "numdiv",
     MediaPlayPause: "MediaPlayPause", MediaTrackNext: "MediaNextTrack", MediaTrackPrevious: "MediaPreviousTrack", MediaStop: "MediaStop",
     AudioVolumeUp: "VolumeUp", AudioVolumeDown: "VolumeDown", AudioVolumeMute: "VolumeMute",
@@ -29,16 +29,18 @@
     if (/^Numpad[0-9]$/.test(code)) return `num${code.slice(6)}`;
     return CODE_KEYS[code] || null;
   }
-  function acceleratorFrom(event) {
-    const key = keyFromCode(event.code);
-    if (!key) return null;
+  function modifiersOf(event) {
     const parts = [];
     if (event.ctrlKey) parts.push("CommandOrControl");
     if (event.altKey) parts.push("Alt");
     if (event.shiftKey) parts.push("Shift");
     if (event.metaKey) parts.push("Super");
-    parts.push(key);
-    return parts.join("+");
+    return parts;
+  }
+  function acceleratorFrom(event) {
+    const key = keyFromCode(event.code);
+    if (!key) return null;
+    return [...modifiersOf(event), key].join("+");
   }
   // Same rule as the main process: typing keys need a modifier, other keys may stand alone.
   const TYPING_KEYS = /^(?:[A-Z0-9]|Space|Tab|Backspace|Delete|Enter|Up|Down|Left|Right|Home|End|[`\-=[\]\\;',./])$/;
@@ -48,7 +50,7 @@
     return parts.length > 1 || !TYPING_KEYS.test(parts[parts.length - 1]);
   }
   const MODIFIER_CODES = /^(Control|Shift|Alt|Meta|OS)(Left|Right)?$/;
-  const NAMES = { numdec: "Num .", numadd: "Num +", numsub: "Num −", nummult: "Num *", numdiv: "Num /", Capslock: "Caps Lock", Numlock: "Num Lock", Scrolllock: "Scroll Lock", PrintScreen: "Print Screen", PageUp: "Page Up", PageDown: "Page Down" };
+  const NAMES = { Mouse4: t("mouseBack"), Mouse5: t("mouseForward"), numdec: "Num .", numadd: "Num +", numsub: "Num −", nummult: "Num *", numdiv: "Num /", Capslock: "Caps Lock", Numlock: "Num Lock", Scrolllock: "Scroll Lock", PrintScreen: "Print Screen", PageUp: "Page Up", PageDown: "Page Down" };
   const label = (accelerator) => accelerator.split("+").map((part) => part === "CommandOrControl" ? "Ctrl" : part === "Super" ? "Win"
     : /^num[0-9]$/.test(part) ? `Num ${part.slice(3)}` : NAMES[part] || part).join(" + ");
 
@@ -107,6 +109,18 @@
     stopListening();
   }, true);
   window.addEventListener("blur", () => stopListening());
+  // Mouse side buttons (back/forward) can be hotkeys too.
+  document.addEventListener("mousedown", (event) => {
+    if (!listening || (event.button !== 3 && event.button !== 4)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const action = listening;
+    draft.hotkeys[action] = [...modifiersOf(event), event.button === 3 ? "Mouse4" : "Mouse5"].join("+");
+    stopListening();
+  }, true);
+  // Side buttons would otherwise navigate this page back or forward.
+  document.addEventListener("mouseup", (event) => { if (event.button === 3 || event.button === 4) event.preventDefault(); }, true);
+  api.onHotkeyStatus((status) => { snapshot.hotkeyStatus = status; renderHotkeys(); });
 
   function duplicateOf(action) {
     const value = draft.hotkeys[action].toLowerCase();
@@ -122,7 +136,7 @@
       const saved = snapshot.settings.hotkeys[action] === value;
       const state = !isValid(value) ? "invalid" : duplicateOf(action) ? "duplicate" : saved ? snapshot.hotkeyStatus[action] : "";
       status.className = `status hint ${state}`;
-      status.textContent = state === "taken" ? t("hotkeyTaken") : state === "invalid" ? t("hotkeyInvalid") : state === "duplicate" ? t("hotkeyDuplicate") : "";
+      status.textContent = state === "taken" ? t("hotkeyTaken") : state === "invalid" ? t("hotkeyInvalid") : state === "duplicate" ? t("hotkeyDuplicate") : state === "unsupported" ? t("hotkeyUnsupported") : "";
       status.hidden = !status.textContent;
     }
     $("save").disabled = actions.some(([action]) => !isValid(draft.hotkeys[action]) || duplicateOf(action));

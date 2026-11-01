@@ -40,7 +40,14 @@ export const DEFAULT_SETTINGS: DesktopSettings = Object.freeze({
 }) as DesktopSettings;
 
 const MODIFIERS = new Set(["CommandOrControl", "Control", "Ctrl", "Alt", "Shift", "Super", "Meta", "AltGr", "Option", "Command", "Cmd", "CmdOrCtrl"]);
-const KEY_PATTERN = /^(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|Plus|Space|Tab|Backspace|Delete|Insert|Return|Enter|Up|Down|Left|Right|Home|End|PageUp|PageDown|Escape|Esc|num[0-9]|numdec|numadd|numsub|nummult|numdiv|[`\-=[\]\\;',./]|Capslock|Numlock|Scrolllock|PrintScreen|MediaPlayPause|MediaNextTrack|MediaPreviousTrack|MediaStop|VolumeUp|VolumeDown|VolumeMute)$/;
+const KEY_PATTERN = /^(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|Plus|Space|Tab|Backspace|Delete|Insert|Return|Enter|Up|Down|Left|Right|Home|End|PageUp|PageDown|Escape|Esc|num[0-9]|numdec|numadd|numsub|nummult|numdiv|[`\-=[\]\\;',./]|Capslock|Numlock|Scrolllock|PrintScreen|Pause|Mouse4|Mouse5|MediaPlayPause|MediaNextTrack|MediaPreviousTrack|MediaStop|VolumeUp|VolumeDown|VolumeMute)$/;
+/** Keys Electron cannot register; the native helper (native/hotkeys.cpp) handles them. */
+const NATIVE_KEYS = new Set(["Pause", "Mouse4", "Mouse5"]);
+
+export function needsNativeHotkey(accelerator: string): boolean {
+  return NATIVE_KEYS.has(accelerator.split("+").pop() ?? "");
+}
+
 /**
  * Keys that work alone. A global hotkey swallows its key in every program,
  * so keys used for typing (letters, digits, punctuation, Space, Enter, arrows,

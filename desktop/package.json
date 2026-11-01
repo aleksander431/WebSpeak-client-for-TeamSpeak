@@ -12,7 +12,7 @@
     "start": "npm run build && electron .",
     "test": "node --import tsx --test src/*.test.ts",
     "dist": "npm run build && electron-builder --win --publish never",
-    "native": "x86_64-w64-mingw32-g++ -municode -O2 -Wall -Wextra -static -o native/bin/webspeak-audio-capture.exe native/audio-capture.cpp -lole32 -lmmdevapi -luuid"
+    "native": "x86_64-w64-mingw32-g++ -municode -O2 -Wall -Wextra -static -o native/bin/webspeak-audio-capture.exe native/audio-capture.cpp -lole32 -lmmdevapi -luuid && x86_64-w64-mingw32-g++ -municode -O2 -Wall -Wextra -static -o native/bin/webspeak-hotkeys.exe native/hotkeys.cpp -luser32"
   },
   "dependencies": {
     "electron-updater": "6.8.11"
@@ -71,7 +71,8 @@
         "from": "native/bin",
         "to": ".",
         "filter": [
-          "webspeak-audio-capture.exe"
+          "webspeak-audio-capture.exe",
+          "webspeak-hotkeys.exe"
         ]
       }
     ]

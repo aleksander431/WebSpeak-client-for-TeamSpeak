@@ -23,6 +23,8 @@ import { createTranslator } from "./i18n.js";
 import { SettingsStore, normalizeServerUrl, type DesktopSettings, type HotkeyAction } from "./settings.js";
 import { parseWebClientState, type WebClientState } from "./state.js";
 import { SystemAudio } from "./system-audio.js";
+import { NativeHotkeys } from "./native-hotkeys.js";
+import { needsNativeHotkey } from "./settings.js";
 
 /*
  * WebSpeak desktop shell. The window shows the WebSpeak site of the
@@ -302,6 +304,11 @@ async function runWebAction(action: HotkeyAction, fromHotkey: boolean): Promise<
 
 // ------------------------------------------------------------------ tray
 
+/** Menus can only show accelerators Electron understands. */
+function menuAccelerator(accelerator: string): string | undefined {
+  return accelerator && !needsNativeHotkey(accelerator) ? accelerator : undefined;
+}
+
 function refreshTray(): void {
   if (!tray) return;
   const muted = webState.connected && (webState.micMuted || webState.soundMuted);
@@ -319,9 +326,9 @@ function refreshTray(): void {
     { label: t("open"), click: () => showWindow() },
     { type: "separator" },
     ...(connected ? [] : [{ label: t("notConnected"), enabled: false } satisfies MenuItemConstructorOptions]),
-    { label: webState.micMuted ? t("micOn") : t("micOff"), enabled: connected, accelerator: settings.value.hotkeys.mic || undefined, registerAccelerator: false, click: () => void runWebAction("mic", false) },
-    { label: webState.soundMuted ? t("soundOn") : t("soundOff"), enabled: connected, accelerator: settings.value.hotkeys.sound || undefined, registerAccelerator: false, click: () => void runWebAction("sound", false) },
-    { label: webState.streaming ? t("streamStop") : t("streamStart"), enabled: connected, accelerator: settings.value.hotkeys.stream || undefined, registerAccelerator: false, click: () => void runWebAction("stream", false) },
+    { label: webState.micMuted ? t("micOn") : t("micOff"), enabled: connected, accelerator: menuAccelerator(settings.value.hotkeys.mic), registerAccelerator: false, click: () => void runWebAction("mic", false) },
+    { label: webState.soundMuted ? t("soundOn") : t("soundOff"), enabled: connected, accelerator: menuAccelerator(settings.value.hotkeys.sound), registerAccelerator: false, click: () => void runWebAction("sound", false) },
+    { label: webState.streaming ? t("streamStop") : t("streamStart"), enabled: connected, accelerator: menuAccelerator(settings.value.hotkeys.stream), registerAccelerator: false, click: () => void runWebAction("stream", false) },
     { type: "separator" },
     { label: t("settings"), click: () => openSettings() },
     { label: t("reload"), click: () => { if (mainWindow) loadServer(mainWindow); } },
@@ -506,7 +513,19 @@ void app.whenReady().then(() => {
     Boolean(process.env.WEBSPEAK_SYSTEM_AUDIO_HELPER),
   );
   void systemAudio.detect();
-  hotkeys = new HotkeyManager(globalShortcut, (action) => void runWebAction(action, true));
+  const nativeHotkeys = new NativeHotkeys(
+    process.env.WEBSPEAK_HOTKEY_HELPER
+      || (app.isPackaged ? join(process.resourcesPath, "webspeak-hotkeys.exe") : join(__dirname, "..", "native", "bin", "webspeak-hotkeys.exe")),
+    (action) => hotkeys.nativeFire(action),
+    (action, status) => hotkeys.nativeResult(action, status),
+    (message) => console.log(message),
+    Boolean(process.env.WEBSPEAK_HOTKEY_HELPER),
+  );
+  app.on("will-quit", () => nativeHotkeys.stop());
+  hotkeys = new HotkeyManager(globalShortcut, (action) => void runWebAction(action, true), undefined, nativeHotkeys, (status) => {
+    hotkeyStatus = status;
+    settingsWindow?.webContents.send("settings:hotkey-status", status);
+  });
   hotkeyStatus = hotkeys.apply(settings.value.hotkeys);
 
   tray = new Tray(nativeImage.createFromPath(join(STATIC, "tray.png")));

@@ -191,7 +191,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 - Ein Ton, wenn jemand deinen Kanal betritt oder verlässt (Lautstärke folgt dem Benachrichtigungsregler).
 - Der KAAK-Skin hat eine Whiteboard-Schaltfläche in der Raumkopfzeile neben dem Einladungslink und im mobilen Raummenü.
-- Desktop-Client: Ein Tastenkürzel kann eine einzelne Taste sein — F1–F24, Ziffernblock, Einfg, Bild auf/ab, Rollen, Medientasten; Buchstaben und Schreibtasten brauchen weiterhin eine Zusatztaste. Die Einstellungen melden nicht verwendbare Tasten.
+- Desktop-Client: Ein Tastenkürzel kann eine einzelne Taste sein — F1–F24, Ziffernblock, Einfg, Bild auf/ab, Pause, Rollen, Medientasten — oder eine seitliche Maustaste; Buchstaben und Schreibtasten brauchen weiterhin eine Zusatztaste. Die Einstellungen melden nicht verwendbare Tasten.
 
 ### [v0.3.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.0) · 2026-11-01
 
