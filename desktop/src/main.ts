@@ -22,6 +22,7 @@ import { HotkeyManager, type HotkeyStatus } from "./hotkeys.js";
 import { createTranslator } from "./i18n.js";
 import { SettingsStore, normalizeServerUrl, type DesktopSettings, type HotkeyAction } from "./settings.js";
 import { parseWebClientState, type WebClientState } from "./state.js";
+import { SystemAudio } from "./system-audio.js";
 
 /*
  * WebSpeak desktop shell. The window shows the WebSpeak site of the
@@ -57,6 +58,9 @@ let updateState: { status: "idle" | "checking" | "downloading" | "ready" | "erro
 let manualUpdateCheck = false;
 /** The next display-media request comes from the stream hotkey with "main screen" chosen. */
 let directScreenRequest = false;
+let systemAudio: SystemAudio;
+/** Stops the clean system sound if the page never actually starts sharing. */
+let systemAudioWatchdog: NodeJS.Timeout | null = null;
 // The locale is only known once the app is ready.
 let translator = createTranslator("en");
 const t: typeof translator.t = (key, variables) => translator.t(key, variables);
@@ -191,9 +195,19 @@ function configureSession(target: Session): void {
     const direct = directScreenRequest;
     directScreenRequest = false;
     if (!isServerUrl(request.securityOrigin || request.frame?.url || "")) { callback({}); return; }
-    void chooseDisplaySource(direct).then((choice) => {
+    void chooseDisplaySource(direct).then(async (choice) => {
+      systemAudio.stop();
       if (!choice) { callback({}); return; }
-      callback(choice.audio ? { video: choice.source, audio: "loopback" } : { video: choice.source });
+      if (!choice.audio) { callback({ video: choice.source }); return; }
+      // Prefer system sound without WebSpeak's voices; plain loopback otherwise.
+      const frame = await systemAudio.start();
+      if (frame) {
+        if (systemAudioWatchdog) clearTimeout(systemAudioWatchdog);
+        systemAudioWatchdog = setTimeout(() => { if (!webState.streaming) systemAudio.stop(); }, 30_000);
+        callback({ video: choice.source, audio: frame });
+        return;
+      }
+      callback({ video: choice.source, audio: "loopback" });
     }).catch(() => callback({}));
   });
 }
@@ -203,7 +217,7 @@ async function chooseDisplaySource(direct: boolean): Promise<{ source: DesktopCa
     const screens = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } });
     const primary = String(screen.getPrimaryDisplay().id);
     const source = screens.find((item) => item.display_id === primary) ?? screens[0];
-    return source ? { source, audio: false } : null;
+    return source ? { source, audio: settings.value.shareSystemAudio } : null;
   }
   const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: true });
   // Our own window would show an endless mirror; leave it out.
@@ -233,6 +247,7 @@ async function chooseDisplaySource(direct: boolean): Promise<{ source: DesktopCa
       if (event.sender !== picker.webContents) return null;
       return {
         strings: pickerStrings(),
+        audio: settings.value.shareSystemAudio,
         sources: list.map((source) => ({
           id: source.id,
           name: source.name,
@@ -246,6 +261,7 @@ async function chooseDisplaySource(direct: boolean): Promise<{ source: DesktopCa
     ipcMain.on("picker:choose", (event, id: unknown, audio: unknown) => {
       if (event.sender !== picker.webContents) return;
       const source = typeof id === "string" ? list.find((item) => item.id === id) : undefined;
+      if (source && settings.value.shareSystemAudio !== (audio === true)) settings.update({ shareSystemAudio: audio === true });
       finish(source ? { source, audio: audio === true } : null);
     });
     picker.on("closed", () => finish(null));
@@ -255,7 +271,8 @@ async function chooseDisplaySource(direct: boolean): Promise<{ source: DesktopCa
 }
 
 function pickerStrings() {
-  return { title: t("pickerTitle"), screens: t("pickerScreens"), windows: t("pickerWindows"), audio: t("pickerAudio"), share: t("pickerShare"), cancel: t("cancel") };
+  const audio = systemAudio.supported ? t("pickerAudioClean") : t("pickerAudio");
+  return { title: t("pickerTitle"), screens: t("pickerScreens"), windows: t("pickerWindows"), audio, share: t("pickerShare"), cancel: t("cancel") };
 }
 
 // ----------------------------------------------------------- web actions
@@ -374,6 +391,8 @@ function registerIpc(): void {
     if (!mainWindow || event.sender !== mainWindow.webContents || !isServerUrl(event.senderFrame?.url ?? "")) return;
     const parsed = parseWebClientState(value);
     if (!parsed) return;
+    // The share ended: release the clean system-sound capture.
+    if (webState.streaming && !parsed.streaming) systemAudio.stop();
     webState = parsed;
     refreshTray();
   });
@@ -477,6 +496,16 @@ void app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   configureSession(session.fromPartition(PARTITION));
   registerIpc();
+  systemAudio = new SystemAudio(
+    // WEBSPEAK_SYSTEM_AUDIO_HELPER lets tests substitute a fake helper on any OS.
+    process.env.WEBSPEAK_SYSTEM_AUDIO_HELPER
+      || (app.isPackaged ? join(process.resourcesPath, "webspeak-audio-capture.exe") : join(__dirname, "..", "native", "bin", "webspeak-audio-capture.exe")),
+    STATIC,
+    join(__dirname, "system-audio-preload.js"),
+    (message) => console.log(message),
+    Boolean(process.env.WEBSPEAK_SYSTEM_AUDIO_HELPER),
+  );
+  void systemAudio.detect();
   hotkeys = new HotkeyManager(globalShortcut, (action) => void runWebAction(action, true));
   hotkeyStatus = hotkeys.apply(settings.value.hotkeys);
 
@@ -496,7 +525,7 @@ void app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => { quitting = true; });
-app.on("will-quit", () => { globalShortcut.unregisterAll(); });
+app.on("will-quit", () => { globalShortcut.unregisterAll(); systemAudio?.stop(); });
 // The tray keeps the app alive when every window is closed.
 app.on("window-all-closed", () => { if (!settings?.value.closeToTray) app.quit(); });
 

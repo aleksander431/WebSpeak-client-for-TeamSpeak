@@ -802,7 +802,10 @@ export function createScreenShareController(transport: ScreenShareTransport) {
         // user's desktop or application window is never resized or sampled at
         // the output limit.
         video: true,
-        audio,
+        // restrictOwnAudio keeps this page's own playback (the channel's
+        // voices) out of captured system audio where the browser supports it
+        // (Chromium 140+); elsewhere it is ignored.
+        audio: audio ? { restrictOwnAudio: true } : false,
         // These are preferences: when the selected surface is a window, ask
         // for that window's audio; when it is a monitor, allow system audio.
         // The browser/OS may still return no audio or ignore the preference.

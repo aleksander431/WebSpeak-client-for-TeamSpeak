@@ -19,6 +19,8 @@ export interface DesktopSettings {
   streamHotkeySource: "picker" | "screen";
   /** Short sounds when a hotkey mutes or unmutes. */
   hotkeySounds: boolean;
+  /** Share the PC's sound with the screen (without WebSpeak's voices where Windows allows). */
+  shareSystemAudio: boolean;
   /** Remembered window bounds. */
   window?: { x?: number; y?: number; width: number; height: number; maximized: boolean };
   /** The tray hint was shown once. */
@@ -33,6 +35,7 @@ export const DEFAULT_SETTINGS: DesktopSettings = Object.freeze({
   hotkeys: Object.freeze({ mic: "CommandOrControl+Shift+M", sound: "CommandOrControl+Shift+D", stream: "CommandOrControl+Shift+L" }) as Record<HotkeyAction, string>,
   streamHotkeySource: "picker",
   hotkeySounds: true,
+  shareSystemAudio: false,
   trayHintShown: false,
 }) as DesktopSettings;
 
@@ -99,6 +102,7 @@ export function sanitizeSettings(value: unknown, base: DesktopSettings = DEFAULT
     hotkeys,
     streamHotkeySource: input.streamHotkeySource === "screen" || input.streamHotkeySource === "picker" ? input.streamHotkeySource : base.streamHotkeySource,
     hotkeySounds: bool("hotkeySounds"),
+    shareSystemAudio: bool("shareSystemAudio"),
     trayHintShown: bool("trayHintShown"),
   };
   const windowInput = input.window as Record<string, unknown> | undefined;

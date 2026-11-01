@@ -11,7 +11,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "npm run build && electron .",
     "test": "node --import tsx --test src/*.test.ts",
-    "dist": "npm run build && electron-builder --win --publish never"
+    "dist": "npm run build && electron-builder --win --publish never",
+    "native": "x86_64-w64-mingw32-g++ -municode -O2 -Wall -Wextra -static -o native/bin/webspeak-audio-capture.exe native/audio-capture.cpp -lole32 -lmmdevapi -luuid"
   },
   "dependencies": {
     "electron-updater": "6.8.11"
@@ -27,11 +28,25 @@
     "appId": "space.afire-server.webspeak",
     "productName": "WebSpeak",
     "copyright": "WebSpeak contributors",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["dist/**/*", "static/**/*", "package.json"],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "static/**/*",
+      "package.json"
+    ],
     "asar": true,
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.ico",
       "artifactName": "webspeak-desktop-setup-${version}.${ext}"
     },
@@ -43,6 +58,22 @@
       "shortcutName": "WebSpeak",
       "deleteAppDataOnUninstall": false
     },
-    "publish": [{ "provider": "github", "owner": "aleksander431", "repo": "WebSpeak-client-for-TeamSpeak", "releaseType": "release" }]
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "aleksander431",
+        "repo": "WebSpeak-client-for-TeamSpeak",
+        "releaseType": "release"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "native/bin",
+        "to": ".",
+        "filter": [
+          "webspeak-audio-capture.exe"
+        ]
+      }
+    ]
   }
 }

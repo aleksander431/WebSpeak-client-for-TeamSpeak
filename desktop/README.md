@@ -6,12 +6,13 @@ A small Electron shell around the WebSpeak site of your server:
 - keeps running in the tray, starts with Windows (minimized), one instance only;
 - global hotkeys for microphone, sound and screen sharing that also work inside games
   (a game running as administrator needs WebSpeak started as administrator too);
-- its own window/screen picker for sharing, optionally with system sound;
+- its own window/screen picker for sharing, optionally with the PC's sound — on Windows 10 2004+ without WebSpeak's own voices (`native/audio-capture.cpp`, process loopback);
 - updates itself from the GitHub releases of this repository (`latest.yml` + installer).
 
 ```sh
 npm ci
 npm start          # run from source
+npm run native     # build native/bin/webspeak-audio-capture.exe (needs mingw-w64)
 npm run dist       # Windows installer in release/ (build on Windows)
 ```
 

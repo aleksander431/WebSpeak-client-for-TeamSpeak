@@ -302,3 +302,12 @@ test("viewer visibility follows the selected stream so the player and card canno
   assert.equal(controller.api.screenShareViewing.value, false);
   assert.equal(controller.api.screenShareViewingStreamId.value, "");
 });
+
+test("system audio is requested without the page's own playback", async () => {
+  const requests: unknown[] = [];
+  Object.assign(navigator.mediaDevices, { getDisplayMedia: async (options: unknown) => { requests.push(options); throw Object.assign(new Error("denied"), { name: "NotAllowedError" }); } });
+  await controller.api.startScreenShare(true).catch(() => {});
+  await controller.api.startScreenShare(false).catch(() => {});
+  assert.deepEqual((requests[0] as { audio: unknown }).audio, { restrictOwnAudio: true });
+  assert.equal((requests[1] as { audio: unknown }).audio, false);
+});

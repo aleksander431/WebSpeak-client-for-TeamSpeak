@@ -279,11 +279,34 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-  desktop:
+  desktop-audio-helper:
     needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the system-audio helper (WASAPI process loopback)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -y -q g++-mingw-w64-x86-64
+          mkdir -p desktop/native/bin
+          x86_64-w64-mingw32-g++ -municode -O2 -Wall -Wextra -Werror -static \
+            -o desktop/native/bin/webspeak-audio-capture.exe desktop/native/audio-capture.cpp -lole32 -lmmdevapi -luuid
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-audio-helper
+          path: desktop/native/bin/webspeak-audio-capture.exe
+          if-no-files-found: error
+
+  desktop:
+    needs: desktop-audio-helper
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-audio-helper
+          path: desktop/native/bin
       - uses: actions/setup-node@v4
         with:
           node-version: 22.22.2
@@ -307,6 +330,10 @@ jobs:
           }
           npm run dist
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path release/win-unpacked/resources/webspeak-audio-capture.exe)) { throw "The system-audio helper is missing from the package" }
+          # The helper must start on the runner (no audio device needed to load it).
+          & release/win-unpacked/resources/webspeak-audio-capture.exe 0 2>$null
+          if ($LASTEXITCODE -ne 2) { throw "The system-audio helper did not run (exit $LASTEXITCODE)" }
           # The updater reads latest.yml from the release; it must name the uploaded installer.
           $latest = Get-Content -Raw release/latest.yml
           if ($latest -notmatch "webspeak-desktop-setup-$([regex]::Escape($releaseVersion)).exe") { throw "latest.yml does not describe the installer" }

@@ -190,6 +190,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 #### Neue Funktionen
 
 - Desktop-Client für Windows (`webspeak-desktop-setup-*.exe`): ein Fenster für deinen WebSpeak-Server, Minimieren in den Infobereich, Autostart, automatische Updates aus den Releases, globale Tastenkürzel für Mikrofon, Ton und Bildschirmfreigabe (auch in Spielen) sowie eine eigene Fenster-/Bildschirmauswahl.
+- Bildschirmfreigabe mit PC-Ton überträgt die Stimmen aus dem Kanal nicht mehr: Chrome/Edge 140+ lassen den Ton des WebSpeak-Tabs weg, und der Desktop-Client erfasst unter Windows 10 2004+ alles außer WebSpeak selbst.
 - Ein gemeinsames Whiteboard für jeden Kanal: Stift, Linien, Pfeile, Rechtecke, Ellipsen, Text, Radierer, Auswahl mit Verschieben und Skalieren, Einfügen von Bildern und Text aus der Zwischenablage, Rückgängig und Wiederholen, Cursor der anderen und PNG-Export. Ein Whiteboard hat mehrere Blätter: neue anlegen und alte behalten, umbenennen und löschen. Whiteboards werden auf dem Server gespeichert.
 - Neue Browser benötigen die Freigabe eines Administrators; freigegebene Browser werden gespeichert.
 - Spitznamen lassen sich mit einem Passwort schützen, um sich ohne erneute Freigabe auf anderen Geräten anzumelden.

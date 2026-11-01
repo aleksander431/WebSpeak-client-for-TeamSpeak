@@ -3,6 +3,7 @@
   const data = await api.load();
   if (!data) return;
   const { strings, sources } = data;
+  document.getElementById("audio").checked = data.audio === true;
   document.title = strings.title;
   document.getElementById("title").textContent = strings.title;
   document.getElementById("tab-screen").textContent = strings.screens;
