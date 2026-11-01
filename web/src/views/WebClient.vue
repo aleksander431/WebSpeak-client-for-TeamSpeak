@@ -1022,7 +1022,7 @@
 
 <script setup lang="ts">
 import { observeMobileViewport } from "../services/mobile-viewport.js";
-import { computed, h, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from "vue";
+import { computed, h, onMounted, onUnmounted, provide, reactive, ref, shallowRef, watch } from "vue";
 import Icon from "../components/Icon.vue";
 import VoiceConnectionStatus from "../components/web-client/VoiceConnectionStatus.vue";
 import { useVoiceWorkspace } from "../composables/useVoiceWorkspace.js";
@@ -1042,6 +1042,7 @@ import ScreenShareSettingsDialog from "../components/web-client/ScreenShareSetti
 import WhiteboardPanel from "../components/web-client/WhiteboardPanel.vue";
 import { WhiteboardClient } from "../whiteboard/whiteboard-client.js";
 import { useDesktopBridge } from "../composables/useDesktopBridge.js";
+import { WEB_CLIENT_T, pageLanguage } from "../composables/useWebClientT.js";
 import { createMemberPresenceTracker } from "../services/channel-presence-sound.js";
 import ScreenSharePlayer from "../components/web-client/ScreenSharePlayer.vue";
 import AudioDock from "../components/web-client/AudioDock.vue";
@@ -1177,6 +1178,9 @@ const {
 } = useVoiceWebSocket();
 const performance = useWebClientPerformance(computed(() => voiceState.connected), measureVoiceAudioStatus);
 
+// Components rendered inside the page (including skin widgets) share its translator.
+provide(WEB_CLIENT_T, t);
+
 // Channel whiteboard: one board per channel, shared by browser users.
 const whiteboardClient = new WhiteboardClient({ transport: whiteboardTransport });
 const stopWhiteboardMessages = whiteboardTransport.subscribe(message => whiteboardClient.receive(message));
@@ -1236,6 +1240,7 @@ let stopViewportObservation: (() => void) | undefined;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 const language = ref<Language>(getInitialLanguage());
+watch(language, (value) => { pageLanguage.value = value; }, { immediate: true });
 const activeSkin = shallowRef<InstalledSkin | null>(null);
 const skinEditorMode = useSkinEditorMode();
 const skinPluginDocumentRevision = ref(0);

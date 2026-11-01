@@ -1264,7 +1264,8 @@ export function useVoiceWebSocket() {
     const senderId = state.tsClientId;
     await sendCommandAndWait(type, payload);
     if (generation !== chatGeneration || !state.connected) throw new Error("语音连接已关闭");
-    sessionState.appendLocal({ ...local, senderId, invokerName: "你", message: payload.message });
+    // The chat shows "You" for own messages; the name only feeds the avatar initial.
+    sessionState.appendLocal({ ...local, senderId, invokerName: lastConnection?.nickname || "You", message: payload.message });
   }
 
   async function sendTextMessage(message: string, targetId = ""): Promise<void> {

@@ -51,8 +51,13 @@ export interface ChatMessage {
 export interface ServerEvent {
   id: string;
   kind: string;
+  /** Chinese text kept for older clients; newer clients translate `code`. */
   message: string;
   timestamp: number;
+  /** Translation key suffix, e.g. "memberJoined" -> event_memberJoined. */
+  code?: string;
+  /** Values for the translated text (nicknames, channel names). */
+  params?: Record<string, string>;
 }
 
 export interface VoiceAudioBridgeStats {

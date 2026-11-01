@@ -863,7 +863,7 @@
                             "part": "mobile-room-member-count",
                             "children": [
                               {
-                                "text": "{{roomchannel.memberCountLabel}} 人"
+                                "text": "{{roomchannel.memberCountLabel}} {{skin.messages.kaakPeopleSuffix}}"
                               }
                             ]
                           }

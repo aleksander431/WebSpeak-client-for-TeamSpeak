@@ -16,7 +16,7 @@
         type="button"
         class="ws-voice-channel-expander"
         data-ws-part="voice.channel-tree.expander"
-        :aria-label="`${expanded ? '收起' : '展开'} ${displayName} / ${expanded ? 'Collapse' : 'Expand'} channel`"
+        :aria-label="t(expanded ? 'channelCollapse' : 'channelExpand', { name: displayName })"
         :aria-expanded="expanded"
         @click.stop="emit('toggle', node.channel.id)"
       ><Icon :name="expanded ? 'chevron-down' : 'chevron-right'" :size="13" /></button>
@@ -26,7 +26,7 @@
         data-ws-part="voice.channel-tree.row"
         :data-spacer="spacer ? 'true' : undefined"
         :data-drag-over="memberDragDrop && dragOverChannelId === node.channel.id ? 'true' : undefined"
-        :title="`双击或按 Enter 加入 ${displayName} / Double-click or press Enter to join${node.channel.passwordProtected ? ' · 需要频道密码 / Channel password required' : ''}`"
+        :title="t('channelJoinTitle', { name: displayName }) + (node.channel.passwordProtected ? ` · ${t('channelPasswordRequired')}` : '')"
         :data-password-protected="node.channel.passwordProtected ? 'true' : undefined"
         @click="emit('select', node.channel.id)"
         @dblclick.stop.prevent="join"
@@ -45,7 +45,7 @@
         />
         <ChannelSpacer v-if="spacer" :spacer="spacer" />
         <span v-else class="ws-voice-channel-name" data-ws-part="voice.channel-tree.name">{{ node.channel.name }}</span>
-        <span v-if="!spacer && selected && !current" class="ws-voice-channel-join-hint" data-ws-part="voice.channel-tree.join-hint">双击加入</span>
+        <span v-if="!spacer && selected && !current" class="ws-voice-channel-join-hint" data-ws-part="voice.channel-tree.join-hint">{{ t("channelJoinHint") }}</span>
         <span v-if="!spacer" class="ws-voice-channel-count" data-ws-part="voice.channel-tree.count">
           {{ memberCount }}<template v-if="node.channel.maxClientsLimited && typeof node.channel.maxClients === 'number'">/{{ node.channel.maxClients }}</template>
         </span>
@@ -76,7 +76,7 @@
             aria-hidden="true"
           >{{ member.avatar ? '' : avatarInitial(member.nickname) }}</span>
           <span class="ws-voice-channel-member-name" data-ws-part="voice.channel-tree.member-name">{{ member.nickname }}</span>
-          <span v-if="member.isSelf" class="ws-voice-channel-member-self">你</span>
+          <span v-if="member.isSelf" class="ws-voice-channel-member-self">{{ t("you") }}</span>
           <Icon
             v-if="member.inputMuted"
             class="ws-voice-channel-member-muted"
@@ -256,7 +256,7 @@ const props = defineProps<{
   memberDragDrop?: boolean;
   draggedMemberId?: number | null;
   dragOverChannelId?: string;
-  t: (key: string) => string;
+  t: (key: string, variables?: Record<string, string | number>) => string;
 }>();
 
 const emit = defineEmits<{

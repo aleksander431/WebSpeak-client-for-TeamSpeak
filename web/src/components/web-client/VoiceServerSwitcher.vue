@@ -10,8 +10,8 @@
       type="button"
       class="ws-voice-server-switcher-trigger"
       data-ws-part="voice.server-switcher.trigger"
-      aria-label="切换服务器 / Switch server"
-      title="切换服务器 / Switch server"
+      :aria-label="t('switchServer')"
+      :title="t('switchServer')"
       :aria-expanded="open"
       aria-haspopup="true"
       @click="open = !open"
@@ -21,7 +21,7 @@
       class="ws-voice-server-switcher-menu"
       data-ws-part="voice.server-switcher.menu"
       role="group"
-      aria-label="快速切换服务器 / Quick server switch"
+      :aria-label="t('quickServerSwitch')"
     >
       <button
         v-for="server in servers"
@@ -44,7 +44,7 @@
         <Icon v-if="server.current" class="ws-voice-server-switcher-current" data-ws-part="voice.server-switcher.current" name="check" :size="14" />
       </button>
       <p v-if="!otherServerCount" class="ws-voice-server-switcher-empty" data-ws-part="voice.server-switcher.empty">
-        暂无其他收藏或最近连接的服务器。<br />Save or connect to another server to switch here.
+        {{ t("noOtherServers") }}
       </p>
     </div>
   </div>
@@ -54,6 +54,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { SkinPluginQuickServer } from "../../services/skin-plugin-context.js";
 import Icon from "../Icon.vue";
+import { useWebClientT } from "../../composables/useWebClientT.js";
+
+const t = useWebClientT();
 
 const props = defineProps<{
   servers: readonly SkinPluginQuickServer[];

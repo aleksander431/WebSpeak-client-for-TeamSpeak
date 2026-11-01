@@ -42,7 +42,7 @@ export interface SessionEventOptions {
   isPublished(): boolean;
   isConnected(): boolean;
   sendJson(message: ServerMessage): void;
-  addEvent(kind: "joined" | "left" | "moved" | "poke", message: string): void;
+  addEvent(kind: "joined" | "left" | "moved" | "poke", message: string, code?: string, params?: Record<string, string>): void;
   onDirectoryReady(): void;
   onClientLeave(id: number): void;
   onClientMove(id: number, channelId: bigint): void;
@@ -99,7 +99,7 @@ export class SessionEventCoordinator {
       if (options.isPublished()) {
         this.publishDirectory();
         if (!wasKnown) options.sendJson({ type: "memberEnter", id: info.id, nickname: info.nickname, uid: info.uid, isSelf: info.id === this.clientId });
-        if (!wasKnown && info.id !== this.clientId) options.addEvent("joined", `${info.nickname || "未知用户"} 加入了服务器`);
+        if (!wasKnown && info.id !== this.clientId) options.addEvent("joined", `${info.nickname || "未知用户"} 加入了服务器`, "memberJoined", { name: info.nickname || "" });
         this.avatars.schedule();
       }
     });
@@ -111,7 +111,7 @@ export class SessionEventCoordinator {
       if (options.isPublished() && member) {
         options.sendJson({ type: "memberLeave", id: info.id });
         this.publishDirectory();
-        if (info.id !== this.clientId) options.addEvent("left", `${member.nickname || "用户"} 离开了服务器`);
+        if (info.id !== this.clientId) options.addEvent("left", `${member.nickname || "用户"} 离开了服务器`, "memberLeft", { name: member.nickname || "" });
       }
     });
     this.listenDirectory("clientMoved", info => {
@@ -123,7 +123,7 @@ export class SessionEventCoordinator {
       this.refresh();
       if (options.isPublished()) {
         this.publishDirectory();
-        if (info.id !== this.clientId) options.addEvent("moved", `${member?.nickname || "用户"} 移动到了其他频道`);
+        if (info.id !== this.clientId) options.addEvent("moved", `${member?.nickname || "用户"} 移动到了其他频道`, "memberMoved", { name: member?.nickname || "" });
       }
     });
     this.listenDirectory("clientUpdated", info => {
@@ -159,7 +159,7 @@ export class SessionEventCoordinator {
     });
     this.listen("poked", event => {
       options.sendJson({ type: "pokeReceived", invokerId: event.invokerID, invokerUid: event.invokerUID, invokerName: event.invokerName, message: event.message, timestamp: Date.now() });
-      options.addEvent("poke", `${event.invokerName || "用户"} 戳了你一下`);
+      options.addEvent("poke", `${event.invokerName || "用户"} 戳了你一下`, "poked", { name: event.invokerName || "" });
     });
     this.listen("kicked", options.onKick);
     this.listen("disconnected", options.onDisconnect);
@@ -231,10 +231,10 @@ export class SessionEventCoordinator {
     const before = new Map(previous.map(channel => [channel.id, channel]));
     const after = new Map(this.options.state.channelTree.map(channel => [channel.id, channel]));
     for (const channel of after.values()) {
-      if (!before.has(channel.id)) this.options.addEvent("joined", `频道「${channel.name}」已创建`);
-      else if (before.get(channel.id)?.name !== channel.name) this.options.addEvent("moved", `频道已重命名为「${channel.name}」`);
+      if (!before.has(channel.id)) this.options.addEvent("joined", `频道「${channel.name}」已创建`, "channelCreated", { channel: channel.name });
+      else if (before.get(channel.id)?.name !== channel.name) this.options.addEvent("moved", `频道已重命名为「${channel.name}」`, "channelRenamed", { channel: channel.name });
     }
-    for (const channel of before.values()) if (!after.has(channel.id)) this.options.addEvent("left", `频道「${channel.name}」已删除`);
+    for (const channel of before.values()) if (!after.has(channel.id)) this.options.addEvent("left", `频道「${channel.name}」已删除`, "channelDeleted", { channel: channel.name });
   }
 
   reset(): void {

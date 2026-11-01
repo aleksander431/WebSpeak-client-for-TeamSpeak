@@ -66,7 +66,8 @@
         "qqGroup": "WebSpeak项目QQ群",
         "adminConsole": "管理控制台",
         "communityLinks": "社区与管理入口",
-        "kaakOpenWhiteboard": "打开白板"
+        "kaakOpenWhiteboard": "打开白板",
+        "kaakPeopleSuffix": "人"
       }
     },
     "en": {
@@ -134,7 +135,8 @@
         "qqGroup": "WebSpeak project QQ group",
         "adminConsole": "Admin console",
         "communityLinks": "Community and administration",
-        "kaakOpenWhiteboard": "Open whiteboard"
+        "kaakOpenWhiteboard": "Open whiteboard",
+        "kaakPeopleSuffix": "people"
       }
     },
     "de": {
@@ -202,7 +204,8 @@
         "qqGroup": "QQ-Gruppe des WebSpeak-Projekts",
         "adminConsole": "Administrationskonsole",
         "communityLinks": "Community und Verwaltung",
-        "kaakOpenWhiteboard": "Whiteboard öffnen"
+        "kaakOpenWhiteboard": "Whiteboard öffnen",
+        "kaakPeopleSuffix": "Personen"
       }
     },
     "ru": {
@@ -270,7 +273,8 @@
         "qqGroup": "Группа QQ проекта WebSpeak",
         "adminConsole": "Панель администратора",
         "communityLinks": "Сообщество и управление",
-        "kaakOpenWhiteboard": "Открыть доску"
+        "kaakOpenWhiteboard": "Открыть доску",
+        "kaakPeopleSuffix": "чел."
       }
     },
     "ja": {
@@ -338,7 +342,8 @@
         "qqGroup": "WebSpeak プロジェクトの QQ グループ",
         "adminConsole": "管理コンソール",
         "communityLinks": "コミュニティと管理",
-        "kaakOpenWhiteboard": "ホワイトボードを開く"
+        "kaakOpenWhiteboard": "ホワイトボードを開く",
+        "kaakPeopleSuffix": "人"
       }
     }
   }

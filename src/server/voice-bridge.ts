@@ -310,12 +310,13 @@ export class VoiceBridge {
       const isSettling = () => session.state === "authenticating" || session.state === "syncing";
       let reconnectStartedAt = 0;
       let reconnectAttempt = 0;
-      const addServerEvent = (kind: ServerEvent["kind"], message: string) => {
+      const addServerEvent = (kind: ServerEvent["kind"], message: string, code?: string, params?: Record<string, string>) => {
         const event: ServerEvent = {
           id: `event-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
           kind,
           message,
           timestamp: Date.now(),
+          ...(code ? { code, params: params ?? {} } : {}),
         };
         entry!.eventLog.push(event);
         if (entry!.eventLog.length > 200) entry!.eventLog.splice(0, entry!.eventLog.length - 200);
@@ -329,7 +330,7 @@ export class VoiceBridge {
         reconnectAttempt = 0;
         reconnectStartedAt = 0;
         if (!wasReconnecting) {
-          entry!.eventLog.push({ id: `event-${Date.now().toString(36)}-connected`, kind: "connection", message: "已连接到服务器", timestamp: Date.now() });
+          entry!.eventLog.push({ id: `event-${Date.now().toString(36)}-connected`, kind: "connection", message: "已连接到服务器", timestamp: Date.now(), code: "connected", params: {} });
           this.logger.info({
             entryId: entry!.id,
             nickname: entry!.nickname,

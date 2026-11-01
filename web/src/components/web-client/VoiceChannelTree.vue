@@ -5,7 +5,7 @@
     data-ws-part="voice.channel-tree.list"
     :data-layout="layout"
     role="tree"
-    aria-label="语音频道 / Voice channels"
+    :aria-label="t('voiceChannels')"
   >
     <VoiceChannelTreeItem
       v-for="node in visibleTree"
@@ -41,7 +41,7 @@
     class="ws-voice-channel-tree-empty"
     data-ws-part="voice.channel-tree.empty"
     role="status"
-  >{{ query.trim() ? "没有匹配的频道 / No matching channels" : "无可用语音频道 / No voice channels" }}</div>
+  >{{ query.trim() ? t("noMatchingChannels") : t("noVoiceChannels") }}</div>
 </template>
 
 <script setup lang="ts">
@@ -64,7 +64,7 @@ const props = defineProps<{
   memberDragDrop?: boolean;
   draggedMemberId?: number | null;
   dragOverChannelId?: string;
-  t: (key: string) => string;
+  t: (key: string, variables?: Record<string, string | number>) => string;
 }>();
 
 const tree = computed(() => buildVoiceChannelTree(props.channels));

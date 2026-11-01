@@ -107,7 +107,7 @@
           class="event-row"
           data-ws-part="voice.chat.event"
           ><time>{{ formatTime(event.timestamp) }}</time
-          ><span>{{ event.message }}</span></article
+          ><span>{{ eventText(event) }}</span></article
         >
         <div
           v-if="!serverEvents.length"
@@ -250,5 +250,14 @@ const composing = ref(false);
 function guardComposition(event: KeyboardEvent): void {
   // Android IME and Safari can confirm a candidate with Enter; that is not Send.
   if (composing.value || event.isComposing || event.keyCode === 229) event.preventDefault();
+}
+
+/** Gateway events carry a translation code; older gateways only send Chinese text. */
+function eventText(event: ServerEvent): string {
+  if (!event.code) return event.message;
+  const key = `event_${event.code}`;
+  const params = Object.fromEntries(Object.entries(event.params ?? {}).map(([name, value]) => [name, value || props.t("someUser")]));
+  const text = props.t(key, params);
+  return text === key ? event.message : text;
 }
 </script>

@@ -9,7 +9,7 @@
         @click="toggleEditorMode"
       >
         <span aria-hidden="true">⚙</span>
-        {{ editorMode.isEnabled.value ? "退出编辑器 / Exit editor" : "编辑器模式 / Editor mode" }}
+        {{ editorMode.isEnabled.value ? t("exitEditor") : t("editorMode") }}
       </button>
       <button
         v-if="editorMode.isEnabled.value"
@@ -152,6 +152,9 @@ import { useSkinLayoutEditor } from "../composables/useSkinLayoutEditor.js";
 import { promoteHostEditorToTopLayer } from "../services/host-editor-top-layer.js";
 import { useSkinEditorMode } from "../services/skin-editor-mode.js";
 import { useRoute } from "vue-router";
+import { useWebClientT } from "../composables/useWebClientT.js";
+
+const t = useWebClientT();
 
 const editor = useSkinLayoutEditor();
 const editorMode = useSkinEditorMode();

@@ -79,7 +79,14 @@ function channel(value: unknown): value is ChannelInfo {
 }
 
 function event(value: unknown): value is ServerEvent {
-  return isRecord(value) && text(value.id) && text(value.kind) && text(value.message) && finite(value.timestamp);
+  if (!(isRecord(value) && text(value.id) && text(value.kind) && text(value.message) && finite(value.timestamp))) return false;
+  // Optional translation data; anything malformed is dropped so the message text is shown instead.
+  if (value.code !== undefined && !(typeof value.code === "string" && /^[A-Za-z]{1,40}$/.test(value.code)
+    && isRecord(value.params) && Object.values(value.params).every((item) => typeof item === "string" && item.length <= 200))) {
+    delete value.code;
+    delete value.params;
+  }
+  return true;
 }
 
 export function parseVoiceAudioBridgeStats(value: unknown): VoiceAudioBridgeStats | null {
