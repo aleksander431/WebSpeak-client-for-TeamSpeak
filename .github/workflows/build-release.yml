@@ -368,6 +368,8 @@ jobs:
         run: |
           set -euo pipefail
           cd release-assets
+          # The audio helper ships inside the installer; it is not a download of its own.
+          rm -f webspeak-audio-capture.exe
           sha256sum * > SHA256SUMS.txt
       - name: Publish GitHub release
         env:
