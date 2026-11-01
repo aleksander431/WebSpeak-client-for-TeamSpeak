@@ -65,7 +65,8 @@
         "githubRepository": "Webspeak项目Github",
         "qqGroup": "WebSpeak项目QQ群",
         "adminConsole": "管理控制台",
-        "communityLinks": "社区与管理入口"
+        "communityLinks": "社区与管理入口",
+        "kaakOpenWhiteboard": "打开白板"
       }
     },
     "en": {
@@ -132,7 +133,8 @@
         "githubRepository": "WebSpeak project GitHub",
         "qqGroup": "WebSpeak project QQ group",
         "adminConsole": "Admin console",
-        "communityLinks": "Community and administration"
+        "communityLinks": "Community and administration",
+        "kaakOpenWhiteboard": "Open whiteboard"
       }
     },
     "de": {
@@ -199,7 +201,8 @@
         "githubRepository": "GitHub-Repository des WebSpeak-Projekts",
         "qqGroup": "QQ-Gruppe des WebSpeak-Projekts",
         "adminConsole": "Administrationskonsole",
-        "communityLinks": "Community und Verwaltung"
+        "communityLinks": "Community und Verwaltung",
+        "kaakOpenWhiteboard": "Whiteboard öffnen"
       }
     },
     "ru": {
@@ -266,7 +269,8 @@
         "githubRepository": "GitHub проекта WebSpeak",
         "qqGroup": "Группа QQ проекта WebSpeak",
         "adminConsole": "Панель администратора",
-        "communityLinks": "Сообщество и управление"
+        "communityLinks": "Сообщество и управление",
+        "kaakOpenWhiteboard": "Открыть доску"
       }
     },
     "ja": {
@@ -333,7 +337,8 @@
         "githubRepository": "WebSpeak プロジェクトの GitHub",
         "qqGroup": "WebSpeak プロジェクトの QQ グループ",
         "adminConsole": "管理コンソール",
-        "communityLinks": "コミュニティと管理"
+        "communityLinks": "コミュニティと管理",
+        "kaakOpenWhiteboard": "ホワイトボードを開く"
       }
     }
   }

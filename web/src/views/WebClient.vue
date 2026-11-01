@@ -1903,6 +1903,7 @@ const skinPluginActions = {
     if (voiceState.connected && !screenShareActive.value && !screenShareStarting.value) void startScreenShare();
   },
   "voice.stopScreenShare": () => { if (screenShareActive.value) stopScreenShare(); },
+  "voice.openWhiteboard": () => { if (voiceState.connected) openWhiteboard(); },
   "voice.joinScreenShare": (args: Record<string, string | number | boolean>) => {
     if (!voiceState.connected || typeof args.streamId !== "string") return;
     if (screenShareStreams.some((stream) => stream.streamId === args.streamId)) joinScreenShare(args.streamId);

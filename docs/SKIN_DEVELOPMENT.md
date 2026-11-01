@@ -294,6 +294,7 @@ widget 的可选 `mount` 只接受这些公开锚点：`home.header.after`、`ho
 - `ui.setState` 和 schema v3 的 `ui.toggleState` 只修改该组件隔离的本地状态。
 - schema v3 还支持经相应权限验证的本人麦克风/扬声器静音、降噪、伴奏、输出音量、音频设置、断开连接、离开状态、悄悄话和屏幕共享操作。`voice.startScreenShare` 必须通过可信宿主控件触发，以保留浏览器的用户操作授权。
 - 屏幕共享成员标记可读取 `session.members` 中的 `screenSharing` 和 `screenShareStreamId`；观看操作 `voice.joinScreenShare` 还需 `voice.screenShare.control`。
+- 频道白板入口：动作 `voice.openWhiteboard`（无参数）需权限 `voice.whiteboard.open`，仅在已连接时打开宿主的可信白板面板；绘制、图片和页面内容都留在宿主内，不暴露给皮肤。KAAK 在语音区标题的邀请链接旁和移动端房间菜单中提供该入口。
 
 控件节点将 WebSpeak 原生控件放进皮肤布局，但不会暴露其内部状态或数据对象。事件可包含 click、dblclick、键盘、焦点、指针和拖放等受限类型；被动事件只能改动组件本地状态，敏感动作必须由可信的明确用户操作触发。宿主再次校验目标、令牌、共享 ID 和当前权限。
 

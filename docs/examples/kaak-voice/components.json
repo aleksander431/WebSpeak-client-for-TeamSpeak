@@ -399,7 +399,8 @@
         "voice.disconnect",
         "voice.screenShare.status.read",
         "voice.screenShare.read",
-        "voice.screenShare.control"
+        "voice.screenShare.control",
+        "voice.whiteboard.open"
       ],
       "actions": {
         "switch-server": {
@@ -466,6 +467,10 @@
           "args": {
             "key": "voicegroupopen"
           }
+        },
+        "open-whiteboard": {
+          "type": "voice.openWhiteboard",
+          "args": {}
         }
       },
       "state": {
@@ -746,6 +751,23 @@
                 "children": [
                   {
                     "text": "{{skin.messages.kaakCopyInviteLink}}"
+                  }
+                ]
+              },
+              {
+                "tag": "button",
+                "part": "mobile-room-whiteboard",
+                "attributes": {
+                  "type": "button",
+                  "role": "menuitem",
+                  "aria-label": "{{skin.messages.kaakOpenWhiteboard}}"
+                },
+                "events": {
+                  "click": "open-whiteboard"
+                },
+                "children": [
+                  {
+                    "text": "{{skin.messages.kaakOpenWhiteboard}}"
                   }
                 ]
               },
@@ -1151,6 +1173,54 @@
                             "children": [
                               {
                                 "text": "/{{stagechannel.maxClients}}"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "tag": "button",
+                        "part": "voice-stage-whiteboard",
+                        "className": "voice-stage-whiteboard",
+                        "attributes": {
+                          "type": "button",
+                          "aria-label": "{{skin.messages.kaakOpenWhiteboard}}",
+                          "title": "{{skin.messages.kaakOpenWhiteboard}}"
+                        },
+                        "events": {
+                          "click": "open-whiteboard"
+                        },
+                        "children": [
+                          {
+                            "tag": "svg",
+                            "className": "voice-stage-action-icon",
+                            "attributes": {
+                              "width": 18,
+                              "height": 18,
+                              "viewbox": "0 0 24 24",
+                              "fill": "none",
+                              "stroke": "currentColor",
+                              "stroke-width": 1.8,
+                              "stroke-linecap": "round",
+                              "stroke-linejoin": "round",
+                              "aria-hidden": "true"
+                            },
+                            "children": [
+                              {
+                                "tag": "rect",
+                                "attributes": {
+                                  "x": 3,
+                                  "y": 4,
+                                  "width": 18,
+                                  "height": 13,
+                                  "rx": 1.5
+                                }
+                              },
+                              {
+                                "tag": "path",
+                                "attributes": {
+                                  "d": "M8 21l2-4m6 4-2-4M7 13l3-3 2 2 4-4"
+                                }
                               }
                             ]
                           }

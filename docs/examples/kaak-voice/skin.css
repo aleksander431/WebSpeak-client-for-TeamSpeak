@@ -4703,3 +4703,34 @@
 @media (prefers-reduced-motion: reduce) {
   [data-ws-plugin-part="kaak-workspace.rail-links"] a { transition: none; }
 }
+
+/* Whiteboard entry next to the invite link (same look). */
+[data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"] {
+  display: grid;
+  flex: 0 0 34px;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--skin-kaak-border);
+  border-radius: 9px;
+  color: var(--skin-kaak-muted);
+  background: var(--skin-kaak-raised);
+  cursor: pointer;
+  transition: color .16s ease, background-color .16s ease, border-color .16s ease;
+}
+
+[data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"] .voice-stage-action-icon {
+  display: block;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  aspect-ratio: 1 / 1;
+}
+
+[data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"]:hover,
+[data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"]:focus-visible {
+  color: var(--skin-kaak-text);
+  border-color: #5a7e35;
+  background: #33363b;
+}
