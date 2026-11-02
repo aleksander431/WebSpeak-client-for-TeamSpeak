@@ -1,6 +1,6 @@
 import { createRemotePlayback } from "../voice/remote-playback.js";
 import { createMicrophoneTest } from "../voice/microphone-test.js";
-import { createMicrophoneCaptureFactory, type MicrophoneCapture, type MicrophoneProcessingSettings } from "../voice/microphone-capture.js";
+import { createMicrophoneCaptureFactory, type MicrophoneCapture, type MicrophoneProcessingSettings, type NoiseGateSettings, type NoiseSuppressionLevel } from "../voice/microphone-capture.js";
 export type { MicrophoneProcessingSettings } from "../voice/microphone-capture.js";
 import { createAudioSinkRouter } from "../voice/audio-sink.js";
 import { createAccompaniment, type AccompanimentErrorCode } from "../voice/accompaniment.js";
@@ -327,6 +327,10 @@ export function useVoiceWebSocket() {
   /** The microphone reaches other people: not muted, and push-to-talk (if on) held. */
   const transmitting = () => !microphoneMuted.value && voiceGateOpen();
   const noiseSuppressionEnabled = ref(true);
+  /** "strong" runs RNNoise twice for a steady hiss. */
+  const noiseSuppressionLevel = ref<NoiseSuppressionLevel>("normal");
+  /** Silence the sent microphone below the voice-activation threshold. */
+  const noiseGateEnabled = ref(false);
   let noiseSuppressionTouched = false;
   let committedNoiseSuppressionEnabled = noiseSuppressionEnabled.value;
   const inputVolume = ref(1);
@@ -434,6 +438,8 @@ export function useVoiceWebSocket() {
       inputDeviceId: committedInputDeviceId,
       microphoneMuted: microphoneMuted.value,
       noiseSuppressionEnabled: committedNoiseSuppressionEnabled,
+      noiseSuppressionLevel: noiseSuppressionLevel.value,
+      noiseGateEnabled: noiseGateEnabled.value,
       voxThreshold: voxThreshold.value,
       inputGain: inputVolume.value,
       outputVolume: outputVolume.value,
@@ -462,6 +468,9 @@ export function useVoiceWebSocket() {
       committedNoiseSuppressionEnabled = preferences.noiseSuppressionEnabled;
     }
     if (typeof preferences.voxThreshold === "number") voxThreshold.value = clamp(preferences.voxThreshold, 0.001, 0.08);
+    if (preferences.noiseSuppressionLevel === "normal" || preferences.noiseSuppressionLevel === "strong") noiseSuppressionLevel.value = preferences.noiseSuppressionLevel;
+    if (typeof preferences.noiseGateEnabled === "boolean") noiseGateEnabled.value = preferences.noiseGateEnabled;
+    microphoneCapture?.setNoiseGate(noiseGateSettings());
     if (typeof preferences.inputGain === "number") inputVolume.value = Math.max(0, Math.min(1, preferences.inputGain));
     if (typeof preferences.outputVolume === "number") outputVolume.value = Math.max(0, Math.min(1, preferences.outputVolume));
     if (!outputDeviceTouched) {
@@ -734,7 +743,8 @@ export function useVoiceWebSocket() {
       factoryOwnsStream = true;
       nextCapture = await microphoneCaptureFactory.prepare({
         context: ctx, stream: nextStream, signal: controller.signal, assertCurrent,
-        noiseSuppression: noiseSuppressionEnabled.value, volume: inputVolume.value, onSamples: handleCaptureChunk,
+        noiseSuppression: noiseSuppressionEnabled.value, noiseSuppressionLevel: noiseSuppressionLevel.value,
+        noiseGate: noiseGateSettings(), volume: inputVolume.value, onSamples: handleCaptureChunk,
       });
       assertCurrent();
       // Commit only a complete graph. Permission and node failures leave the
@@ -1463,6 +1473,7 @@ export function useVoiceWebSocket() {
   function setInputVolume(volume: number): void {
     inputVolume.value = Math.max(0, Math.min(1, volume));
     microphoneCapture?.setVolume(inputVolume.value);
+    microphoneCapture?.setNoiseGate(noiseGateSettings());
     applyTransmitState();
     void saveAudioPreferences();
   }
@@ -1491,7 +1502,29 @@ export function useVoiceWebSocket() {
 
   function setVoxThreshold(threshold: number): void {
     voxThreshold.value = clamp(threshold, 0.001, 0.08);
+    microphoneCapture?.setNoiseGate(noiseGateSettings());
     void saveAudioPreferences();
+  }
+
+  function noiseGateSettings(): NoiseGateSettings {
+    return { enabled: noiseGateEnabled.value, threshold: voxThreshold.value, volume: inputVolume.value };
+  }
+
+  function setNoiseGateEnabled(enabled: boolean): void {
+    noiseGateEnabled.value = enabled;
+    microphoneCapture?.setNoiseGate(noiseGateSettings());
+    void saveAudioPreferences();
+  }
+
+  async function setNoiseSuppressionLevel(level: NoiseSuppressionLevel): Promise<void> {
+    if (noiseSuppressionLevel.value === level) return;
+    noiseSuppressionLevel.value = level;
+    if (!noiseSuppressionEnabled.value) { void saveAudioPreferences(); return; }
+    try {
+      await reconfigureMicrophone();
+    } catch (error) {
+      setMicrophoneError(error);
+    }
   }
 
   function setAccompanimentVolume(volume: number): void {
@@ -1522,6 +1555,10 @@ export function useVoiceWebSocket() {
     pokeNotifications,
     microphoneMuted,
     noiseSuppressionEnabled,
+    noiseSuppressionLevel,
+    noiseGateEnabled,
+    setNoiseSuppressionLevel,
+    setNoiseGateEnabled,
     inputVolume,
     outputVolume,
     outputMuted,

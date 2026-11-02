@@ -86,6 +86,37 @@
                 :checked="noiseSuppressionEnabled"
                 :aria-label="t('noiseSuppression')"
                 @change="onNoiseSuppressionToggle" /></label
+              ><div
+                class="noise-level-switch"
+                data-ws-part="voice.audio-settings.noise-level"
+                ><span class="settings-label">{{ t("noiseSuppressionLevel") }}</span
+                ><div
+                  class="noise-level-options"
+                  role="radiogroup"
+                  :aria-label="t('noiseSuppressionLevel')"
+                  ><button
+                    v-for="level in (['normal', 'strong'] as const)"
+                    :key="level"
+                    type="button"
+                    role="radio"
+                    :aria-checked="noiseSuppressionLevel === level"
+                    :class="{ active: noiseSuppressionLevel === level }"
+                    :disabled="!noiseSuppressionEnabled"
+                    @click="chooseNoiseSuppressionLevel(level)"
+                    >{{ level === "normal" ? t("noiseSuppressionNormal") : t("noiseSuppressionStrong") }}</button
+                  ></div
+                ></div
+              ><label
+                class="noise-suppression-toggle settings-form-row"
+                data-ws-part="voice.audio-settings.noise-gate"
+                ><span
+                  ><strong>{{ t("noiseGate") }}</strong
+                  ><small>{{ t("noiseGateHint") }}</small></span
+                ><input
+                  type="checkbox"
+                  :checked="noiseGateEnabled"
+                  :aria-label="t('noiseGate')"
+                  @change="onNoiseGateToggle" /></label
               ><div class="settings-form-row settings-range-form-row"
                 ><label class="settings-label">{{ t("inputVolume") }}</label
                 ><div class="settings-form-control"
@@ -122,7 +153,12 @@
               ><span>{{ t("micLevel") }}</span
               ><strong>{{ Math.round(micLevel * 100) }}%</strong></div
             ><div class="audio-level-track"
-              ><i :style="{ width: `${Math.round(micLevel * 100)}%` }"></i></div
+              ><i :style="{ width: `${Math.round(micLevel * 100)}%` }"></i
+              ><b
+                class="audio-level-threshold"
+                :title="t('voxThreshold')"
+                :style="{ left: `${Math.min(100, voxThreshold * 600)}%` }"
+              ></b></div
             ><div class="mic-test"
               ><div class="mic-test-header"
                 ><strong>{{ t("microphoneTest") }}</strong
@@ -284,6 +320,8 @@ type AudioSettingsState = Pick<ReturnType<typeof useVoiceWebSocket>,
   | "audioContextState"
   | "microphoneMuted"
   | "noiseSuppressionEnabled"
+  | "noiseSuppressionLevel"
+  | "noiseGateEnabled"
   | "inputVolume"
   | "outputVolume"
   | "voxThreshold"
@@ -297,6 +335,8 @@ type AudioSettingsControls = Pick<ReturnType<typeof useWebClientAudioControls>,
   | "settingsError"
   | "onInputVolume"
   | "onNoiseSuppressionToggle"
+  | "chooseNoiseSuppressionLevel"
+  | "onNoiseGateToggle"
   | "onOutputVolume"
   | "onVoxThreshold"
   | "onNotificationVolume"
@@ -331,6 +371,8 @@ const {
   audioContextState,
   microphoneMuted,
   noiseSuppressionEnabled,
+  noiseSuppressionLevel,
+  noiseGateEnabled,
   inputVolume,
   outputVolume,
   voxThreshold,
@@ -344,6 +386,8 @@ const {
   settingsError: audioSettingsError,
   onInputVolume,
   onNoiseSuppressionToggle,
+  chooseNoiseSuppressionLevel,
+  onNoiseGateToggle,
   onOutputVolume,
   onVoxThreshold,
   onNotificationVolume,

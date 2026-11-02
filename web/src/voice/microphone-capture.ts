@@ -10,11 +10,24 @@ export interface MicrophoneProcessingSettings {
   rnnoise: boolean | null;
 }
 
+/** "strong" runs RNNoise twice, which removes more of a steady hiss. */
+export type NoiseSuppressionLevel = "normal" | "strong";
+
+export interface NoiseGateSettings {
+  enabled: boolean;
+  /** Linear RMS, the same scale as the voice-activation threshold. */
+  threshold: number;
+  /** Input volume, so the gate compares the level people actually hear. */
+  volume: number;
+}
+
 export interface MicrophoneCapture {
   processedStream: MediaStream;
   processing: MicrophoneProcessingSettings;
   activate(): void;
   setVolume(value: number): void;
+  /** Update the noise gate on the sent audio; no effect where worklets are unsupported. */
+  setNoiseGate(settings: NoiseGateSettings): void;
   stopCapture(): void;
   dispose(): void;
 }
@@ -23,6 +36,8 @@ interface CaptureOptions {
   context: AudioContext;
   stream: MediaStream;
   noiseSuppression: boolean;
+  noiseSuppressionLevel?: NoiseSuppressionLevel;
+  noiseGate?: NoiseGateSettings;
   volume: number;
   signal: AbortSignal;
   assertCurrent(): void;
@@ -53,6 +68,8 @@ export function createMicrophoneCaptureFactory() {
     const { context: ctx, stream, assertCurrent } = options;
     let source: MediaStreamAudioSourceNode | null = null;
     let denoiser: RnnoiseWorkletNode | null = null;
+    let secondDenoiser: RnnoiseWorkletNode | null = null;
+    let noiseGate: AudioWorkletNode | null = null;
     let destination: MediaStreamAudioDestinationNode | null = null;
     let gain: GainNode | null = null;
     let silent: GainNode | null = null;
@@ -74,6 +91,8 @@ export function createMicrophoneCaptureFactory() {
       disposed = true;
       stopCapture();
       if (denoiser) { clean(() => denoiser!.destroy()); clean(() => denoiser!.disconnect()); }
+      if (secondDenoiser) { clean(() => secondDenoiser!.destroy()); clean(() => secondDenoiser!.disconnect()); }
+      if (noiseGate) { clean(() => noiseGate!.port.close()); clean(() => noiseGate!.disconnect()); }
       if (source) clean(() => source!.disconnect());
       if (destination) {
         clean(() => destination!.disconnect());
@@ -101,16 +120,37 @@ export function createMicrophoneCaptureFactory() {
           const [wasmBinary] = await Promise.all([wasmPromise, loadModule(ctx, rnnoiseWorkletUrl)]);
           assertCurrent();
           denoiser = new RnnoiseWorkletNode(ctx, { maxChannels: 1, wasmBinary });
+          if (options.noiseSuppressionLevel === "strong") secondDenoiser = new RnnoiseWorkletNode(ctx, { maxChannels: 1, wasmBinary });
         } catch {
           assertCurrent(); // RNNoise is optional; cancellation is not a fallback.
         }
       }
-      const processedSource = denoiser ?? source;
       if (denoiser) source.connect(denoiser);
+      if (denoiser && secondDenoiser) denoiser.connect(secondDenoiser);
+      const processedSource: AudioNode = secondDenoiser ?? denoiser ?? source;
       destination = ctx.createMediaStreamDestination();
       destination.channelCount = 1;
       destination.channelCountMode = "explicit";
-      processedSource.connect(destination);
+      // The gate sits only on the sent stream (WebRTC). The level meter and the
+      // compatibility path keep seeing the ungated signal; that path has its own
+      // voice activation.
+      if (supportsWorklet) {
+        try {
+          await loadModule(ctx, "/noise-gate-worklet.js");
+          assertCurrent();
+          noiseGate = new AudioWorkletNode(ctx, "webspeak-noise-gate", {
+            numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+            ...(options.noiseGate ? { processorOptions: { ...options.noiseGate } } : {}),
+          });
+          noiseGate.connect(destination);
+          processedSource.connect(noiseGate);
+        } catch {
+          assertCurrent(); // The gate is optional: send the signal directly instead.
+          if (noiseGate) { clean(() => noiseGate!.port.close()); clean(() => noiseGate!.disconnect()); }
+          noiseGate = null;
+        }
+      }
+      if (!noiseGate) processedSource.connect(destination);
       gain = ctx.createGain();
       gain.gain.value = options.volume;
       silent = ctx.createGain();
@@ -149,6 +189,9 @@ export function createMicrophoneCaptureFactory() {
           noiseSuppression: typeof settings.noiseSuppression === "boolean" ? settings.noiseSuppression : null,
           autoGainControl: typeof settings.autoGainControl === "boolean" ? settings.autoGainControl : null,
           rnnoise: Boolean(denoiser),
+        },
+        setNoiseGate(settings) {
+          try { noiseGate?.port.postMessage({ enabled: settings.enabled, threshold: settings.threshold, volume: settings.volume }); } catch { /* gate already released */ }
         },
         activate() { if (!disposed && (worklet || script)) active = true; },
         setVolume(value) { if (gain) gain.gain.value = value; },

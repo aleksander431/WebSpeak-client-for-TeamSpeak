@@ -146,6 +146,8 @@ export interface LocalPreferences {
   skinId?: string;
   microphoneMuted?: boolean;
   noiseSuppressionEnabled?: boolean;
+  noiseSuppressionLevel?: "normal" | "strong";
+  noiseGateEnabled?: boolean;
   voxThreshold?: number;
   language?: "zh" | "en" | "de" | "ru" | "ja";
   preferredInputDeviceId?: string;

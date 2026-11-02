@@ -8690,3 +8690,55 @@
 :deep(.chat-attachment-missing) {
   opacity: .7;
 }
+
+/* Noise suppression strength and the voice threshold mark on the level bar. */
+:deep(.noise-level-switch) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -6px 0 12px;
+}
+
+:deep(.noise-level-options) {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+:deep(.noise-level-options button) {
+  min-height: 28px;
+  padding: 0 12px;
+  color: var(--text-muted);
+  background: transparent;
+  border-radius: 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+:deep(.noise-level-options button.active) {
+  color: #fff;
+  background: var(--accent, #006a64);
+}
+
+:deep(.noise-level-options button:disabled) {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+:deep(.audio-level-track) {
+  position: relative;
+}
+
+:deep(.audio-level-threshold) {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text-primary, #23302c);
+  opacity: .7;
+  pointer-events: none;
+}
