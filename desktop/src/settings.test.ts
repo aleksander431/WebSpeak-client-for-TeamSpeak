@@ -76,7 +76,8 @@ test("hotkeys report taken keys, ignore auto-repeat and re-register cleanly", ()
 });
 
 test("web client state is validated before it reaches the tray", () => {
-  assert.deepEqual(parseWebClientState({ connected: true, micMuted: false, soundMuted: true, streaming: false, extra: 1 }), { connected: true, micMuted: false, soundMuted: true, streaming: false });
+  assert.deepEqual(parseWebClientState({ connected: true, micMuted: false, soundMuted: true, streaming: false, extra: 1 }), { connected: true, micMuted: false, soundMuted: true, streaming: false, speaking: false }, "older pages without speaking");
+  assert.equal(parseWebClientState({ connected: true, micMuted: false, soundMuted: false, streaming: false, speaking: true })?.speaking, true);
   assert.equal(parseWebClientState({ connected: "yes" }), null);
   assert.equal(parseWebClientState(null), null);
 });

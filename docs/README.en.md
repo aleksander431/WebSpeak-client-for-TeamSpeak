@@ -195,6 +195,15 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
+### [v0.3.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.2) · 2026-11-02
+
+#### New features
+
+- A new WebSpeak icon on the site, in the browser tab and in the desktop client.
+- Desktop client: the tray icon lights up green while you talk (like TeamSpeak); a muted microphone or sound still shows the red badge.
+- Whiteboard dark theme: follow the page, light or dark; drawing colours are the same for everyone, only black and white swap in the dark theme.
+- The remaining Chinese labels in the channel list and server header and the event log are now translated.
+
 ### [v0.3.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.1) · 2026-11-01
 
 #### New features

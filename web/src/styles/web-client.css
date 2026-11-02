@@ -116,8 +116,10 @@
   display: block;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
-  object-fit: cover;
+  /* The logo is a round, transparent PNG. */
+  border-radius: 50%;
+  background: transparent;
+  object-fit: contain;
 }
 
 :deep(.brand-lockup strong) {
@@ -5949,7 +5951,7 @@
   .join-page :deep(.brand-mark) {
     width: 32px;
     height: 32px;
-    border-radius: 9px;
+    border-radius: 50%;
   }
   .join-page :deep(.brand-lockup strong) {
     overflow: hidden;

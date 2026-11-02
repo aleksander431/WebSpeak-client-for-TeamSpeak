@@ -54,7 +54,7 @@ let pickerWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let hotkeys: HotkeyManager;
 let hotkeyStatus: Record<HotkeyAction, HotkeyStatus> = { mic: "off", sound: "off", stream: "off" };
-let webState: WebClientState = { connected: false, micMuted: false, soundMuted: false, streaming: false };
+let webState: WebClientState = { connected: false, micMuted: false, soundMuted: false, streaming: false, speaking: false };
 let quitting = false;
 let updateState: { status: "idle" | "checking" | "downloading" | "ready" | "error" | "current"; version?: string } = { status: "idle" };
 let manualUpdateCheck = false;
@@ -156,7 +156,7 @@ function createMainWindow(): BrowserWindow {
 }
 
 function loadServer(window: BrowserWindow): void {
-  webState = { connected: false, micMuted: false, soundMuted: false, streaming: false };
+  webState = { connected: false, micMuted: false, soundMuted: false, streaming: false, speaking: false };
   refreshTray();
   // First start: ask for the server once; it is remembered afterwards.
   if (!settings.value.serverUrl) { void window.loadFile(join(STATIC, "setup.html")); return; }
@@ -304,6 +304,28 @@ async function runWebAction(action: HotkeyAction, fromHotkey: boolean): Promise<
 
 // ------------------------------------------------------------------ tray
 
+type TrayLook = "normal" | "speaking" | "muted";
+let trayLook: TrayLook | null = null;
+const trayImages = new Map<TrayLook, Electron.NativeImage>();
+
+/**
+ * Muted (microphone or sound) shows a red badge; otherwise the icon lights
+ * up with a green ring while you talk, like TeamSpeak's.
+ */
+function setTrayImage(): void {
+  if (!tray) return;
+  const look: TrayLook = webState.connected && (webState.micMuted || webState.soundMuted) ? "muted"
+    : webState.connected && webState.speaking ? "speaking" : "normal";
+  if (look === trayLook) return;
+  trayLook = look;
+  let image = trayImages.get(look);
+  if (!image) {
+    image = nativeImage.createFromPath(join(STATIC, look === "muted" ? "tray-muted.png" : look === "speaking" ? "tray-speaking.png" : "tray.png"));
+    trayImages.set(look, image);
+  }
+  tray.setImage(image);
+}
+
 /** Menus can only show accelerators Electron understands. */
 function menuAccelerator(accelerator: string): string | undefined {
   return accelerator && !needsNativeHotkey(accelerator) ? accelerator : undefined;
@@ -311,8 +333,7 @@ function menuAccelerator(accelerator: string): string | undefined {
 
 function refreshTray(): void {
   if (!tray) return;
-  const muted = webState.connected && (webState.micMuted || webState.soundMuted);
-  tray.setImage(nativeImage.createFromPath(join(STATIC, muted ? "tray-muted.png" : "tray.png")));
+  setTrayImage();
   const notes = [
     webState.connected && webState.micMuted ? t("tooltipMicMuted") : "",
     webState.connected && webState.soundMuted ? t("tooltipSoundMuted") : "",
@@ -400,8 +421,11 @@ function registerIpc(): void {
     if (!parsed) return;
     // The share ended: release the clean system-sound capture.
     if (webState.streaming && !parsed.streaming) systemAudio.stop();
+    const onlySpeakingChanged = webState.connected === parsed.connected && webState.micMuted === parsed.micMuted
+      && webState.soundMuted === parsed.soundMuted && webState.streaming === parsed.streaming;
     webState = parsed;
-    refreshTray();
+    if (onlySpeakingChanged) setTrayImage();
+    else refreshTray();
   });
   ipcMain.on("webspeak:open-settings", (event) => {
     if (mainWindow && event.sender === mainWindow.webContents) openSettings();

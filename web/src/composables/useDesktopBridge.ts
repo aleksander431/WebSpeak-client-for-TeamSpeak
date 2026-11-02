@@ -23,6 +23,8 @@ export interface DesktopState {
   micMuted: boolean;
   soundMuted: boolean;
   streaming: boolean;
+  /** You are talking right now (voice activity on an unmuted microphone). */
+  speaking?: boolean;
 }
 
 export interface DesktopBridgeOptions {

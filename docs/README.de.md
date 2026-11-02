@@ -185,6 +185,15 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v0.3.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.2) · 2026-11-02
+
+#### Neue Funktionen
+
+- Ein neues WebSpeak-Symbol auf der Website, im Browser-Tab und im Desktop-Client.
+- Desktop-Client: Das Symbol im Infobereich leuchtet grün, während du sprichst (wie bei TeamSpeak); stummes Mikrofon oder stummer Ton zeigen weiterhin das rote Abzeichen.
+- Dunkles Design für das Whiteboard: wie die Seite, hell oder dunkel; die Zeichenfarben sind für alle gleich, im dunklen Design tauschen nur Schwarz und Weiß.
+- Die restlichen chinesischen Beschriftungen in der Kanalliste, der Serverkopfzeile und im Ereignisprotokoll sind übersetzt.
+
 ### [v0.3.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.1) · 2026-11-01
 
 #### Neue Funktionen

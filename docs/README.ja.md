@@ -159,6 +159,15 @@ npm start
 
 <a id="latest-release-notes"></a>
 
+### [v0.3.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.2) · 2026-11-02
+
+#### 新機能
+
+- サイト、ブラウザーのタブ、デスクトップクライアントで使う新しい WebSpeak アイコン。
+- デスクトップクライアント：話している間はトレイアイコンが緑に光ります（TeamSpeak と同様）。マイクやサウンドのミュート中は従来どおり赤いバッジを表示します。
+- ホワイトボードのダークテーマ：ページに合わせる・ライト・ダーク。描画の色は全員共通で、ダークテーマでは黒と白だけが入れ替わります。
+- チャンネル一覧、サーバーヘッダー、イベントログに残っていた中国語の表示を翻訳しました。
+
 ### [v0.3.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.1) · 2026-11-01
 
 #### 新機能

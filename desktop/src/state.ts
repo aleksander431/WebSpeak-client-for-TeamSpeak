@@ -4,6 +4,8 @@ export interface WebClientState {
   micMuted: boolean;
   soundMuted: boolean;
   streaming: boolean;
+  /** Older server pages do not send it. */
+  speaking: boolean;
 }
 
 export function parseWebClientState(value: unknown): WebClientState | null {
@@ -11,5 +13,11 @@ export function parseWebClientState(value: unknown): WebClientState | null {
   const input = value as Record<string, unknown>;
   const keys = ["connected", "micMuted", "soundMuted", "streaming"] as const;
   if (!keys.every((key) => typeof input[key] === "boolean")) return null;
-  return { connected: input.connected as boolean, micMuted: input.micMuted as boolean, soundMuted: input.soundMuted as boolean, streaming: input.streaming as boolean };
+  return {
+    connected: input.connected as boolean,
+    micMuted: input.micMuted as boolean,
+    soundMuted: input.soundMuted as boolean,
+    streaming: input.streaming as boolean,
+    speaking: input.speaking === true,
+  };
 }

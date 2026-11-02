@@ -1440,6 +1440,7 @@ useDesktopBridge({
     micMuted: microphoneMuted.value,
     soundMuted: outputMuted.value,
     streaming: screenShareActive.value,
+    speaking: voiceState.connected && !microphoneMuted.value && speakingIds.has(voiceState.tsClientId),
   }),
   toggleMicrophone: () => toggleMicrophone(),
   toggleSound: () => toggleOutputMute(),

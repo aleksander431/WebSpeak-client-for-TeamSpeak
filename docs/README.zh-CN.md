@@ -199,6 +199,15 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
+### [v0.3.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.2) · 2026-11-02
+
+#### 新功能
+
+- 全新的 WebSpeak 图标，用于网站、浏览器标签页和桌面客户端。
+- 桌面客户端：说话时托盘图标亮起绿色光环（与 TeamSpeak 相同）；麦克风或声音静音时仍显示红色标记。
+- 白板深色主题：跟随页面、浅色或深色；所有人看到的绘图颜色一致，深色主题下仅黑白互换。
+- 频道列表、服务器标题和事件记录中残留的中文文本现已翻译为其他语言。
+
 ### [v0.3.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.1) · 2026-11-01
 
 #### 新功能
