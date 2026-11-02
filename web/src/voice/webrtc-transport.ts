@@ -20,6 +20,7 @@ interface TransportOptions {
   stopPcm(): void;
   muted(): boolean;
   inputVolume(): number;
+  accompanimentVolume?(): number;
   accompanimentActive(): boolean;
   releaseAccompaniment(): void;
   onLevel(rms: number | null, track: MediaStreamTrack): void;
@@ -132,7 +133,7 @@ export function createWebRtcTransport(options: TransportOptions) {
       const peer = new RTCPeerConnection({ iceServers: stunServer ? [{ urls: stunServer }] : [] });
       record.peer = peer;
       track.enabled = !options.muted();
-      const input = createWebRtcInput(context, processedStream, options.muted() ? 0 : options.inputVolume());
+      const input = createWebRtcInput(context, processedStream, options.muted() ? 0 : options.inputVolume(), options.accompanimentVolume?.() ?? 1);
       record.input = input;
       peer.addTrack(input.stream.getAudioTracks()[0]!, input.stream);
       peer.ontrack = event => {

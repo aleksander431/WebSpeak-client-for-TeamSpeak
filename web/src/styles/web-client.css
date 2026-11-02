@@ -6741,6 +6741,31 @@
   width: min(246px, calc(100vw - 32px));
 }
 
+/* The accompaniment button is the last one in the dock: open its panel to the left. */
+:deep(.dock-accompaniment-panel) {
+  right: -4px;
+  width: min(246px, calc(100vw - 32px));
+  transform: translate(0, 6px);
+}
+
+:deep(.dock-accompaniment-panel::after) {
+  right: 13px;
+  left: auto;
+  transform: rotate(45deg);
+}
+
+:deep(.dock-hover-control:hover .dock-accompaniment-panel),
+:deep(.dock-hover-control:focus-within .dock-accompaniment-panel) {
+  transform: translate(0, 0);
+}
+
+:deep(.dock-panel-hint) {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 :deep(.dock-slider-heading) {
   display: flex;
   align-items: center;

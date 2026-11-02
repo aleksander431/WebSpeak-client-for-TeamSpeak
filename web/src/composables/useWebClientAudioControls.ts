@@ -18,6 +18,7 @@ interface UseWebClientAudioControlsOptions {
   setOutputVolume: (value: number) => void;
   setVoxThreshold: (value: number) => void;
   setNotificationVolume: (value: number) => void;
+  setAccompanimentVolume: (value: number) => void;
   setInputDevice: (deviceId: string) => Promise<void>;
   setOutputDevice: (deviceId: string) => Promise<void>;
   setMicrophoneMuted: (muted: boolean) => void;
@@ -49,6 +50,7 @@ export function useWebClientAudioControls({
   setOutputVolume,
   setVoxThreshold,
   setNotificationVolume,
+  setAccompanimentVolume,
   setInputDevice,
   setOutputDevice,
   setMicrophoneMuted,
@@ -110,6 +112,10 @@ export function useWebClientAudioControls({
 
   function onNotificationVolume(event: Event): void {
     setNotificationVolume(Number((event.target as HTMLInputElement).value) / 100);
+  }
+
+  function onAccompanimentVolume(event: Event): void {
+    setAccompanimentVolume(Number((event.target as HTMLInputElement).value) / 100);
   }
 
   async function onInputDeviceChange(selection: Event | string): Promise<void> {
@@ -249,6 +255,7 @@ export function useWebClientAudioControls({
     onOutputVolume,
     onVoxThreshold,
     onNotificationVolume,
+    onAccompanimentVolume,
     onInputDeviceChange,
     onOutputDeviceChange,
     toggleMicTest,

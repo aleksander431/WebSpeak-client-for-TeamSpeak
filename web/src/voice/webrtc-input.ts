@@ -2,16 +2,19 @@ export interface WebRtcInput {
   readonly stream: MediaStream;
   setAccompaniment(stream: MediaStream | null): void;
   setVolume(value: number): void;
+  /** Level of the shared application audio (accompaniment), 0..1. */
+  setAccompanimentVolume(value: number): void;
   dispose(): void;
 }
 
 // Own only the mixing nodes and their output. Capture controllers own the input
 // streams. Keep the sender track alive when accompaniment starts/stops/changes.
-export function createWebRtcInput(context: AudioContext, microphone: MediaStream, volume: number): WebRtcInput {
+export function createWebRtcInput(context: AudioContext, microphone: MediaStream, volume: number, accompanimentVolume = 1): WebRtcInput {
   let destination: MediaStreamAudioDestinationNode | null = null;
   let microphoneSource: MediaStreamAudioSourceNode | null = null;
   let microphoneGain: GainNode | null = null;
   let accompanimentSource: MediaStreamAudioSourceNode | null = null;
+  let accompanimentGain: GainNode | null = null;
   let disposed = false;
   const clean = (operation: () => void): void => { try { operation(); } catch { /* release other resources too */ } };
 
@@ -21,6 +24,7 @@ export function createWebRtcInput(context: AudioContext, microphone: MediaStream
     if (accompanimentSource) clean(() => accompanimentSource!.disconnect());
     if (microphoneSource) clean(() => microphoneSource!.disconnect());
     if (microphoneGain) clean(() => microphoneGain!.disconnect());
+    if (accompanimentGain) clean(() => accompanimentGain!.disconnect());
     if (destination) {
       clean(() => destination!.disconnect());
       for (const track of destination.stream.getTracks()) clean(() => track.stop());
@@ -28,6 +32,7 @@ export function createWebRtcInput(context: AudioContext, microphone: MediaStream
     accompanimentSource = null;
     microphoneSource = null;
     microphoneGain = null;
+    accompanimentGain = null;
     destination = null;
   }
 
@@ -43,6 +48,10 @@ export function createWebRtcInput(context: AudioContext, microphone: MediaStream
     microphoneGain.gain.value = volume;
     microphoneSource.connect(microphoneGain);
     microphoneGain.connect(destination);
+    // Application audio has its own level, independent of microphone gain.
+    accompanimentGain = context.createGain();
+    accompanimentGain.gain.value = clampLevel(accompanimentVolume);
+    accompanimentGain.connect(destination);
     return {
       stream: destination.stream,
       setAccompaniment(stream) {
@@ -57,9 +66,9 @@ export function createWebRtcInput(context: AudioContext, microphone: MediaStream
               throw new Error("Accompaniment has no live audio track");
             }
             candidate = context.createMediaStreamSource(stream);
-            // Application audio retains its source level and bypasses microphone
-            // gain/denoising. Prepare it before disconnecting the previous source.
-            candidate.connect(destination!);
+            // Application audio bypasses microphone gain/denoising and has its
+            // own level. Prepare it before disconnecting the previous source.
+            candidate.connect(accompanimentGain!);
           }
         } catch (error) {
           if (candidate) clean(() => candidate!.disconnect());
@@ -70,10 +79,15 @@ export function createWebRtcInput(context: AudioContext, microphone: MediaStream
         if (previous) clean(() => previous.disconnect());
       },
       setVolume(value) { if (microphoneGain) microphoneGain.gain.value = value; },
+      setAccompanimentVolume(value) { if (accompanimentGain) accompanimentGain.gain.value = clampLevel(value); },
       dispose,
     };
   } catch (error) {
     dispose();
     throw error;
   }
+}
+
+function clampLevel(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1;
 }

@@ -1298,7 +1298,10 @@ test("audio setup failure shows a distinct accompaniment message in every langua
 test("accompaniment keeps display processing off and preserves microphone mute and gain", async () => {
   const { peer, socket } = await connectWebRtc();
   const originalTrack = peer.sender.track;
-  const micGain = AudioContextStub.gains.at(-1);
+  // The WebRTC input creates the microphone gain, then the accompaniment gain.
+  const micGain = AudioContextStub.gains.at(-2);
+  const accompanimentGain = AudioContextStub.gains.at(-1);
+  assert.equal(accompanimentGain.gain.value, voice.accompanimentVolume.value);
   voice.setInputVolume(0.4);
   const audio = microphoneStream();
   const video = displayStream();
@@ -1325,6 +1328,9 @@ test("accompaniment keeps display processing off and preserves microphone mute a
   voice.setInputVolume(0.7);
   assert.equal(micGain.gain.value, 0);
   voice.setMicrophoneMuted(false);
+  assert.equal(micGain.gain.value, 0.7);
+  voice.setAccompanimentVolume(0.25);
+  assert.equal(accompanimentGain.gain.value, 0.25);
   assert.equal(micGain.gain.value, 0.7);
   audio.track.readyState = "ended";
   audio.track.dispatchEvent(new Event("ended"));

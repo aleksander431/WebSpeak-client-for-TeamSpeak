@@ -69,6 +69,8 @@ type SinkAudioContext = AudioContext & {
 };
 
 const MAX_VISIBLE_ERROR_CODE_LENGTH = 64;
+/** Shared application audio at full level drowns out voices; start at half. */
+export const DEFAULT_ACCOMPANIMENT_VOLUME = 0.5;
 const CLIENT_ERROR_CODE_ALIASES: Record<string, string> = {
   PASSWORD_REQUIRED: "SERVER_PASSWORD_REQUIRED",
   INVALID_PASSWORD: "INVALID_SERVER_PASSWORD",
@@ -321,6 +323,9 @@ export function useVoiceWebSocket() {
   const outputVolume = ref(1);
   const outputMuted = ref(false);
   const notificationVolume = ref(0.5);
+  /** Level of the shared accompaniment in what others hear. */
+  const accompanimentVolume = ref(DEFAULT_ACCOMPANIMENT_VOLUME);
+  let accompanimentVolumeTouched = false;
   const voxThreshold = ref(0.008);
   let voxAttack = 0;
   let voxRelease = 0;
@@ -358,6 +363,7 @@ export function useVoiceWebSocket() {
     stopPcm: stopCaptureGraph,
     muted: () => microphoneMuted.value,
     inputVolume: () => inputVolume.value,
+    accompanimentVolume: () => accompanimentVolume.value,
     accompanimentActive: () => accompanimentActive.value,
     releaseAccompaniment: () => accompaniment.stop(),
     onLevel(rms, track) {
@@ -421,6 +427,7 @@ export function useVoiceWebSocket() {
       inputGain: inputVolume.value,
       outputVolume: outputVolume.value,
       notificationVolume: notificationVolume.value,
+      accompanimentVolume: accompanimentVolume.value,
       preferredOutputDeviceId: committedOutputDeviceId,
       volumesByUid: { ...storedVolumesByUid },
     });
@@ -451,6 +458,10 @@ export function useVoiceWebSocket() {
       committedOutputDeviceId = selectedOutputDeviceId.value;
     }
     if (typeof preferences.notificationVolume === "number") notificationVolume.value = clamp(preferences.notificationVolume, 0, 1);
+    if (!accompanimentVolumeTouched && typeof preferences.accompanimentVolume === "number") {
+      accompanimentVolume.value = clamp(preferences.accompanimentVolume, 0, 1);
+      webrtc.input?.setAccompanimentVolume(accompanimentVolume.value);
+    }
     Object.assign(storedVolumesByUid, preferences.volumesByUid ?? {});
     syncKnownMemberVolumes();
   });
@@ -1438,6 +1449,13 @@ export function useVoiceWebSocket() {
     void saveAudioPreferences();
   }
 
+  function setAccompanimentVolume(volume: number): void {
+    accompanimentVolumeTouched = true;
+    accompanimentVolume.value = clamp(volume, 0, 1);
+    webrtc.input?.setAccompanimentVolume(accompanimentVolume.value);
+    void saveAudioPreferences();
+  }
+
   function setNotificationVolume(volume: number): void {
     notificationVolume.value = clamp(volume, 0, 1);
     void saveAudioPreferences();
@@ -1462,6 +1480,7 @@ export function useVoiceWebSocket() {
     outputVolume,
     outputMuted,
     notificationVolume,
+    accompanimentVolume,
     voxThreshold,
     inputDevices,
     outputDevices,
@@ -1484,6 +1503,7 @@ export function useVoiceWebSocket() {
     accompanimentErrorCode,
     setVolume,
     setInputVolume,
+    setAccompanimentVolume,
     setNoiseSuppressionEnabled,
     setOutputVolume,
     toggleOutputMute,

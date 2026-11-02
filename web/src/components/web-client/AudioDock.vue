@@ -110,18 +110,46 @@
           name="settings"
           :size="18"
       /></button>
-      <button
-        type="button"
-        class="dock-audio-button accompaniment-toggle"
-        :class="{ active: accompanimentActive }"
-        :title="accompanimentActive ? t('stopAccompaniment') : t('startAccompaniment')"
-        :aria-label="accompanimentActive ? t('stopAccompaniment') : t('startAccompaniment')"
-        :aria-pressed="accompanimentActive"
-        @click="toggleAccompaniment"
-        ><Icon
-          name="music"
-          :size="18"
-      /></button>
+      <div
+        class="dock-hover-control"
+        data-ws-part="voice.audio-dock.accompaniment"
+      >
+        <button
+          type="button"
+          class="dock-audio-button accompaniment-toggle"
+          :class="{ active: accompanimentActive }"
+          :title="accompanimentActive ? t('stopAccompaniment') : t('startAccompaniment')"
+          :aria-label="accompanimentActive ? t('stopAccompaniment') : t('startAccompaniment')"
+          :aria-pressed="accompanimentActive"
+          aria-haspopup="dialog"
+          @click="toggleAccompaniment"
+          ><Icon
+            name="music"
+            :size="18"
+        /></button>
+        <div
+          class="dock-hover-panel dock-accompaniment-panel"
+          data-ws-part="voice.audio-dock.accompaniment-panel"
+          role="dialog"
+          :aria-label="t('accompanimentVolume')"
+        >
+          <div class="dock-slider-heading"
+            ><span>{{ t("accompanimentVolume") }}</span
+            ><strong>{{ Math.round(accompanimentVolume * 100) }}%</strong></div
+          >
+          <input
+            class="dock-slider"
+            type="range"
+            min="0"
+            max="100"
+            :value="accompanimentVolume * 100"
+            :style="rangeStyle(accompanimentVolume, 1)"
+            :aria-label="t('accompanimentVolume')"
+            @input="onAccompanimentVolume"
+          />
+          <p class="dock-panel-hint">{{ t("accompanimentVolumeHint") }}</p>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -132,12 +160,12 @@ import type { useVoiceWebSocket } from "../../composables/useVoiceWebSocket.js";
 import type { useWebClientAudioControls } from "../../composables/useWebClientAudioControls.js";
 
 const props = defineProps<{
-  model: Pick<ReturnType<typeof useVoiceWebSocket>, "microphoneMuted" | "inputVolume" | "outputVolume" | "outputMuted" | "noiseSuppressionEnabled" | "accompanimentActive">;
-  controls: Pick<ReturnType<typeof useWebClientAudioControls>, "toggleMicrophone" | "toggleNoiseSuppression" | "onInputVolume" | "onOutputVolume" | "onNoiseSuppressionToggle" | "toggleAccompaniment">;
+  model: Pick<ReturnType<typeof useVoiceWebSocket>, "microphoneMuted" | "inputVolume" | "outputVolume" | "outputMuted" | "noiseSuppressionEnabled" | "accompanimentActive" | "accompanimentVolume">;
+  controls: Pick<ReturnType<typeof useWebClientAudioControls>, "toggleMicrophone" | "toggleNoiseSuppression" | "onInputVolume" | "onOutputVolume" | "onNoiseSuppressionToggle" | "toggleAccompaniment" | "onAccompanimentVolume">;
   t: (key: string) => string;
   rangeStyle: (value: number, max: number) => Record<string, string>;
 }>();
-const { microphoneMuted, inputVolume, outputVolume, outputMuted, noiseSuppressionEnabled, accompanimentActive } = props.model;
-const { toggleMicrophone, onInputVolume, onOutputVolume, onNoiseSuppressionToggle, toggleAccompaniment } = props.controls;
+const { microphoneMuted, inputVolume, outputVolume, outputMuted, noiseSuppressionEnabled, accompanimentActive, accompanimentVolume } = props.model;
+const { toggleMicrophone, onInputVolume, onOutputVolume, onNoiseSuppressionToggle, toggleAccompaniment, onAccompanimentVolume } = props.controls;
 const emit = defineEmits<{ settings: []; outputMute: [] }>();
 </script>

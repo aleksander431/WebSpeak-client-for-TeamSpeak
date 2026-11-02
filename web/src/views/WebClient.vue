@@ -1108,6 +1108,7 @@ const {
   outputVolume,
   outputMuted,
   notificationVolume,
+  accompanimentVolume,
   voxThreshold,
   inputDevices,
   outputDevices,
@@ -1131,6 +1132,7 @@ const {
   toggleOutputMute,
   setVoxThreshold,
   setNotificationVolume,
+  setAccompanimentVolume,
   prepareInputDevices,
   refreshAudioDevices,
   setInputDevice,
@@ -1356,6 +1358,7 @@ const audioControls = useWebClientAudioControls({
   setOutputVolume,
   setVoxThreshold,
   setNotificationVolume,
+  setAccompanimentVolume,
   setInputDevice,
   setOutputDevice,
   setMicrophoneMuted,
@@ -1376,7 +1379,7 @@ function reconnectMobile(): void {
   reconnectNow();
 }
 const { toggleMicrophone, stopWhisperTalk } = audioControls;
-const audioDockState = { microphoneMuted, inputVolume, outputVolume, outputMuted, noiseSuppressionEnabled, accompanimentActive };
+const audioDockState = { microphoneMuted, inputVolume, outputVolume, outputMuted, noiseSuppressionEnabled, accompanimentActive, accompanimentVolume };
 const audioSettingsState = {
   inputDevices,
   outputDevices,
@@ -1391,6 +1394,7 @@ const audioSettingsState = {
   outputVolume,
   voxThreshold,
   notificationVolume,
+  accompanimentVolume,
   micLevel,
   microphoneTestActive,
   testAudioUrl,

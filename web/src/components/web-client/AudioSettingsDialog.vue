@@ -213,6 +213,24 @@
                 @input="onNotificationVolume"
               /></div
           ></div
+          ><div
+            class="settings-form-row settings-range-form-row"
+            data-ws-part="voice.audio-settings.accompaniment-volume"
+            ><label class="settings-label">{{ t("accompanimentVolume") }}</label
+            ><div class="settings-form-control"
+              ><div class="settings-range-row"
+                ><strong>{{ Math.round(accompanimentVolume * 100) }}%</strong></div
+              ><input
+                class="settings-range"
+                type="range"
+                min="0"
+                max="100"
+                :value="accompanimentVolume * 100"
+                :style="rangeStyle(accompanimentVolume, 1)"
+                :aria-label="t('accompanimentVolume')"
+                @input="onAccompanimentVolume"
+              /><p class="settings-hint">{{ t("accompanimentVolumeHint") }}</p></div
+          ></div
             ><div class="audio-diagnostic"
               ><span>{{ t("audioStatus") }}</span
               ><strong>{{
@@ -270,6 +288,7 @@ type AudioSettingsState = Pick<ReturnType<typeof useVoiceWebSocket>,
   | "outputVolume"
   | "voxThreshold"
   | "notificationVolume"
+  | "accompanimentVolume"
   | "micLevel"
   | "microphoneTestActive"
   | "testAudioUrl"
@@ -281,6 +300,7 @@ type AudioSettingsControls = Pick<ReturnType<typeof useWebClientAudioControls>,
   | "onOutputVolume"
   | "onVoxThreshold"
   | "onNotificationVolume"
+  | "onAccompanimentVolume"
   | "onInputDeviceChange"
   | "onOutputDeviceChange"
   | "toggleMicTest"
@@ -315,6 +335,7 @@ const {
   outputVolume,
   voxThreshold,
   notificationVolume,
+  accompanimentVolume,
   micLevel,
   microphoneTestActive,
   testAudioUrl,
@@ -326,6 +347,7 @@ const {
   onOutputVolume,
   onVoxThreshold,
   onNotificationVolume,
+  onAccompanimentVolume,
   onInputDeviceChange,
   onOutputDeviceChange,
   toggleMicTest,

@@ -153,6 +153,8 @@ export interface LocalPreferences {
   inputGain?: number;
   outputVolume?: number;
   notificationVolume?: number;
+  /** Level of the shared accompaniment in what others hear, 0..1. */
+  accompanimentVolume?: number;
   lastNickname?: string;
   /** Successful voice connection history, independent of the selected skin. */
   hasConnected?: boolean;
