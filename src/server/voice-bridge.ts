@@ -989,6 +989,14 @@ export function createTrustedProxies(entries: readonly string[] | undefined): Bl
   return list;
 }
 
+/** The request reached a trusted reverse proxy over HTTPS (TLS ended at the proxy). */
+export function isForwardedHttps(request: IncomingMessage, trustedProxies: BlockList): boolean {
+  const direct = normalizeClientIp(request.socket.remoteAddress);
+  if (!direct || !isTrustedProxy(direct, trustedProxies)) return false;
+  const proto = firstHeader(request.headers["x-forwarded-proto"])?.split(",")[0]?.trim().toLowerCase();
+  return proto === "https";
+}
+
 function isTrustedProxy(address: string, trustedProxies: BlockList): boolean {
   const family = isIP(address);
   if (family !== 4 && family !== 6) return false;

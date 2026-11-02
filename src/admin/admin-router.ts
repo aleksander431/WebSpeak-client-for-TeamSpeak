@@ -39,6 +39,8 @@ export interface AdminRouterOptions {
   skinRegistry?: SkinRegistry;
   skinStore?: SkinStore;
   startedAt: number;
+  /** Client address, honouring trusted reverse proxies. Defaults to the socket peer. */
+  clientIp?: (request: Request) => string;
 }
 
 export function createAdminRouter(options: AdminRouterOptions): Router {
@@ -85,7 +87,9 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
       response.status(409).json({ ok: false, code: "NOT_INITIALIZED" });
       return;
     }
-    const peer = request.socket.remoteAddress ?? "unknown";
+    // Behind a reverse proxy every socket peer is the proxy: without the
+    // forwarded address one stranger's failures would lock everyone out.
+    const peer = options.clientIp?.(request) ?? request.socket.remoteAddress ?? "unknown";
     const retryAfterMs = limiter.retryAfterMs(peer);
     if (retryAfterMs > 0) {
       response.setHeader("Retry-After", String(Math.ceil(retryAfterMs / 1000)));

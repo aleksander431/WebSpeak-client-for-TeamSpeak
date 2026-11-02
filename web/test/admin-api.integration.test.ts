@@ -188,3 +188,33 @@ test("browser admin API consumes the actual HTTP router and preserves keep/repla
   await api.logout();
   assert.equal((await api.session()).authenticated, false);
 });
+
+test("behind a reverse proxy, one visitor's failed logins do not lock out the administrator", async t => {
+  const directory = mkdtempSync(join(tmpdir(), "webspeak-admin-proxy-"));
+  const database = new WebSpeakDatabase(join(directory, "test.db"));
+  t.after(() => { database.close(); rmSync(directory, { recursive: true, force: true }); });
+  const service = new AdminService(database, Buffer.alloc(32, 7), logger, join(directory, "absent-config.json"), undefined, "test-version");
+  await service.initialize();
+  await service.changePassword("test-only-admin-password");
+  const app = express();
+  app.use(express.json());
+  // Every request arrives from the proxy's loopback address; the forwarded one identifies the visitor.
+  app.use("/api/admin", createAdminRouter({
+    service, sessions: new AdminSessionStore(), logger, getActiveSessions: () => 0, getPeakSessions: () => 0, startedAt: Date.now(),
+    clientIp: request => request.header("x-test-client") ?? "unknown",
+  }));
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const login = (client: string, password: string) => fetch(`${origin}/api/admin/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin, "x-test-client": client },
+    body: JSON.stringify({ username: "admin", password }),
+  });
+  for (let attempt = 0; attempt < 5; attempt += 1) assert.equal((await login("203.0.113.9", "wrong-password")).status, 401);
+  assert.equal((await login("203.0.113.9", "wrong-password")).status, 429, "the guessing visitor is limited");
+  assert.equal((await login("198.51.100.4", "test-only-admin-password")).status, 200, "the administrator still gets in");
+});

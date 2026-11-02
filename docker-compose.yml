@@ -1,7 +1,10 @@
 services:
   webspeak:
-    image: ${WEBSPEAK_IMAGE:-ghcr.io/echosixhiya/webspeak:latest}
-    pull_policy: missing
+    # Built from this checkout (`docker compose up -d --build`), so the server
+    # runs exactly the reviewed source instead of a prebuilt third-party image.
+    image: webspeak:local
+    build: .
+    pull_policy: build
     restart: unless-stopped
     # WebSpeak needs to reach a TeamSpeak server running on the same host.
     # Host networking also exposes the configured WebRTC UDP range directly.

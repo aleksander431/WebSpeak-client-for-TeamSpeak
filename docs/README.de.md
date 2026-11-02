@@ -341,10 +341,9 @@ Integriertes WebRTC, aktualisiertes TeamSpeak-SDK und bessere Mitgliedersynchron
 ### Docker Compose (empfohlen)
 
 ```bash
-git clone --depth 1 https://github.com/EchoSixHIYA/WebSpeak-client-for-TeamSpeak.git
+git clone --depth 1 https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak.git
 cd WebSpeak-client-for-TeamSpeak
-docker compose pull
-docker compose up -d
+docker compose up -d --build
 ```
 
 Nach dem Start ist WebSpeak unter `http://<dein-host>:3040` erreichbar. Bei einem Reverse Proxy auf diese Adresse zeigen; für WebRTC den im Adminbereich angezeigten UDP-Bereich freigeben. Die Daten liegen im Volume `webspeak-data`.
@@ -358,8 +357,7 @@ Upgrade:
 
 ```bash
 git pull --ff-only
-docker compose pull
-docker compose up -d
+docker compose up -d --build
 ```
 
 `docker compose down -v` nicht ausführen, da dadurch Datenbank und Administratoreinstellungen gelöscht werden.

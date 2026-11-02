@@ -18,9 +18,9 @@ import type { ConfiguredAccelerationRelay } from "./acceleration-relay.js";
 import { createVoiceGatewayAuthHeaders, type DelegatedVoiceSession } from "./voice-gateway-auth.js";
 import type { SkinRegistry } from "../admin/skin-registry.js";
 import { resolveVisitorTotal } from "./visitor-count.js";
-import { createTrustedProxies, resolveClientIp } from "./voice-bridge.js";
+import { createTrustedProxies, isForwardedHttps, resolveClientIp } from "./voice-bridge.js";
 import { createDeviceToken, DEVICE_COOKIE_MAX_AGE_MS, DEVICE_COOKIE_NAME, isDeviceToken } from "../security/device-access.js";
-import { isSecureRequest } from "../admin/admin-session.js";
+import { isSecureRequest, markForwardedHttps } from "../admin/admin-session.js";
 
 export interface WebServerOptions {
   port: number;
@@ -64,6 +64,18 @@ export function createWebServer(options: WebServerOptions): WebServer {
   const adminSessions = new AdminSessionStore();
   const joinRateLimiter = new JoinRateLimiter();
   const trustedProxies = createTrustedProxies(options.voiceBridgeOptions.trustedProxies);
+  const clientIp = (request: express.Request): string => resolveClientIp(request, trustedProxies);
+
+  app.use((request, response, next) => {
+    // TLS often ends at a reverse proxy; cookies must still be marked Secure.
+    if (isForwardedHttps(request, trustedProxies)) markForwardedHttps(request);
+    // The pages are never meant to be framed by another site, and responses
+    // must not be reinterpreted as another content type.
+    response.setHeader("X-Frame-Options", "SAMEORIGIN");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    response.setHeader("Referrer-Policy", "same-origin");
+    next();
+  });
   const startedAt = Date.now();
 
   /** Return this browser's device token, issuing a long-lived cookie on first use. */
@@ -96,7 +108,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
         visitorNumber = options.nextVisitorNumber();
         response.setHeader(
           "Set-Cookie",
-          `${VISITOR_NUMBER_COOKIE}=${visitorNumber}; Max-Age=31536000; Path=/; SameSite=Lax${options.certDir ? "; Secure" : ""}`,
+          `${VISITOR_NUMBER_COOKIE}=${visitorNumber}; Max-Age=31536000; Path=/; SameSite=Lax${options.certDir || isSecureRequest(request) ? "; Secure" : ""}`,
         );
       } catch (error: unknown) {
         logger.warn({ err: error instanceof Error ? error.message : String(error) }, "Visitor number could not be assigned");
@@ -161,7 +173,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
         response.status(403).json({ ok: false, code: "ORIGIN_REJECTED" });
         return;
       }
-      if (!joinRateLimiter.allow(request.socket.remoteAddress ?? "unknown")) {
+      if (!joinRateLimiter.allow(clientIp(request))) {
         response.status(429).json({ ok: false, code: "RATE_LIMITED" });
         return;
       }
@@ -234,7 +246,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
       response.status(503).json({ ok: false, code: "NOT_INITIALIZED" });
       return;
     }
-    if (!joinRateLimiter.allow(request.socket.remoteAddress ?? "unknown")) {
+    if (!joinRateLimiter.allow(clientIp(request))) {
       response.status(429).json({ ok: false, code: "RATE_LIMITED" });
       return;
     }
@@ -377,6 +389,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
     version: options.version,
     logFile: options.logFile,
     startedAt,
+    clientIp,
   }));
 
   // Serve static frontend

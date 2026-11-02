@@ -52,8 +52,15 @@ export class AdminSessionStore {
   }
 }
 
+const forwardedHttps = new WeakSet<object>();
+
+/** Mark a request that a trusted reverse proxy received over HTTPS. */
+export function markForwardedHttps(request: object): void {
+  forwardedHttps.add(request);
+}
+
 export function isSecureRequest(request: Request): boolean {
-  return (request.socket as TLSSocket).encrypted === true;
+  return (request.socket as TLSSocket).encrypted === true || forwardedHttps.has(request);
 }
 
 function hashToken(token: string): string {

@@ -3,7 +3,7 @@ import test from "node:test";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import type { IncomingMessage } from "node:http";
 import pino from "pino";
-import { VoiceBridge, createTrustedProxies, resolveClientIp, resolveWebRtcPublicHost } from "./voice-bridge.js";
+import { VoiceBridge, createTrustedProxies, isForwardedHttps, resolveClientIp, resolveWebRtcPublicHost } from "./voice-bridge.js";
 import { JoinTicketStore } from "./join-ticket.js";
 import { createAudioFlowStats } from "./audio-stats.js";
 import { SessionAudioTransport } from "./session-audio.js";
@@ -325,4 +325,13 @@ test("an invalid trust list is rejected instead of silently ignored", () => {
 test("trusting every address has to be asked for explicitly", () => {
   const trusted = createTrustedProxies(["0.0.0.0/0", "::/0"]);
   assert.equal(resolveClientIp(ipRequest("192.0.2.7", { "x-forwarded-for": "203.0.113.9" }), trusted), "203.0.113.9");
+});
+
+test("only a trusted proxy can say the browser used HTTPS", () => {
+  const trusted = createTrustedProxies(["127.0.0.1"]);
+  assert.equal(isForwardedHttps(ipRequest("127.0.0.1", { "x-forwarded-proto": "https" }), trusted), true);
+  assert.equal(isForwardedHttps(ipRequest("127.0.0.1", { "x-forwarded-proto": "HTTPS, http" }), trusted), true);
+  assert.equal(isForwardedHttps(ipRequest("127.0.0.1", { "x-forwarded-proto": "http" }), trusted), false);
+  assert.equal(isForwardedHttps(ipRequest("127.0.0.1"), trusted), false);
+  assert.equal(isForwardedHttps(ipRequest("192.0.2.7", { "x-forwarded-proto": "https" }), trusted), false, "a direct client cannot claim HTTPS");
 });
