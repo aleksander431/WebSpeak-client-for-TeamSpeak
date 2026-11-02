@@ -40,3 +40,30 @@ test("reactions are per user and per emoji, and unknown input is refused", () =>
   assert.deepEqual(parseChatReactions(hub.summary(ref, "uid:a")), hub.summary(ref, "uid:a"));
   assert.equal(parseChatReactions([{ emoji: "💩", count: 1 }]), null);
 });
+
+test("reactions of stored messages come back after a restart", () => {
+  const saved = new Map<string, { emoji: string; userKey: string; userName: string }[]>();
+  const messages = new Map<string, typeof message & { timestamp: number }>();
+  const store = {
+    find: (ref: string) => messages.get(ref) ?? null,
+    load: (ref: string) => saved.get(ref) ?? [],
+    save: (ref: string, emoji: string, userKey: string, userName: string, active: boolean) => {
+      const rest = (saved.get(ref) ?? []).filter(row => !(row.emoji === emoji && row.userKey === userKey));
+      saved.set(ref, active ? [...rest, { emoji, userKey, userName }] : rest);
+    },
+  };
+  const before = new ChatReactionHub(() => 5_000, store);
+  const ref = before.refFor(message);
+  messages.set(ref, { ...message, timestamp: 5_000 });
+  before.react(ref, { key: "uid:a", name: "Ann" }, "🔥", true);
+  before.react(ref, { key: "uid:b", name: "Bob" }, "🔥", true);
+  before.react(ref, { key: "uid:b", name: "Bob" }, "🔥", false);
+
+  // A new gateway process: nothing in memory, the store still has the message.
+  const after = new ChatReactionHub(() => 9_000_000_000, store);
+  assert.deepEqual(after.summary(ref, "uid:a"), [{ emoji: "🔥", count: 1, names: ["Ann"], mine: true }]);
+  assert.equal(after.get(ref)?.channelId, "5");
+  assert.equal(after.react(ref, { key: "uid:b", name: "Bob" }, "👍", true), true, "old stored messages can still be reacted to");
+  assert.deepEqual(after.lookup(message, 5_000), ref);
+  assert.equal(new ChatReactionHub(Date.now, store).get("ffffffffffffffff"), null);
+});

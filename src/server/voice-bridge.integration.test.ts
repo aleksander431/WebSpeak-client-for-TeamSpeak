@@ -466,3 +466,36 @@ test("a session gets a chat token, and channel chat it sends or receives is kept
   while (f.bridge.getActiveCount() > 0) await nextTurn();
   assert.equal(f.bridge.resolveChatSession(connected.chat.token), null, "the token ends with the session");
 });
+
+test("reactions reach the session, are saved with the message and survive a gateway restart", { timeout: 5_000 }, async t => {
+  const directory = mkdtempSync(path.join(tmpdir(), "webspeak-bridge-react-"));
+  const database = new WebSpeakDatabase(path.join(directory, "test.db"));
+  t.after(() => { database.close(); rmSync(directory, { recursive: true, force: true }); });
+  const storage = new ChatStorage(database, path.join(directory, "files"));
+  await storage.initialize();
+  const f = await fixture(t, { chatStorage: storage, waitForFirstMessage: false });
+  const connected = await waitForMessage<{ chat: { token: string } }>(f.socket, "connected");
+  const incoming = waitForMessage<{ ref?: string }>(f.socket, "chatMessage");
+  f.sdk.emit("textMessage", { targetMode: 2, targetId: 1n, invokerId: 9, invokerUid: "uid-9", invokerName: "Kria", message: "gg" });
+  const { ref } = await incoming;
+  assert.match(ref ?? "", /^[0-9a-f]{16}$/);
+  await storage.flush();
+
+  const update = waitForMessage<{ ref: string; reactions: { emoji: string; count: number; mine: boolean }[] }>(f.socket, "chatReactions");
+  f.socket.send(JSON.stringify({ type: "chatReact", requestId: "r1", payload: { ref, emoji: "🔥", active: true } }));
+  const reactions = await update;
+  assert.deepEqual([reactions.ref, reactions.reactions.map(reaction => [reaction.emoji, reaction.count, reaction.mine])], [ref, [["🔥", 1, true]]]);
+  await storage.flush();
+  assert.equal(storage.reactions(ref!).length, 1);
+
+  const failed = waitForMessage<{ error: { code: string } }>(f.socket, "error");
+  f.socket.send(JSON.stringify({ type: "chatReact", requestId: "r2", payload: { ref: "ffffffffffffffff", emoji: "🔥", active: true } }));
+  assert.equal((await failed).error.code, "REACTION_UNAVAILABLE");
+
+  // A new gateway process over the same database: history brings the reaction back.
+  const scope = f.bridge.resolveChatSession(connected.chat.token)!;
+  const restarted = new VoiceBridge({ joinTickets: new JoinTicketStore(), chatStorage: storage } as never, pino({ enabled: false }));
+  const history = restarted.decorateChatHistory(scope, storage.history(scope.targetKey, "channel", "1"));
+  assert.deepEqual(history.map(message => [message.message, message.ref, message.reactions?.map(reaction => [reaction.emoji, reaction.count, reaction.mine])]),
+    [["gg", ref, [["🔥", 1, true]]]]);
+});

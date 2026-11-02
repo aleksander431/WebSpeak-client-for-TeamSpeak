@@ -100,6 +100,35 @@ test("history search is case-insensitive, per conversation and newest first", as
   assert.deepEqual(storage.search("ts:2", "channel", "5", "сборка"), []);
 });
 
+test("reactions are kept with stored messages and leave with them", async t => {
+  const { storage, database, tick } = fixture(t);
+  await storage.initialize();
+  const record = { targetKey: "ts:1", scope: "channel" as const, channelId: "5", senderUid: "", senderName: "Kria", message: "gg", ref: "00000000000000aa" };
+  storage.recordMessage(record);
+  await storage.flush();
+  assert.equal(storage.messageByRef("00000000000000aa")?.message, "gg");
+  assert.equal(storage.history("ts:1", "channel", "5")[0]?.ref, "00000000000000aa");
+  storage.saveReaction("00000000000000aa", "🔥", "uid:a", "Ann", true);
+  storage.saveReaction("00000000000000aa", "👍", "uid:b", "Bob", true);
+  storage.saveReaction("00000000000000aa", "👍", "uid:b", "Bob", false);
+  storage.saveReaction("00000000000000bb", "🔥", "uid:a", "Ann", true); // not a stored message
+  await storage.flush();
+  assert.deepEqual(storage.reactions("00000000000000aa"), [{ emoji: "🔥", userKey: "uid:a", userName: "Ann" }]);
+  assert.deepEqual(storage.reactions("00000000000000bb"), []);
+
+  // An orphan (e.g. left by an older version) is removed at startup.
+  database.setChatReaction("00000000000000cc", "😂", "uid:c", "Cid", true, 1);
+  await storage.initialize();
+  assert.deepEqual(storage.reactions("00000000000000cc"), []);
+
+  // Rotating the message out removes its reactions.
+  tick(1);
+  const row = storage.messageByRef("00000000000000aa")!;
+  database.deleteChatHistory(row.id);
+  assert.deepEqual(storage.reactions("00000000000000aa"), []);
+  assert.equal(storage.messageByRef("00000000000000aa"), null);
+});
+
 test("startup removes files without a row and rows without a file", async t => {
   const { storage, database } = fixture(t);
   await storage.initialize();

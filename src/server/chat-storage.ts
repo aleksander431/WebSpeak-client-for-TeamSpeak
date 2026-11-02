@@ -34,6 +34,8 @@ export interface ChatMessageRecord {
   senderName: string;
   message: string;
   timestamp?: number;
+  /** The gateway's reaction reference, stored so reactions outlive a restart. */
+  ref?: string;
 }
 
 /**
@@ -67,7 +69,30 @@ export class ChatStorage {
       if (!exists) this.database.deleteChatFile(id);
     }
     this.usage = null;
+    this.database.deleteOrphanChatReactions();
     await this.serialize(() => this.enforceQuota(0));
+  }
+
+  /** The stored message a reaction reference belongs to (only while history keeps it). */
+  messageByRef(ref: string): (ChatHistoryMessage & { targetKey: string }) | null {
+    const row = this.database.findChatHistoryByRef(ref);
+    if (!row || (row.scope !== "channel" && row.scope !== "server")) return null;
+    return { id: row.id, targetKey: row.targetKey, scope: row.scope, channelId: row.channelId, senderUid: row.senderUid,
+      senderName: row.senderName, message: row.message, timestamp: row.createdAt, ref: row.ref };
+  }
+
+  /** Saved reactions of a stored message. */
+  reactions(ref: string): { emoji: string; userKey: string; userName: string }[] {
+    return this.database.listChatReactions(ref);
+  }
+
+  /** Keep a reaction while its message is in history; reactions to unsaved messages stay in memory only. */
+  saveReaction(ref: string, emoji: string, userKey: string, userName: string, active: boolean): void {
+    if (!this.settings().historyEnabled) return;
+    void this.serialize(async () => {
+      if (!this.database.findChatHistoryByRef(ref)) return;
+      this.database.setChatReaction(ref, emoji, userKey.slice(0, 160), userName.slice(0, 64), active, this.now());
+    }).catch(() => undefined);
   }
 
   settings(): ChatStorageSettings {
@@ -187,7 +212,7 @@ export class ChatStorage {
       if (size > this.settings().quotaBytes) return;
       await this.enforceQuota(size);
       this.database.insertChatHistory({ targetKey: record.targetKey, scope: record.scope, channelId: record.channelId,
-        senderUid: record.senderUid.slice(0, 64), senderName, message, size, createdAt: now });
+        senderUid: record.senderUid.slice(0, 64), senderName, message, size, createdAt: now, ref: record.ref ?? "" });
       const usage = this.counters();
       usage.messageBytes += size;
       usage.messageCount += 1;
@@ -203,6 +228,7 @@ export class ChatStorage {
     if (!this.settings().historyEnabled) return [];
     return this.database.listChatHistory(targetKey, scope, channelId, HISTORY_PAGE_LIMIT, before).reverse().map(row => ({
       id: row.id, scope, channelId: row.channelId, senderUid: row.senderUid, senderName: row.senderName, message: row.message, timestamp: row.createdAt,
+      ...(row.ref ? { ref: row.ref } : {}),
     }));
   }
 
@@ -215,6 +241,7 @@ export class ChatStorage {
       row => row.message.toLocaleLowerCase().includes(needle) || row.senderName.toLocaleLowerCase().includes(needle),
       SEARCH_RESULT_LIMIT, SEARCH_SCAN_LIMIT).map(row => ({
       id: row.id, scope, channelId: row.channelId, senderUid: row.senderUid, senderName: row.senderName, message: row.message, timestamp: row.createdAt,
+      ...(row.ref ? { ref: row.ref } : {}),
     }));
   }
 

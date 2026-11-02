@@ -15,7 +15,7 @@ test("relay voice endpoint is stored by the current database migration", (contex
     rmSync(directory, { recursive: true, force: true });
   });
 
-  assert.equal(DATABASE_SCHEMA_VERSION, 16);
+  assert.equal(DATABASE_SCHEMA_VERSION, 17);
   assert.equal(database.schemaVersion, DATABASE_SCHEMA_VERSION);
   assert.equal(database.getTsAdminSettings().transport, "web");
   assert.equal(database.getTsAdminSettings().enabled, false);
@@ -50,4 +50,20 @@ test("schema 11 migration preserves encrypted SSH credentials and does not silen
   assert.equal(settings.passwordEncrypted, encrypted);
   assert.equal(decryptSecret(settings.passwordEncrypted, master, "webspeak:ts-admin-query-password:v1"), "fixture-ssh-password");
   assert.equal(settings.apiKeyEncrypted, null); assert.equal(settings.webQueryUrl, ""); assert.equal(settings.serverId, 0);
+});
+
+test("schema 17 adds message references and saved reactions to existing chat history", t => {
+  const directory = mkdtempSync(path.join(tmpdir(), "webspeak-chat-migration-"));
+  const filename = path.join(directory, "test.sqlite");
+  new WebSpeakDatabase(filename).close();
+  const old = new DatabaseSync(filename);
+  old.exec("DROP TABLE chat_reactions; DROP INDEX chat_history_ref_idx; ALTER TABLE chat_history DROP COLUMN ref; PRAGMA user_version = 16;");
+  old.prepare("INSERT INTO chat_history (target_key, scope, channel_id, sender_uid, sender_name, message, size, created_at) VALUES ('ts:1', 'server', '', '', 'Kria', 'old', 10, 1)").run();
+  old.close();
+  const migrated = new WebSpeakDatabase(filename);
+  t.after(() => { migrated.close(); rmSync(directory, { recursive: true, force: true }); });
+  assert.equal(migrated.schemaVersion, 17);
+  assert.equal(migrated.listChatHistory("ts:1", "server", "", 10)[0]?.ref, "", "older messages have no reference");
+  migrated.setChatReaction("0123456789abcdef", "👍", "uid:a", "Ann", true, 2);
+  assert.deepEqual(migrated.listChatReactions("0123456789abcdef"), [{ emoji: "👍", userKey: "uid:a", userName: "Ann" }]);
 });

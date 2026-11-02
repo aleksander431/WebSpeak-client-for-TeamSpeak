@@ -6,7 +6,7 @@ import type { AdminCredential } from "../security/admin-password.js";
 import type { TeamSpeakProtocol } from "../server/teamspeak-adapter.js";
 import { DEFAULT_WEBRTC_UDP_PORT_RANGE } from "../server/webrtc-config.js";
 
-export const DATABASE_SCHEMA_VERSION = 16;
+export const DATABASE_SCHEMA_VERSION = 17;
 export type AccessMode = "fixed" | "open";
 
 export interface PersistedSettings {
@@ -59,6 +59,14 @@ export interface ChatHistoryRow {
   message: string;
   size: number;
   createdAt: number;
+  /** Reaction reference the gateway gave the message ("" for rows from before schema 17). */
+  ref: string;
+}
+
+export interface ChatReactionRow {
+  emoji: string;
+  userKey: string;
+  userName: string;
 }
 
 export interface SettingsUpdate {
@@ -729,9 +737,9 @@ export class WebSpeakDatabase {
 
   insertChatHistory(entry: Omit<ChatHistoryRow, "id">): number {
     const result = this.database.prepare(
-      `INSERT INTO chat_history (target_key, scope, channel_id, sender_uid, sender_name, message, size, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(entry.targetKey, entry.scope, entry.channelId, entry.senderUid, entry.senderName, entry.message, entry.size, entry.createdAt) as { lastInsertRowid?: number | bigint };
+      `INSERT INTO chat_history (target_key, scope, channel_id, sender_uid, sender_name, message, size, created_at, ref)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(entry.targetKey, entry.scope, entry.channelId, entry.senderUid, entry.senderName, entry.message, entry.size, entry.createdAt, entry.ref) as { lastInsertRowid?: number | bigint };
     return Number(result.lastInsertRowid ?? 0);
   }
 
@@ -744,10 +752,10 @@ export class WebSpeakDatabase {
       : this.database.prepare(
         `SELECT * FROM chat_history WHERE target_key = ? AND scope = ? AND channel_id = ? AND created_at < ?
          ORDER BY created_at DESC, id DESC LIMIT ?`).all(targetKey, scope, channelId, before, limit)) as Array<{
-      id: number; target_key: string; scope: string; channel_id: string; sender_uid: string; sender_name: string; message: string; size: number; created_at: number;
+      id: number; target_key: string; scope: string; channel_id: string; sender_uid: string; sender_name: string; message: string; size: number; created_at: number; ref: string;
     }>;
     return rows.map(row => ({ id: Number(row.id), targetKey: row.target_key, scope: row.scope, channelId: row.channel_id, senderUid: row.sender_uid,
-      senderName: row.sender_name, message: row.message, size: Number(row.size), createdAt: Number(row.created_at) }));
+      senderName: row.sender_name, message: row.message, size: Number(row.size), createdAt: Number(row.created_at), ref: row.ref ?? "" }));
   }
 
   /**
@@ -760,11 +768,11 @@ export class WebSpeakDatabase {
        ORDER BY created_at DESC, id DESC LIMIT ?`);
     const found: ChatHistoryRow[] = [];
     for (const raw of statement.iterate(targetKey, scope, channelId, maxScan) as Iterable<{
-      id: number; target_key: string; scope: string; channel_id: string; sender_uid: string; sender_name: string; message: string; size: number; created_at: number;
+      id: number; target_key: string; scope: string; channel_id: string; sender_uid: string; sender_name: string; message: string; size: number; created_at: number; ref: string;
     }>) {
       if (!matches({ senderName: raw.sender_name, message: raw.message })) continue;
       found.push({ id: Number(raw.id), targetKey: raw.target_key, scope: raw.scope, channelId: raw.channel_id, senderUid: raw.sender_uid,
-        senderName: raw.sender_name, message: raw.message, size: Number(raw.size), createdAt: Number(raw.created_at) });
+        senderName: raw.sender_name, message: raw.message, size: Number(raw.size), createdAt: Number(raw.created_at), ref: raw.ref ?? "" });
       if (found.length >= limit) break;
     }
     return found;
@@ -776,8 +784,42 @@ export class WebSpeakDatabase {
     return row ? { id: Number(row.id), size: Number(row.size), createdAt: Number(row.created_at) } : null;
   }
 
+  /** A message leaves history together with its reactions. */
   deleteChatHistory(id: number): void {
-    this.database.prepare("DELETE FROM chat_history WHERE id = ?").run(id);
+    this.transaction(() => {
+      this.database.prepare("DELETE FROM chat_reactions WHERE ref <> '' AND ref = (SELECT ref FROM chat_history WHERE id = ?)").run(id);
+      this.database.prepare("DELETE FROM chat_history WHERE id = ?").run(id);
+    });
+  }
+
+  /** The stored message carrying a reaction reference, if any. */
+  findChatHistoryByRef(ref: string): ChatHistoryRow | null {
+    const raw = this.database.prepare("SELECT * FROM chat_history WHERE ref = ? LIMIT 1").get(ref) as {
+      id: number; target_key: string; scope: string; channel_id: string; sender_uid: string; sender_name: string; message: string; size: number; created_at: number; ref: string;
+    } | undefined;
+    return raw ? { id: Number(raw.id), targetKey: raw.target_key, scope: raw.scope, channelId: raw.channel_id, senderUid: raw.sender_uid,
+      senderName: raw.sender_name, message: raw.message, size: Number(raw.size), createdAt: Number(raw.created_at), ref: raw.ref } : null;
+  }
+
+  listChatReactions(ref: string): ChatReactionRow[] {
+    return (this.database.prepare("SELECT emoji, user_key, user_name FROM chat_reactions WHERE ref = ? ORDER BY created_at, rowid").all(ref) as
+      { emoji: string; user_key: string; user_name: string }[]).map(row => ({ emoji: row.emoji, userKey: row.user_key, userName: row.user_name }));
+  }
+
+  setChatReaction(ref: string, emoji: string, userKey: string, userName: string, active: boolean, now: number): void {
+    if (active) {
+      this.database.prepare(
+        `INSERT INTO chat_reactions (ref, emoji, user_key, user_name, created_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(ref, emoji, user_key) DO UPDATE SET user_name = excluded.user_name`,
+      ).run(ref, emoji, userKey, userName, now);
+    } else {
+      this.database.prepare("DELETE FROM chat_reactions WHERE ref = ? AND emoji = ? AND user_key = ?").run(ref, emoji, userKey);
+    }
+  }
+
+  /** Reactions whose message is no longer stored. */
+  deleteOrphanChatReactions(): void {
+    this.database.exec("DELETE FROM chat_reactions WHERE ref NOT IN (SELECT ref FROM chat_history WHERE ref <> '')");
   }
 
   chatStorageUsage(): { fileBytes: number; fileCount: number; messageBytes: number; messageCount: number } {
@@ -788,7 +830,7 @@ export class WebSpeakDatabase {
 
   clearChatStorage(): void {
     this.transaction(() => {
-      this.database.exec("DELETE FROM chat_files; DELETE FROM chat_history;");
+      this.database.exec("DELETE FROM chat_files; DELETE FROM chat_history; DELETE FROM chat_reactions;");
     });
   }
 
@@ -1166,6 +1208,27 @@ export class WebSpeakDatabase {
           CREATE INDEX IF NOT EXISTS chat_history_lookup_idx ON chat_history(target_key, scope, channel_id, created_at);
           CREATE INDEX IF NOT EXISTS chat_history_created_idx ON chat_history(created_at);
           PRAGMA user_version = 16;
+        `);
+      });
+      version = 16;
+    }
+    if (version === 16) {
+      this.transaction(() => {
+        // Emoji reactions survive restarts for messages kept in history: the
+        // message carries the gateway's reference, reactions are keyed by it.
+        const columns = this.database.prepare("PRAGMA table_info(chat_history)").all() as { name: string }[];
+        if (!columns.some(column => column.name === "ref")) this.database.exec("ALTER TABLE chat_history ADD COLUMN ref TEXT NOT NULL DEFAULT ''");
+        this.database.exec(`
+          CREATE INDEX IF NOT EXISTS chat_history_ref_idx ON chat_history(ref) WHERE ref <> '';
+          CREATE TABLE IF NOT EXISTS chat_reactions (
+            ref TEXT NOT NULL,
+            emoji TEXT NOT NULL,
+            user_key TEXT NOT NULL,
+            user_name TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (ref, emoji, user_key)
+          );
+          PRAGMA user_version = 17;
         `);
       });
     }

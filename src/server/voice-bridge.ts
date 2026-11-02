@@ -139,7 +139,7 @@ export class VoiceBridge {
   private readonly sessionManager = new SessionManager();
   private readonly entries = new Map<string, WebClientEntry>();
   private readonly chatTokens = new Map<string, WebClientEntry>();
-  private readonly chatReactions = new ChatReactionHub();
+  private readonly chatReactions: ChatReactionHub;
   private readonly screenShares: ScreenShareCoordinator;
   private readonly whiteboards: WhiteboardCoordinator;
   private readonly identityLeases = new IdentityLeaseStore();
@@ -155,6 +155,13 @@ export class VoiceBridge {
     private readonly dependencies: VoiceBridgeDependencies = {},
   ) {
     this.logger = logger.child({ component: "voice-bridge" });
+    // Reactions of messages kept in chat history are saved with them.
+    const chatStorage = options.chatStorage;
+    this.chatReactions = new ChatReactionHub(Date.now, chatStorage ? {
+      find: ref => chatStorage.messageByRef(ref),
+      load: ref => chatStorage.reactions(ref),
+      save: (ref, emoji, userKey, userName, active) => chatStorage.saveReaction(ref, emoji, userKey, userName, active),
+    } : undefined);
     this.trustedProxies = createTrustedProxies(options.trustedProxies);
     this.screenShares = new ScreenShareCoordinator(this.entries, (entryId, message) => {
       const entry = this.entries.get(entryId);
@@ -310,8 +317,9 @@ export class VoiceBridge {
         // The nickname TeamSpeak shows (it may differ from the requested one),
         // so other sessions that receive this message match it.
         const identity = { targetKey: teamSpeakTargetKey(entry!.target), scope, channelId: scope === "channel" ? channelId : "", senderName: this.ownNickname(entry!), message };
-        chatStorage?.recordMessage({ ...identity, senderUid: "" });
-        return this.chatReactions.refFor(identity);
+        const ref = this.chatReactions.refFor(identity);
+        chatStorage?.recordMessage({ ...identity, senderUid: "", ref });
+        return ref;
       };
       entry.onChatReact = (ref, emoji, active) => this.reactToChat(entry!, ref, emoji, active);
       let tsReady = false;
@@ -551,8 +559,9 @@ export class VoiceBridge {
         sendJson, addEvent: addServerEvent, onDirectoryReady: sendInitialState,
         onChatMessage: (scope, channelId, senderUid, senderName, message) => {
           const identity = { targetKey: teamSpeakTargetKey(entry!.target), scope, channelId: scope === "channel" ? channelId : "", senderName, message };
-          this.options.chatStorage?.recordMessage({ ...identity, senderUid });
-          return this.chatReactions.refFor(identity);
+          const ref = this.chatReactions.refFor(identity);
+          this.options.chatStorage?.recordMessage({ ...identity, senderUid, ref });
+          return ref;
         },
         onClientLeave: id => {
           this.screenShares.onClientLeave(entry!, id);
@@ -815,7 +824,8 @@ export class VoiceBridge {
   /** Add message references and reactions to stored history, as one viewer sees them. */
   decorateChatHistory(scope: ChatSessionScope, messages: ChatHistoryMessage[]): ChatHistoryMessage[] {
     return messages.map(message => {
-      const ref = this.chatReactions.lookup({ targetKey: scope.targetKey, scope: message.scope, channelId: message.channelId, senderName: message.senderName, message: message.message }, message.timestamp);
+      // Stored rows carry their reference; older rows are matched by content.
+      const ref = message.ref ?? this.chatReactions.lookup({ targetKey: scope.targetKey, scope: message.scope, channelId: message.channelId, senderName: message.senderName, message: message.message }, message.timestamp);
       if (!ref) return message;
       const reactions = this.chatReactions.summary(ref, scope.viewerKey);
       return { ...message, ref, ...(reactions.length ? { reactions } : {}) };
