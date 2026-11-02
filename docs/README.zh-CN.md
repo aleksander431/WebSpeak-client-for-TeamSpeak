@@ -365,7 +365,8 @@ relay.example.com {
 ```bash
 git clone --depth 1 https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak.git
 cd WebSpeak-client-for-TeamSpeak
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 启动后访问 `http://<你的主机>:3040`。使用反向代理时将上游指向该地址；启用 WebRTC 时放行控制台显示的 UDP 端口范围。数据保存在 `webspeak-data` volume 中。
@@ -379,7 +380,8 @@ docker compose logs -f webspeak
 
 ```bash
 git pull --ff-only
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 不要执行 `docker compose down -v`，否则会删除数据库和管理员设置。

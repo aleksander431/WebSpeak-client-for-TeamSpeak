@@ -118,7 +118,8 @@ TURN を設定した場合、メディアは外部 TURN サービスを経由す
 ```bash
 git clone --depth 1 https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak.git
 cd WebSpeak-client-for-TeamSpeak
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 起動後に `http://<your-host>:3040/admin` を開き、`admin` / `admin` でログインして直ちにパスワードを変更し、TeamSpeak を設定します。データは `webspeak-data` volume に保存されます。データベースを消さない場合は `docker compose down -v` を実行しないでください。

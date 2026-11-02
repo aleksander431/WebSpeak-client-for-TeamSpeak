@@ -132,7 +132,8 @@
 ```bash
 git clone --depth 1 https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak.git
 cd WebSpeak-client-for-TeamSpeak
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 После запуска откройте `http://<ваш-хост>:3040/admin`, войдите с `admin` / `admin`, сразу смените пароль и настройте TeamSpeak. Данные хранятся в volume `webspeak-data`. Не используйте `docker compose down -v`, если не хотите удалить базу и настройки.

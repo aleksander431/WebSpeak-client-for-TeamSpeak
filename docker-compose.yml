@@ -1,10 +1,12 @@
 services:
   webspeak:
-    # Built from this checkout (`docker compose up -d --build`), so the server
-    # runs exactly the reviewed source instead of a prebuilt third-party image.
-    image: webspeak:local
+    # Runs the image GitHub Actions builds from this fork. Pin a release in
+    # .env (WEBSPEAK_IMAGE=ghcr.io/aleksander431/webspeak:v0.4.0) or leave the
+    # default to follow master. Update: docker compose pull && docker compose up -d
+    # To build from this checkout instead: docker compose up -d --build
+    image: ${WEBSPEAK_IMAGE:-ghcr.io/aleksander431/webspeak:latest}
     build: .
-    pull_policy: build
+    pull_policy: missing
     restart: unless-stopped
     # WebSpeak needs to reach a TeamSpeak server running on the same host.
     # Host networking also exposes the configured WebRTC UDP range directly.
