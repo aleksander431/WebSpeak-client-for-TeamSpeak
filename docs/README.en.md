@@ -204,6 +204,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - `docker compose` now runs the fork's published image by default; pin a version with `WEBSPEAK_IMAGE` in `.env`.
 - Optional TURN server (coturn) for viewers behind strict NAT: enable with `COMPOSE_PROFILES=turn`, ports 3478 and 52000–52050.
 - Whiteboard: on large monitors (enlarged interface) drawing no longer lands away from the cursor, and the board renders sharply.
+- Member volumes are remembered more reliably: besides the UID they follow the nickname, so they survive someone joining from another browser or the desktop client.
 
 ### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 

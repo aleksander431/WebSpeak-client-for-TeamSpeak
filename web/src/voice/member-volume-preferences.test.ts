@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applySavedMemberVolumes } from "./member-volume-preferences.js";
+import { applySavedMemberVolumes, memberVolumeKeys, nicknameVolumeKey } from "./member-volume-preferences.js";
 
 test("saved member volume follows the stable UID to a new connection-local client ID", () => {
   const volumes: Record<number, number> = {};
@@ -23,4 +23,23 @@ test("saved member volumes are clamped and unchanged or invalid values are ignor
 
   assert.deepEqual(updated, [21]);
   assert.deepEqual(volumes, { 19: 0.5, 20: 1, 21: 4 });
+});
+
+test("a new UID for the same nickname (another browser or the desktop client) still gets the saved volume", () => {
+  const volumes: Record<number, number> = {};
+  const updated = applySavedMemberVolumes([
+    { id: 30, nickname: ".ForeverAlive", uid: "uid-from-the-desktop-client" },
+    { id: 31, nickname: "Someone Else", uid: "other" },
+    { id: 32, nickname: "  .foreveralive ", isSelf: true },
+  ], { "old-browser-uid": 0.4, [nicknameVolumeKey(".ForeverAlive")!]: 0.4 }, volumes);
+  assert.deepEqual(updated, [30]);
+  assert.deepEqual(volumes, { 30: 0.4 }, "matched by nickname, case and spaces ignored; never applied to ourselves");
+});
+
+test("the UID wins over the nickname, and both keys are stored", () => {
+  const volumes: Record<number, number> = {};
+  applySavedMemberVolumes([{ id: 40, nickname: "Kria", uid: "uid-kria" }], { "uid-kria": 1.5, "name:kria": 0.2 }, volumes);
+  assert.deepEqual(volumes, { 40: 1.5 });
+  assert.deepEqual(memberVolumeKeys({ uid: "uid-kria", nickname: " Kria " }), ["uid-kria", "name:kria"]);
+  assert.deepEqual(memberVolumeKeys({ uid: "", nickname: "" }), []);
 });

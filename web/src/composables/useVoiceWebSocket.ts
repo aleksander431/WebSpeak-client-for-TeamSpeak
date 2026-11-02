@@ -8,7 +8,7 @@ import { createWebRtcTransport } from "../voice/webrtc-transport.js";
 import { createVoiceConnection } from "../voice/connection.js";
 import { createVoiceCommands } from "../voice/commands.js";
 import { createVoiceSessionState } from "../voice/session-state.js";
-import { applySavedMemberVolumes } from "../voice/member-volume-preferences.js";
+import { applySavedMemberVolumes, memberVolumeKeys } from "../voice/member-volume-preferences.js";
 import { createAudioDiagnostics, type AudioPermission, type VoiceAudioStatusSample } from "../voice/audio-diagnostics.js";
 export type { AudioPermission, BrowserVoiceAudioStats, VoiceAudioStatusSample } from "../voice/audio-diagnostics.js";
 import type { SinkAudioElement } from "../voice/webrtc-playback.js";
@@ -1453,10 +1453,10 @@ export function useVoiceWebSocket() {
     const normalized = Math.max(0, Math.min(4, volume));
     volumes[clientId] = normalized;
     const member = members.find((candidate) => candidate.id === clientId);
-    if (member?.uid) {
-      storedVolumesByUid[member.uid] = normalized;
-      void saveAudioPreferences();
-    }
+    // Remember it by UID and by nickname (see member-volume-preferences.ts).
+    const keys = member ? memberVolumeKeys(member) : [];
+    for (const key of keys) storedVolumesByUid[key] = normalized;
+    if (keys.length) void saveAudioPreferences();
     remotePlayback.updateVolume(clientId);
     if (webrtc.peer || webrtc.active) sendCmd("setMemberVolume", { clientId, volume: normalized });
   }

@@ -2619,3 +2619,22 @@ test("desktop push-to-talk closes the voice between presses without showing a mu
   assert.equal(mutes().length, 2, "only the explicit mute and unmute reach TeamSpeak's mute flag");
   assert.equal(voice.pushToTalkHeld.value, false);
 });
+
+test("a member's volume follows them across reconnects, new client IDs and late joins", async () => {
+  const first = await connectWebRtc();
+  first.socket.receive({ type: "channelList", channels: [{ id: "5", parentID: "0", name: "Krya", members: [{ id: 7, uid: "uid-forever", nickname: ".ForeverAlive", channelId: "5" }] }] });
+  await nextTurn();
+  voice.setVolume(7, 0.3);
+  assert.equal(voice.volumes[7], 0.3);
+  voice.disconnect();
+  await nextTurn();
+
+  // Next session: same person, different TeamSpeak client ID, joining after us.
+  const { socket } = await connectWebRtc();
+  socket.receive({ type: "memberEnter", id: 42, uid: "uid-forever", nickname: ".ForeverAlive", channelId: "5" });
+  await nextTurn();
+  assert.equal(voice.volumes[42], 0.3, "restored for the new client ID");
+  socket.receive({ type: "channelList", channels: [{ id: "5", parentID: "0", name: "Krya", members: [{ id: 42, uid: "uid-forever", nickname: ".ForeverAlive", channelId: "5" }] }] });
+  await nextTurn();
+  assert.equal(voice.volumes[42], 0.3, "a full directory refresh keeps it");
+});
