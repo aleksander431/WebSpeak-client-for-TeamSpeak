@@ -486,7 +486,7 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   const file = new File([archive], "kaak-voice.wskin", { type: "application/octet-stream" });
   const skin = await importSkinPack(file);
   assert.equal(skin.id, "community.kaak-voice");
-  assert.equal(skin.version, "3.1.129");
+  assert.equal(skin.version, "3.1.130");
   assert.deepEqual(skin.workspace, { apiVersion: 1, mode: "persistent" });
   assert.equal(skin.minAppVersion, "0.2.8");
   assert.equal(BUILTIN_SKIN_CATALOG.find((entry) => entry.id === skin.id)?.version, skin.version);
@@ -646,12 +646,14 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   assert.equal(findPart(voice?.root, "chat-panel")?.widget, "voice.chat-panel");
   assert.deepEqual(findPart(voice?.root, "chat-panel")?.when, { path: "chat.status.panelOpen", equals: true });
   assert.equal(voice?.root.attributes?.["data-chat-open"], "{{chat.status.panelOpen}}");
-  assert.equal(findPart(voice?.root, "whisper-controls"), undefined, "the KAAK surface does not add a duplicate whisper button");
+  // The surface replaces the default voice page, so it mounts the host whisper
+  // control (hold to whisper) instead of drawing its own whisper buttons.
+  assert.equal(findPart(voice?.root, "whisper-controls")?.widget, "voice.whisper-controls");
+  assert.ok(voice?.permissions.includes("voice.whisper.status.read"));
+  assert.ok(voice?.permissions.includes("voice.whisper.control"));
   assert.equal(findPart(voice?.root, "mobile-room-invite-copy")?.events?.click, "copy-invite-link");
   assert.equal(voice?.actions["whisper-on"], undefined);
   assert.equal(voice?.actions["whisper-off"], undefined);
-  assert.equal(voice?.permissions.includes("voice.whisper.control"), false);
-  assert.equal(voice?.permissions.includes("voice.whisper.status.read"), false);
   assert.equal(findPart(voice?.root, "server-icon")?.attributes?.src, "{{server.icon}}");
   assert.equal(findPart(voice?.root, "server-monogram-initial")?.children?.[0]?.text, "{{server.monogram}}");
   assert.equal(findPart(voice?.root, "server-monogram")?.attributes?.["data-tone"], "{{server.tone}}");

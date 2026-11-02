@@ -185,6 +185,13 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v0.4.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.2) · 2026-11-02
+
+#### Neue Funktionen
+
+- KAAK-Skin: Die Flüsterleiste ist da. Mitglieder über ihr Menü auswählen und die Taste halten, damit nur sie dich hören.
+- Die Lautstärke einzelner Mitglieder bleibt zuverlässiger erhalten: Neben der UID folgt sie dem Spitznamen und übersteht so einen Beitritt aus einem anderen Browser oder dem Desktop-Client.
+
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 
 #### Neue Funktionen
@@ -194,7 +201,6 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - `docker compose` nutzt standardmäßig das veröffentlichte Image des Forks; mit `WEBSPEAK_IMAGE` in `.env` lässt sich eine Version festlegen.
 - Optionaler TURN-Server (coturn) für Zuschauer hinter strengem NAT: mit `COMPOSE_PROFILES=turn` einschalten, Ports 3478 und 52000–52050.
 - Whiteboard: Auf großen Monitoren (vergrößerte Oberfläche) landet die Zeichnung nicht mehr neben dem Mauszeiger, und das Board wird scharf dargestellt.
-- Die Lautstärke einzelner Mitglieder bleibt zuverlässiger erhalten: Neben der UID folgt sie dem Spitznamen und übersteht so einen Beitritt aus einem anderen Browser oder dem Desktop-Client.
 
 ### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 

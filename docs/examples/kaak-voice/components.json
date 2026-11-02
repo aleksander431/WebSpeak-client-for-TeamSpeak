@@ -400,7 +400,9 @@
         "voice.screenShare.status.read",
         "voice.screenShare.read",
         "voice.screenShare.control",
-        "voice.whiteboard.open"
+        "voice.whiteboard.open",
+        "voice.whisper.status.read",
+        "voice.whisper.control"
       ],
       "actions": {
         "switch-server": {
@@ -1306,6 +1308,10 @@
                   "screenShare": true,
                   "memberActions": true
                 }
+              },
+              {
+                "widget": "voice.whisper-controls",
+                "part": "whisper-controls"
               }
             ]
           },

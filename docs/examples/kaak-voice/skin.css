@@ -4734,3 +4734,37 @@
   border-color: #5a7e35;
   background: #33363b;
 }
+
+/* Whisper: the host hold-to-whisper strip, shown once whisper targets are chosen
+   from a member's menu. Sits under the member cards in KAAK's dark palette. */
+[data-ws-plugin-part="kaak-workspace.whisper-controls"] {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+[data-ws-plugin-part="kaak-workspace.whisper-controls"] .whisper-strip {
+  margin: 0 0 12px;
+  color: #b5bac1;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(155, 224, 49, .28);
+  border-radius: 10px;
+}
+
+[data-ws-plugin-part="kaak-workspace.whisper-controls"] .whisper-strip-copy strong { color: #9be031; }
+[data-ws-plugin-part="kaak-workspace.whisper-controls"] .whisper-strip-copy span { color: #949ba4; }
+
+[data-ws-plugin-part="kaak-workspace.whisper-controls"] .whisper-ptt-button {
+  color: #fff;
+  background: #477f00;
+  border-radius: 8px;
+}
+
+[data-ws-plugin-part="kaak-workspace.whisper-controls"] .whisper-ptt-button.active {
+  background: #5fa300;
+  box-shadow: 0 0 0 4px rgba(155, 224, 49, .2);
+}
+
+[data-ws-plugin-part="kaak-workspace.whisper-controls"] button:not(.whisper-ptt-button) {
+  color: #b5bac1;
+  background: transparent;
+}

@@ -199,6 +199,13 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
+### [v0.4.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.2) · 2026-11-02
+
+#### 新功能
+
+- KAAK 皮肤：新增悄悄话栏。通过成员菜单选择对象，然后按住按钮，只有他们能听到你。
+- 成员音量记忆更可靠：除 UID 外还会关联昵称，对方换浏览器或使用桌面客户端加入时也不会丢失。
+
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 
 #### 新功能
@@ -208,7 +215,6 @@ relay.example.com {
 - `docker compose` 默认使用分支发布的镜像；可在 `.env` 中用 `WEBSPEAK_IMAGE` 固定版本。
 - 可选的 TURN 服务器（coturn），用于处于严格 NAT 之后的观众：通过 `COMPOSE_PROFILES=turn` 启用，端口 3478 和 52000–52050。
 - 白板：在大显示器（界面放大）上，绘制位置不再偏离光标，白板显示也更清晰。
-- 成员音量记忆更可靠：除 UID 外还会关联昵称，对方换浏览器或使用桌面客户端加入时也不会丢失。
 
 ### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 
