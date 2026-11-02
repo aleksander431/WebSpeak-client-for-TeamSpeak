@@ -1,6 +1,6 @@
 import { createRemotePlayback } from "../voice/remote-playback.js";
 import { createMicrophoneTest } from "../voice/microphone-test.js";
-import { createMicrophoneCaptureFactory, type MicrophoneCapture, type MicrophoneProcessingSettings, type NoiseGateSettings, type NoiseSuppressionLevel } from "../voice/microphone-capture.js";
+import { createMicrophoneCaptureFactory, type MicrophoneCapture, type MicrophoneProcessingSettings, type NoiseGateSettings, type NoiseSuppressionLevel, isNoiseSuppressionLevel } from "../voice/microphone-capture.js";
 export type { MicrophoneProcessingSettings } from "../voice/microphone-capture.js";
 import { createAudioSinkRouter } from "../voice/audio-sink.js";
 import { createAccompaniment, type AccompanimentErrorCode } from "../voice/accompaniment.js";
@@ -327,8 +327,10 @@ export function useVoiceWebSocket() {
   /** The microphone reaches other people: not muted, and push-to-talk (if on) held. */
   const transmitting = () => !microphoneMuted.value && voiceGateOpen();
   const noiseSuppressionEnabled = ref(true);
-  /** "strong" runs RNNoise twice for a steady hiss. */
+  /** "strong" runs RNNoise twice for a steady hiss; "max" runs DeepFilterNet3. */
   const noiseSuppressionLevel = ref<NoiseSuppressionLevel>("normal");
+  /** Why the "max" level is not doing its job: it could not start, or the computer cannot keep up. */
+  const deepFilterProblem = ref<"" | "failed" | "overloaded">("");
   /** Silence the sent microphone below the voice-activation threshold. */
   const noiseGateEnabled = ref(false);
   let noiseSuppressionTouched = false;
@@ -468,7 +470,7 @@ export function useVoiceWebSocket() {
       committedNoiseSuppressionEnabled = preferences.noiseSuppressionEnabled;
     }
     if (typeof preferences.voxThreshold === "number") voxThreshold.value = clamp(preferences.voxThreshold, 0.001, 0.08);
-    if (preferences.noiseSuppressionLevel === "normal" || preferences.noiseSuppressionLevel === "strong") noiseSuppressionLevel.value = preferences.noiseSuppressionLevel;
+    if (isNoiseSuppressionLevel(preferences.noiseSuppressionLevel)) noiseSuppressionLevel.value = preferences.noiseSuppressionLevel;
     if (typeof preferences.noiseGateEnabled === "boolean") noiseGateEnabled.value = preferences.noiseGateEnabled;
     microphoneCapture?.setNoiseGate(noiseGateSettings());
     if (typeof preferences.inputGain === "number") inputVolume.value = Math.max(0, Math.min(1, preferences.inputGain));
@@ -733,6 +735,7 @@ export function useVoiceWebSocket() {
     let nextStream: MediaStream | null = null;
     let nextCapture: MicrophoneCapture | null = null;
     let factoryOwnsStream = false;
+    let deepFilterFailed = false;
     try {
       nextStream = await requestMediaBeforeAudioResume(
         () => navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints() }),
@@ -745,6 +748,14 @@ export function useVoiceWebSocket() {
         context: ctx, stream: nextStream, signal: controller.signal, assertCurrent,
         noiseSuppression: noiseSuppressionEnabled.value, noiseSuppressionLevel: noiseSuppressionLevel.value,
         noiseGate: noiseGateSettings(), volume: inputVolume.value, onSamples: handleCaptureChunk,
+        onDeepFilterFailed: (error) => {
+          console.warn("[WebSpeak] DeepFilterNet3 could not start, using RNNoise", error);
+          deepFilterFailed = true;
+        },
+        onDeepFilterOverload: (load) => {
+          console.warn(`[WebSpeak] DeepFilterNet3 uses ${Math.round(load * 100)}% of real time`);
+          if (microphoneCapture === nextCapture) deepFilterProblem.value = "overloaded";
+        },
       });
       assertCurrent();
       // Commit only a complete graph. Permission and node failures leave the
@@ -753,6 +764,7 @@ export function useVoiceWebSocket() {
       micStream = nextStream;
       microphoneCapture = nextCapture;
       Object.assign(microphoneProcessing, nextCapture.processing);
+      deepFilterProblem.value = deepFilterFailed ? "failed" : "";
       nextCapture.setVolume(inputVolume.value);
       nextCapture.activate();
       // The fallback for a later failed change is this actual live graph, even
@@ -1556,6 +1568,7 @@ export function useVoiceWebSocket() {
     microphoneMuted,
     noiseSuppressionEnabled,
     noiseSuppressionLevel,
+    deepFilterProblem,
     noiseGateEnabled,
     setNoiseSuppressionLevel,
     setNoiseGateEnabled,

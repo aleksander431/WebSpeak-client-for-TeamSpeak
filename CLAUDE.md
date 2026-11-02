@@ -25,7 +25,7 @@ WebSpeak connects browser users to TeamSpeak 3 and TeamSpeak 6 through a self-ho
 | `web/src/voice/screen-share.ts` | Per-session screen capture, peer negotiation, cleanup and diagnostics |
 | `web/src/voice/remote-playback.ts` | Per-speaker compatibility decoding, bounded scheduling, volume and resource cleanup |
 | `web/src/voice/microphone-test.ts` | Cancellable recording tests, recorder deadline and playback URL ownership |
-| `web/src/voice/microphone-capture.ts` | Prepared microphone processing graphs, per-context worklet loading, optional RNNoise and independent PCM activation/cleanup |
+| `web/src/voice/microphone-capture.ts` | Prepared microphone processing graphs, per-context worklet loading, optional RNNoise (once, or twice for "strong") or DeepFilterNet3 (`max`, `@workadventure/noise-suppression/deepfilternet`, loaded on demand, 48 kHz only, falls back to RNNoise) and independent PCM activation/cleanup |
 | `web/src/voice/audio-sink.ts` | Serialized device routing per audio endpoint, with stale-operation guards |
 | `web/src/voice/accompaniment.ts` | Generation-bound display-audio capture, immediate pending-capture cancellation, ended listeners and committed activity |
 | `web/src/voice/webrtc-input.ts` | Stable WebRTC sender output, microphone gain and transactional accompaniment-source attachment |

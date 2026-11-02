@@ -8694,10 +8694,22 @@
 /* Noise suppression strength and the voice threshold mark on the level bar. */
 :deep(.noise-level-switch) {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   margin: -6px 0 12px;
+}
+
+:deep(.noise-level-note) {
+  flex-basis: 100%;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+:deep(.noise-level-note.warning) {
+  color: var(--warning, #b7791f);
 }
 
 :deep(.noise-level-options) {

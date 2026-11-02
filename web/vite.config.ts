@@ -1,8 +1,11 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
+import { noiseSuppressionAudioWorkletVitePlugin } from "@workadventure/noise-suppression/vite";
 
 export default defineConfig({
-  plugins: [vue()],
+  // Serves the DeepFilterNet3 worklet, Wasm and model in development; the
+  // production build emits them as ordinary assets.
+  plugins: [vue(), noiseSuppressionAudioWorkletVitePlugin()],
   // Android's generated asset copies and Gradle reports are not web entries.
   optimizeDeps: { entries: ["index.html"] },
   server: {

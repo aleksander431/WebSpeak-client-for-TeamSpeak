@@ -4,7 +4,7 @@ interface UseWebClientAudioControlsOptions {
   settingsOpen: Ref<boolean>;
   microphoneMuted: Readonly<Ref<boolean>>;
   noiseSuppressionEnabled: Readonly<Ref<boolean>>;
-  setNoiseSuppressionLevel?: (level: "normal" | "strong") => Promise<void>;
+  setNoiseSuppressionLevel?: (level: "normal" | "strong" | "max") => Promise<void>;
   setNoiseGateEnabled?: (enabled: boolean) => void;
   inputVolume: Readonly<Ref<number>>;
   voxThreshold: Readonly<Ref<number>>;
@@ -102,7 +102,7 @@ export function useWebClientAudioControls({
     void setNoiseSuppressionEnabled((event.target as HTMLInputElement).checked);
   }
 
-  function chooseNoiseSuppressionLevel(level: "normal" | "strong"): void {
+  function chooseNoiseSuppressionLevel(level: "normal" | "strong" | "max"): void {
     void setNoiseSuppressionLevel?.(level);
   }
 

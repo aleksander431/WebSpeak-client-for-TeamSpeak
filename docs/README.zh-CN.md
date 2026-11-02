@@ -206,6 +206,7 @@ relay.example.com {
 - KAAK 皮肤：新增悄悄话栏。通过成员菜单选择对象，然后按住按钮，只有他们能听到你。
 - 成员音量记忆更可靠：除 UID 外还会关联昵称，对方换浏览器或使用桌面客户端加入时也不会丢失。
 - KAAK 皮肤：频道列表和聊天栏可以拖动边缘调整宽度。宽度会被记住，双击边缘可恢复默认宽度。
+- 降噪新增第三档“最强（AI）”：使用 DeepFilterNet3 神经网络，效果比 RNNoise 更接近 Discord 或 TeamSpeak。能更好地去除嘶嘶声和风扇声且不损伤人声，但更占用 CPU，并增加约 30 ms 延迟；首次启用时下载约 22 MB。无法启动时改用 RNNoise；电脑性能不足时会在设置中提示。
 
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 

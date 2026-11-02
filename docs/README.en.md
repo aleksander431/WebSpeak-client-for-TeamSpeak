@@ -202,6 +202,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - KAAK skin: the whisper bar is back. Pick people from their menu (“Whisper to this member”), then hold the button so only they hear you.
 - Member volumes are remembered more reliably: besides the UID they follow the nickname, so they survive someone joining from another browser or the desktop client.
 - KAAK skin: the channel list and the chat can be resized by dragging their edge. The width is remembered; double-click the edge to restore the default.
+- Noise suppression has a third level, “Maximum (AI)”: the DeepFilterNet3 neural network, much closer to Discord or TeamSpeak than RNNoise. It removes hiss and fans far better and keeps the voice intact, but uses more CPU and adds ~30 ms of delay; about 22 MB is downloaded the first time. If it cannot start, RNNoise is used; if the computer cannot keep up, the settings say so.
 
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 

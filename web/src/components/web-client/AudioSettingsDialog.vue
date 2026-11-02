@@ -95,7 +95,7 @@
                   role="radiogroup"
                   :aria-label="t('noiseSuppressionLevel')"
                   ><button
-                    v-for="level in (['normal', 'strong'] as const)"
+                    v-for="level in (['normal', 'strong', 'max'] as const)"
                     :key="level"
                     type="button"
                     role="radio"
@@ -103,8 +103,14 @@
                     :class="{ active: noiseSuppressionLevel === level }"
                     :disabled="!noiseSuppressionEnabled"
                     @click="chooseNoiseSuppressionLevel(level)"
-                    >{{ level === "normal" ? t("noiseSuppressionNormal") : t("noiseSuppressionStrong") }}</button
+                    >{{ level === "normal" ? t("noiseSuppressionNormal") : level === "strong" ? t("noiseSuppressionStrong") : t("noiseSuppressionMax") }}</button
                   ></div
+                ><small
+                  v-if="noiseSuppressionEnabled && noiseSuppressionLevel === 'max'"
+                  :class="['noise-level-note', { warning: deepFilterProblem }]"
+                  data-ws-part="voice.audio-settings.noise-level-note"
+                  role="status"
+                  >{{ deepFilterProblem === "failed" ? t("noiseSuppressionMaxFailed") : deepFilterProblem === "overloaded" ? t("noiseSuppressionMaxOverloaded") : t("noiseSuppressionMaxHint") }}</small
                 ></div
               ><label
                 class="noise-suppression-toggle settings-form-row"
@@ -321,6 +327,7 @@ type AudioSettingsState = Pick<ReturnType<typeof useVoiceWebSocket>,
   | "microphoneMuted"
   | "noiseSuppressionEnabled"
   | "noiseSuppressionLevel"
+  | "deepFilterProblem"
   | "noiseGateEnabled"
   | "inputVolume"
   | "outputVolume"
@@ -372,6 +379,7 @@ const {
   microphoneMuted,
   noiseSuppressionEnabled,
   noiseSuppressionLevel,
+  deepFilterProblem,
   noiseGateEnabled,
   inputVolume,
   outputVolume,

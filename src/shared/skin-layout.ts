@@ -192,6 +192,7 @@ const PUBLIC_PART_IDS = new Set<string>([
   "voice.audio-settings.device-select-option",
   "voice.audio-settings.accompaniment-volume",
   "voice.audio-settings.noise-level",
+  "voice.audio-settings.noise-level-note",
   "voice.audio-settings.noise-gate",
   "voice.audio-status",
   "voice.breadcrumbs",

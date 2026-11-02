@@ -8,10 +8,21 @@ export interface MicrophoneProcessingSettings {
   noiseSuppression: boolean | null;
   autoGainControl: boolean | null;
   rnnoise: boolean | null;
+  /** DeepFilterNet3 is running (the "max" level); false when it fell back to RNNoise. */
+  deepFilter?: boolean;
 }
 
-/** "strong" runs RNNoise twice, which removes more of a steady hiss. */
-export type NoiseSuppressionLevel = "normal" | "strong";
+/**
+ * "strong" runs RNNoise twice, which removes more of a steady hiss. "max" runs
+ * DeepFilterNet3, a much better (and heavier) model; its Wasm and weights are
+ * downloaded only when it is first chosen. If it cannot start it falls back to
+ * RNNoise.
+ */
+export type NoiseSuppressionLevel = "normal" | "strong" | "max";
+
+export function isNoiseSuppressionLevel(value: unknown): value is NoiseSuppressionLevel {
+  return value === "normal" || value === "strong" || value === "max";
+}
 
 export interface NoiseGateSettings {
   enabled: boolean;
@@ -40,6 +51,10 @@ interface CaptureOptions {
   noiseGate?: NoiseGateSettings;
   volume: number;
   signal: AbortSignal;
+  /** DeepFilterNet3 could not start; RNNoise is used instead. */
+  onDeepFilterFailed?(error: unknown): void;
+  /** DeepFilterNet3 runs, but this computer cannot keep up with it. */
+  onDeepFilterOverload?(load: number): void;
   assertCurrent(): void;
   onSamples(input: Float32Array, rms?: number): void;
 }
@@ -69,6 +84,7 @@ export function createMicrophoneCaptureFactory() {
     let source: MediaStreamAudioSourceNode | null = null;
     let denoiser: RnnoiseWorkletNode | null = null;
     let secondDenoiser: RnnoiseWorkletNode | null = null;
+    let deepFilter: { node: AudioWorkletNode; dispose(): void } | null = null;
     let noiseGate: AudioWorkletNode | null = null;
     let destination: MediaStreamAudioDestinationNode | null = null;
     let gain: GainNode | null = null;
@@ -92,6 +108,7 @@ export function createMicrophoneCaptureFactory() {
       stopCapture();
       if (denoiser) { clean(() => denoiser!.destroy()); clean(() => denoiser!.disconnect()); }
       if (secondDenoiser) { clean(() => secondDenoiser!.destroy()); clean(() => secondDenoiser!.disconnect()); }
+      if (deepFilter) clean(() => deepFilter!.dispose());
       if (noiseGate) { clean(() => noiseGate!.port.close()); clean(() => noiseGate!.disconnect()); }
       if (source) clean(() => source!.disconnect());
       if (destination) {
@@ -111,7 +128,29 @@ export function createMicrophoneCaptureFactory() {
       const settings = track.getSettings();
       source = ctx.createMediaStreamSource(stream);
       const supportsWorklet = typeof AudioWorkletNode !== "undefined" && Boolean(ctx.audioWorklet);
-      if (options.noiseSuppression && supportsWorklet) {
+      if (options.noiseSuppression && supportsWorklet && options.noiseSuppressionLevel === "max") {
+        let candidate: { node: AudioWorkletNode; ready: Promise<unknown>; dispose(): void } | null = null;
+        try {
+          if (ctx.sampleRate !== 48000) throw new Error(`DeepFilterNet3 needs 48 kHz, the audio context runs at ${ctx.sampleRate} Hz`);
+          // Loaded on demand: the model and its runtime are ~22 MB.
+          const { createDeepFilterNetAudioWorklet } = await import("@workadventure/noise-suppression/deepfilternet");
+          assertCurrent();
+          candidate = await createDeepFilterNetAudioWorklet(ctx, {
+            onOverload: (load) => { if (!disposed) options.onDeepFilterOverload?.(load); },
+          });
+          deepFilter = candidate;
+          assertCurrent();
+          await candidate.ready;
+          assertCurrent();
+        } catch (error) {
+          if (deepFilter) clean(() => deepFilter!.dispose());
+          else if (candidate) clean(() => candidate!.dispose());
+          deepFilter = null;
+          assertCurrent(); // cancellation is not a fallback
+          options.onDeepFilterFailed?.(error);
+        }
+      }
+      if (options.noiseSuppression && supportsWorklet && !deepFilter) {
         try {
           if (!wasmPromise) wasmPromise = loadRnnoise({ url: rnnoiseWasmUrl, simdUrl: rnnoiseSimdWasmUrl }).catch(error => {
             wasmPromise = null;
@@ -125,9 +164,10 @@ export function createMicrophoneCaptureFactory() {
           assertCurrent(); // RNNoise is optional; cancellation is not a fallback.
         }
       }
+      if (deepFilter) source.connect(deepFilter.node);
       if (denoiser) source.connect(denoiser);
       if (denoiser && secondDenoiser) denoiser.connect(secondDenoiser);
-      const processedSource: AudioNode = secondDenoiser ?? denoiser ?? source;
+      const processedSource: AudioNode = deepFilter?.node ?? secondDenoiser ?? denoiser ?? source;
       destination = ctx.createMediaStreamDestination();
       destination.channelCount = 1;
       destination.channelCountMode = "explicit";
@@ -189,6 +229,7 @@ export function createMicrophoneCaptureFactory() {
           noiseSuppression: typeof settings.noiseSuppression === "boolean" ? settings.noiseSuppression : null,
           autoGainControl: typeof settings.autoGainControl === "boolean" ? settings.autoGainControl : null,
           rnnoise: Boolean(denoiser),
+          deepFilter: Boolean(deepFilter),
         },
         setNoiseGate(settings) {
           try { noiseGate?.port.postMessage({ enabled: settings.enabled, threshold: settings.threshold, volume: settings.volume }); } catch { /* gate already released */ }
