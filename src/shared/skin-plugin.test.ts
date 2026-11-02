@@ -831,3 +831,29 @@ test("skin plugin enforces each component's node and nesting limits", () => {
   tooMany.components[0].root.children = Array.from({ length: 3 }, () => branch(5));
   errorCode(() => parseSkinPluginDocument(tooMany), "SKIN_PLUGIN_COMPLEXITY_LIMIT");
 });
+
+test("schema v3 tag nodes may declare a bounded resizable edge", () => {
+  const document = validDocument();
+  document.schemaVersion = 3;
+  const resize = { variable: "--skin-sidebar-width", edge: "right" as const, min: 200, max: 520 };
+  document.components[0].root.resize = { ...resize };
+  assert.deepEqual(parseSkinPluginDocument(document).components[0].root.resize, resize);
+
+  for (const bad of [
+    { ...resize, variable: "--ui-scale" },
+    { ...resize, variable: "--skin-Bad" },
+    { ...resize, edge: "top" },
+    { ...resize, min: 600 },
+    { ...resize, max: 5000 },
+    { ...resize, extra: true },
+  ]) {
+    document.components[0].root.resize = bad as never;
+    assert.throws(() => parseSkinPluginDocument(document));
+  }
+  document.components[0].root.resize = { ...resize, variable: "--ui-scale" };
+  errorCode(() => parseSkinPluginDocument(document), "SKIN_PLUGIN_RESIZE_INVALID");
+
+  document.schemaVersion = 2;
+  document.components[0].root.resize = { ...resize };
+  assert.throws(() => parseSkinPluginDocument(document), "older schemas cannot change layout");
+});

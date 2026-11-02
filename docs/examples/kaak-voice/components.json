@@ -880,6 +880,12 @@
           {
             "tag": "aside",
             "part": "channel-panel",
+            "resize": {
+              "variable": "--skin-kaak-channels-width",
+              "edge": "right",
+              "min": 220,
+              "max": 520
+            },
             "attributes": {
               "aria-label": "{{skin.messages.kaakServerChannels}}"
             },
@@ -1025,6 +1031,12 @@
           {
             "tag": "section",
             "part": "conversation",
+            "resize": {
+              "variable": "--skin-kaak-chat-width",
+              "edge": "left",
+              "min": 300,
+              "max": 900
+            },
             "attributes": {
               "aria-label": "{{skin.messages.kaakChat}}",
               "data-chat-open": "{{chat.status.panelOpen}}"

@@ -191,6 +191,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 - KAAK-Skin: Die Flüsterleiste ist da. Mitglieder über ihr Menü auswählen und die Taste halten, damit nur sie dich hören.
 - Die Lautstärke einzelner Mitglieder bleibt zuverlässiger erhalten: Neben der UID folgt sie dem Spitznamen und übersteht so einen Beitritt aus einem anderen Browser oder dem Desktop-Client.
+- KAAK-Skin: Kanalliste und Chat lassen sich durch Ziehen am Rand verbreitern oder verschmälern. Die Breite wird gespeichert; ein Doppelklick auf den Rand stellt die Standardbreite wieder her.
 
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 

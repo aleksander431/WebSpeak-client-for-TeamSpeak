@@ -486,7 +486,7 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   const file = new File([archive], "kaak-voice.wskin", { type: "application/octet-stream" });
   const skin = await importSkinPack(file);
   assert.equal(skin.id, "community.kaak-voice");
-  assert.equal(skin.version, "3.1.130");
+  assert.equal(skin.version, "3.1.131");
   assert.deepEqual(skin.workspace, { apiVersion: 1, mode: "persistent" });
   assert.equal(skin.minAppVersion, "0.2.8");
   assert.equal(BUILTIN_SKIN_CATALOG.find((entry) => entry.id === skin.id)?.version, skin.version);
@@ -808,8 +808,11 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   assert.match(skin.css, /data-voice-group-open="false"[\s\S]*?voice-channel-list[\s\S]*?grid-template-rows: 0fr;[\s\S]*?visibility: hidden;[\s\S]*?visibility 0s linear \.18s/);
   assert.match(skin.css, /voice-stage-heading[\s\S]*?flex: 0 0 46px;/);
   assert.doesNotMatch(skin.css, /aria-expanded="true"\]\s*[^\n]*voice-stage-heading[^\n]*display: none;/);
-  assert.match(skin.css, /grid-template-columns: 86px 304px minmax\(280px, 1fr\) 0;/);
-  assert.match(skin.css, /grid-template-columns: 86px 304px/);
+  assert.match(skin.css, /grid-template-columns: 86px var\(--skin-kaak-channels-width, 304px\) minmax\(280px, 1fr\) 0;/);
+  assert.match(skin.css, /grid-template-columns: 86px var\(--skin-kaak-channels-width, 304px\) minmax\(280px, 1fr\) var\(--skin-kaak-chat-width, /);
+  const workspaceRoot = JSON.stringify(voice);
+  assert.ok(workspaceRoot.includes('"resize":{"variable":"--skin-kaak-channels-width","edge":"right","min":220,"max":520}'), "the channel list is resizable from its right edge");
+  assert.ok(workspaceRoot.includes('"resize":{"variable":"--skin-kaak-chat-width","edge":"left","min":300,"max":900}'), "the chat is resizable from its left edge");
   assert.match(skin.css, /minmax\(340px, min\(38vw, 520px\)\)/);
   assert.match(skin.css, /grid-template-rows: minmax\(0, 1fr\)/);
   assert.doesNotMatch(skin.css, /kaak-workspace\.topbar/);

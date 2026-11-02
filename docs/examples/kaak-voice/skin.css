@@ -574,7 +574,7 @@
   --skin-kaak-border: #3a3b40;
   position: relative;
   display: grid;
-  grid-template-columns: 86px 304px minmax(280px, 1fr) minmax(340px, min(38vw, 520px));
+  grid-template-columns: 86px var(--skin-kaak-channels-width, 304px) minmax(280px, 1fr) var(--skin-kaak-chat-width, minmax(340px, min(38vw, 520px)));
   grid-template-rows: minmax(0, 1fr);
   width: 100%;
   /* The app zooms on large displays; keep this surface within the real viewport. */
@@ -589,7 +589,7 @@
 }
 
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"]:has([data-ws-plugin-part="kaak-workspace.chat-panel-toggle"][aria-expanded="false"]) {
-  grid-template-columns: 86px 304px minmax(280px, 1fr) 0;
+  grid-template-columns: 86px var(--skin-kaak-channels-width, 304px) minmax(280px, 1fr) 0;
 }
 
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .language-switcher .language-trigger,
@@ -3274,10 +3274,10 @@
   --skin-kaak-panel: #252628;
 }
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] {
-  grid-template-columns: 86px 304px minmax(280px, 1fr) minmax(340px, min(38vw, 520px));
+  grid-template-columns: 86px var(--skin-kaak-channels-width, 304px) minmax(280px, 1fr) var(--skin-kaak-chat-width, minmax(340px, min(38vw, 520px)));
 }
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"]:has([data-ws-plugin-part="kaak-workspace.chat-panel-toggle"][aria-expanded="false"]) {
-  grid-template-columns: 86px 304px minmax(280px, 1fr) 0;
+  grid-template-columns: 86px var(--skin-kaak-channels-width, 304px) minmax(280px, 1fr) 0;
 }
 [data-ws-plugin-part="kaak-workspace.channel-panel"] {
   z-index: 1;
@@ -4767,4 +4767,22 @@
 [data-ws-plugin-part="kaak-workspace.whisper-controls"] button:not(.whisper-ptt-button) {
   color: #b5bac1;
   background: transparent;
+}
+
+/* Resizable channel list (right edge) and chat (left edge): the host draws the
+   handles and sets --skin-kaak-channels-width / --skin-kaak-chat-width on the workspace. */
+[data-ws-plugin-part="kaak-workspace.channel-panel"],
+[data-ws-plugin-part="kaak-workspace.conversation"] {
+  position: relative;
+}
+
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-plugin-resize-handle::after { background: transparent; }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-plugin-resize-handle:hover::after,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-plugin-resize-handle:focus-visible::after,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"][data-ws-resizing] .ws-plugin-resize-handle::after { background: var(--skin-kaak-accent, #6cbf00); }
+
+/* A collapsed chat has no edge to drag; small screens use the stacked layout. */
+[data-ws-plugin-part="kaak-workspace.conversation"][data-chat-open="false"] > .ws-plugin-resize-handle { display: none; }
+@media (max-width: 820px) {
+  [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-plugin-resize-handle { display: none; }
 }

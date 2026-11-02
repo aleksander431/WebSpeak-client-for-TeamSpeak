@@ -12,6 +12,7 @@ import {
   type SkinPluginDocument,
   type SkinPluginHostWidget,
   type SkinPluginNode,
+  type SkinPluginResize,
   type SkinPluginWidgetOptions,
   type SkinPluginPermission,
 } from "../../../src/shared/skin-plugin.js";
@@ -385,6 +386,7 @@ export default defineComponent({
       }
       if (node.tag === "form" && !node.events?.submit) attrs.onSubmit = (event: Event) => event.preventDefault();
       const children = (node.children ?? []).map((child, index) => renderNode(component, child, context, state, budget, false, `${nodePath}-${index}`));
+      if (node.resize) children.push(resizeHandle(componentPath, node.resize));
       if (props.page === "voice" && node.tag === "nav" && ["server-rail", "quick-rail"].includes(node.part ?? "")) {
         children.push(h("span", {
           class: "ws-plugin-server-add-divider",
@@ -437,12 +439,131 @@ export default defineComponent({
 
     onUnmounted(() => assetUrls.clear());
 
+    // ---------------------------------------------------------- resizable edges
+    // Widths the user dragged, per skin, component and CSS variable. NaN means
+    // "use the skin's own default" (already looked up, nothing stored).
+    const resizeWidths = reactive(new Map<string, number>());
+    const resizeSpecs = new WeakMap<SkinPluginComponent, SkinPluginResize[]>();
+    const resizeKey = (componentKey: string, variable: string) => `webspeak:skin-resize:${props.skinId}:${componentKey}:${variable}`;
+    function specsOf(component: SkinPluginComponent): SkinPluginResize[] {
+      let specs = resizeSpecs.get(component);
+      if (!specs) {
+        specs = [];
+        const stack: SkinPluginNode[] = [component.root];
+        while (stack.length) {
+          const node = stack.pop()!;
+          if (node.resize && !specs.some((spec) => spec.variable === node.resize!.variable)) specs.push(node.resize);
+          if (node.children) stack.push(...node.children);
+        }
+        resizeSpecs.set(component, specs);
+      }
+      return specs;
+    }
+    function storedWidth(componentKey: string, spec: SkinPluginResize): number | null {
+      const key = resizeKey(componentKey, spec.variable);
+      if (!resizeWidths.has(key)) {
+        let value = Number.NaN;
+        try { const raw = localStorage.getItem(key); if (raw !== null) value = Number(raw); } catch { /* storage unavailable */ }
+        resizeWidths.set(key, Number.isFinite(value) ? value : Number.NaN);
+      }
+      const value = resizeWidths.get(key)!;
+      return Number.isFinite(value) ? Math.min(spec.max, Math.max(spec.min, value)) : null;
+    }
+    function setWidth(componentKey: string, spec: SkinPluginResize, value: number | null, persist: boolean): void {
+      const key = resizeKey(componentKey, spec.variable);
+      const next = value === null ? Number.NaN : Math.round(Math.min(spec.max, Math.max(spec.min, value)));
+      resizeWidths.set(key, next);
+      if (!persist) return;
+      try {
+        if (Number.isFinite(next)) localStorage.setItem(key, String(next));
+        else localStorage.removeItem(key);
+      } catch { /* not remembered this time */ }
+    }
+    function resizeStyle(component: SkinPluginComponent, componentKey: string): Record<string, string> {
+      const style: Record<string, string> = {};
+      for (const spec of specsOf(component)) {
+        const width = storedWidth(componentKey, spec);
+        if (width !== null) style[spec.variable] = `${width}px`;
+      }
+      return style;
+    }
+    /** The drag handle the host draws on a node that declares `resize`. */
+    function resizeHandle(componentKey: string, spec: SkinPluginResize): VNodeChild {
+      const current = storedWidth(componentKey, spec);
+      // Dragging the right edge to the right widens; the left edge widens to the left.
+      const direction = spec.edge === "right" ? 1 : -1;
+      const measure = (handle: HTMLElement) => {
+        const panel = handle.parentElement;
+        if (!panel) return { width: current ?? spec.min, zoom: 1 };
+        // The page may be CSS-zoomed; pointer pixels are zoomed, widths are not.
+        const rect = panel.getBoundingClientRect();
+        return { width: panel.offsetWidth, zoom: panel.offsetWidth > 0 && rect.width > 0 ? rect.width / panel.offsetWidth : 1 };
+      };
+      return h("div", {
+        class: "ws-plugin-resize-handle",
+        "data-ws-resize-edge": spec.edge,
+        role: "separator",
+        tabindex: 0,
+        "aria-orientation": "vertical",
+        "aria-valuemin": spec.min,
+        "aria-valuemax": spec.max,
+        ...(current !== null ? { "aria-valuenow": current } : {}),
+        "aria-label": "调整宽度 / Resize",
+        title: "调整宽度（双击恢复）/ Drag to resize, double-click to reset",
+        onPointerdown: (event: PointerEvent) => {
+          if (!event.isTrusted || event.button !== 0) return;
+          const handle = event.currentTarget as HTMLElement;
+          const root = handle.closest<HTMLElement>(".ws-plugin-component");
+          const { width: startWidth, zoom } = measure(handle);
+          const startX = event.clientX;
+          event.preventDefault();
+          try { handle.setPointerCapture(event.pointerId); } catch { /* still works without capture */ }
+          root?.setAttribute("data-ws-resizing", "true");
+          const move = (moveEvent: PointerEvent) => {
+            setWidth(componentKey, spec, startWidth + direction * (moveEvent.clientX - startX) / zoom, false);
+          };
+          const finish = () => {
+            handle.removeEventListener("pointermove", move);
+            handle.removeEventListener("pointerup", finish);
+            handle.removeEventListener("pointercancel", finish);
+            root?.removeAttribute("data-ws-resizing");
+            const key = resizeKey(componentKey, spec.variable);
+            const value = resizeWidths.get(key);
+            setWidth(componentKey, spec, value !== undefined && Number.isFinite(value) ? value : null, true);
+          };
+          handle.addEventListener("pointermove", move);
+          handle.addEventListener("pointerup", finish);
+          handle.addEventListener("pointercancel", finish);
+        },
+        onDblclick: (event: MouseEvent) => {
+          if (!event.isTrusted) return;
+          setWidth(componentKey, spec, null, true);
+        },
+        onKeydown: (event: KeyboardEvent) => {
+          if (!event.isTrusted) return;
+          const handle = event.currentTarget as HTMLElement;
+          const base = storedWidth(componentKey, spec) ?? measure(handle).width;
+          const step = event.shiftKey ? 64 : 16;
+          let next: number | null = null;
+          if (event.key === "ArrowRight") next = base + direction * step;
+          else if (event.key === "ArrowLeft") next = base - direction * step;
+          else if (event.key === "Home") next = spec.min;
+          else if (event.key === "End") next = spec.max;
+          if (next === null) return;
+          event.preventDefault();
+          setWidth(componentKey, spec, next, true);
+        },
+      });
+    }
+
     return () => {
       const nodes: VNodeChild[] = renderedComponents.value.map((component) => {
         const state = localState(component, props.data);
+        const componentKey = props.componentNamespace ? `${props.componentNamespace}.${component.id}` : component.id;
         return h("div", {
           key: `${props.skinId}:${component.id}`,
           class: ["ws-plugin-component", component.mode === "surface" && "ws-plugin-surface"],
+          style: resizeStyle(component, componentKey),
           "data-ws-plugin-component": props.componentNamespace ? `${props.componentNamespace}.${component.id}` : component.id,
           "data-ws-plugin-name": interpolate(component.name, props.data, state),
           "data-ws-plugin-part": props.componentNamespace ? `${props.componentNamespace}.${component.id}` : component.id,

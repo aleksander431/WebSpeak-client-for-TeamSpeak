@@ -232,6 +232,8 @@ components.json 顶层接受 schemaVersion 1、2 或 3 和 components 数组。s
 
 注意：v3 CSS 和 surface 可以隐藏或遮挡普通语音控件。权限和返回标准界面提示由宿主在皮肤根之外绘制；其他界面控件仍受皮肤排版影响。测试时务必确保麦克风、设置、退出语音、屏幕共享操作和移动端导航仍有可达路径。组件演示页 /demo 使用合成数据，加入频道和聊天动作只更新演示状态；它不支持宿主控件或整页替换。
 
+可调整宽度（schema v3+）：任意标签节点可声明 `"resize": {"variable": "--skin-sidebar-width", "edge": "right", "min": 220, "max": 520}`。宿主在该节点的左/右边缘绘制拖动手柄（`.ws-plugin-resize-handle`），拖动时把以 px 为单位的宽度写入组件根上的变量，皮肤 CSS 自行使用，例如 `grid-template-columns: var(--skin-sidebar-width, 304px) 1fr`。变量必须以 `--skin-`（或插件的 `--plugin-`）开头且为小写；`edge` 仅为 `left` 或 `right`；`0 ≤ min ≤ max ≤ 4000`。宽度按皮肤和浏览器保存在本地；双击手柄恢复皮肤默认值，键盘方向键每次 16px（Shift 为 64px），Home/End 跳到最小/最大值。拖动按页面缩放换算，因此在大屏缩放下手柄仍跟随指针。
+
 ### 本地组件结构编辑器
 
 公开客户端页可打开“组件结构”编辑器，直接管理当前皮肤版本的声明式组件树。它支持创建、复制、删除组件和节点、添加子节点或同级节点、调整顺序、编辑组件元数据与节点 JSON、撤销/重做，以及导入/导出 components.json。该编辑器不属于管理员面板，不加载到 /admin/**。

@@ -150,6 +150,21 @@ export interface SkinPluginNode {
   when?: { path: string; equals?: string | number | boolean; empty?: boolean };
   events?: Partial<Record<SkinPluginEvent, string>>;
   children?: SkinPluginNode[];
+  /** A user-draggable edge that sets a width (CSS custom property) on the component root. */
+  resize?: SkinPluginResize;
+}
+
+/**
+ * The host draws a drag handle on one edge of the node. Dragging sets
+ * `variable` (in px) on the component root, where the skin's CSS uses it,
+ * e.g. `grid-template-columns: var(--my-sidebar, 304px) 1fr`. The value is
+ * remembered per browser; double-click restores the skin's own default.
+ */
+export interface SkinPluginResize {
+  variable: string;
+  edge: "left" | "right";
+  min: number;
+  max: number;
 }
 
 export interface SkinPluginComponent {
@@ -473,7 +488,7 @@ export function parseSkinPluginDocument(input: unknown): SkinPluginDocument {
       componentNodes += 1;
       if (componentNodes > (inputSchemaVersion >= 3 ? SKIN_PLUGIN_NODE_LIMIT : 256)) fail("SKIN_PLUGIN_COMPLEXITY_LIMIT", "A component contains too many template nodes.");
       if (depth > (inputSchemaVersion >= 3 ? SKIN_PLUGIN_TREE_DEPTH_LIMIT : 16) || !isRecord(rawNode)) fail("SKIN_PLUGIN_TREE_INVALID", "A component tree is too deep or contains an invalid node.");
-      onlyKeys(rawNode, new Set(["widget", "options", "tag", "text", "part", "className", "attributes", "asset", "bindValue", "repeat", "when", "events", "children"]), "Component node");
+      onlyKeys(rawNode, new Set(["widget", "options", "tag", "text", "part", "className", "attributes", "asset", "bindValue", "repeat", "when", "events", "children", "resize"]), "Component node");
       if (inputSchemaVersion === 1 && rawNode.widget !== undefined) fail("SKIN_PLUGIN_SCHEMA_UNSUPPORTED", "Host widgets require components schema version 2.");
       const nodeKinds = Number(rawNode.widget !== undefined) + Number(rawNode.tag !== undefined) + Number(rawNode.text !== undefined);
       if (nodeKinds !== 1) fail("SKIN_PLUGIN_TREE_INVALID", "Each component node must define exactly one of widget, tag, or text.");
@@ -580,6 +595,16 @@ export function parseSkinPluginDocument(input: unknown): SkinPluginDocument {
         if (node.tag !== "img") fail("SKIN_PLUGIN_ASSET_INVALID", "Package image assets can only be attached to img elements.");
         if (!/^assets\/[a-zA-Z0-9._/-]+$/.test(asset) || asset.split("/").some((part) => !part || part === "." || part === "..")) fail("SKIN_PLUGIN_ASSET_INVALID", "Component assets must use safe package-relative paths.");
         node.asset = asset;
+      }
+      if (rawNode.resize !== undefined) {
+        if (inputSchemaVersion < 3 || node.tag === undefined || !isRecord(rawNode.resize)) fail("SKIN_PLUGIN_RESIZE_INVALID", "Only schema v3 element nodes may declare a resizable edge.");
+        onlyKeys(rawNode.resize, new Set(["variable", "edge", "min", "max"]), "Resize declaration");
+        const { variable, edge, min, max } = rawNode.resize;
+        if (typeof variable !== "string" || !/^--(?:skin|plugin)-[a-z0-9-]{1,48}$/.test(variable)) fail("SKIN_PLUGIN_RESIZE_INVALID", "A resizable edge must name a lowercase --skin- (or --plugin-) CSS custom property.");
+        if (edge !== "left" && edge !== "right") fail("SKIN_PLUGIN_RESIZE_INVALID", "A resizable edge is left or right.");
+        const bounded = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 4000;
+        if (!bounded(min) || !bounded(max) || (min as number) > (max as number)) fail("SKIN_PLUGIN_RESIZE_INVALID", "A resizable edge needs 0 ≤ min ≤ max ≤ 4000 pixels.");
+        node.resize = { variable, edge, min: min as number, max: max as number };
       }
       if (rawNode.bindValue !== undefined) {
         const key = identifier(rawNode.bindValue, "node.bindValue");
