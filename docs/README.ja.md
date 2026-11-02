@@ -159,6 +159,15 @@ npm start
 
 <a id="latest-release-notes"></a>
 
+### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
+
+#### 新機能
+
+- ノイズ抑制を調整可能に：標準または強（RNNoise を 2 回）と、話していない間はマイクを無音にするノイズゲート。しきい値はマイクのレベルバー上に印で表示されます。
+- 配信の音量が記憶されるようになりました。
+- `docker compose` は既定でフォークの公開イメージを使用します。`.env` の `WEBSPEAK_IMAGE` でバージョンを固定できます。
+- 厳しい NAT の背後にいる視聴者向けの任意の TURN サーバー（coturn）：`COMPOSE_PROFILES=turn` で有効化、ポート 3478 と 52000–52050。
+
 ### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 
 #### 新機能

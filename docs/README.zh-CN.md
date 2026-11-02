@@ -199,6 +199,15 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
+### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
+
+#### 新功能
+
+- 降噪可调：普通或强（RNNoise 双重处理），以及在不说话时让麦克风静音的噪声门，嘶嘶声不会传出去。阈值以标记形式显示在麦克风电平条上。
+- 直播音量会被记住。
+- `docker compose` 默认使用分支发布的镜像；可在 `.env` 中用 `WEBSPEAK_IMAGE` 固定版本。
+- 可选的 TURN 服务器（coturn），用于处于严格 NAT 之后的观众：通过 `COMPOSE_PROFILES=turn` 启用，端口 3478 和 52000–52050。
+
 ### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 
 #### 新功能

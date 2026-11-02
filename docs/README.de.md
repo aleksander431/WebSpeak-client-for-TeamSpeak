@@ -185,6 +185,15 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
+
+#### Neue Funktionen
+
+- Einstellbare Rauschunterdrückung: Normal oder Stark (RNNoise doppelt) und ein Noise Gate, das das Mikrofon stummschaltet, solange du nichts sagst, damit kein Rauschen übertragen wird. Die Schwelle erscheint als Markierung auf der Mikrofonpegelanzeige.
+- Die Lautstärke von Übertragungen wird gespeichert.
+- `docker compose` nutzt standardmäßig das veröffentlichte Image des Forks; mit `WEBSPEAK_IMAGE` in `.env` lässt sich eine Version festlegen.
+- Optionaler TURN-Server (coturn) für Zuschauer hinter strengem NAT: mit `COMPOSE_PROFILES=turn` einschalten, Ports 3478 und 52000–52050.
+
 ### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 
 #### Neue Funktionen

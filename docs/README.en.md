@@ -195,6 +195,15 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
+### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
+
+#### New features
+
+- Adjustable noise suppression: Normal or Strong (RNNoise twice) and a noise gate that silences the microphone while you are quiet, so hiss is not sent. The threshold shows as a mark on the microphone level bar.
+- The stream volume is remembered between streams and visits.
+- `docker compose` now runs the fork's published image by default; pin a version with `WEBSPEAK_IMAGE` in `.env`.
+- Optional TURN server (coturn) for viewers behind strict NAT: enable with `COMPOSE_PROFILES=turn`, ports 3478 and 52000–52050.
+
 ### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 
 #### New features
