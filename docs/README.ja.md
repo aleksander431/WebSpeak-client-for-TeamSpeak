@@ -167,6 +167,7 @@ npm start
 - 配信の音量が記憶されるようになりました。
 - `docker compose` は既定でフォークの公開イメージを使用します。`.env` の `WEBSPEAK_IMAGE` でバージョンを固定できます。
 - 厳しい NAT の背後にいる視聴者向けの任意の TURN サーバー（coturn）：`COMPOSE_PROFILES=turn` で有効化、ポート 3478 と 52000–52050。
+- ホワイトボード：大きなモニター（UI 拡大時）で描画がカーソルからずれなくなり、表示も鮮明になりました。
 
 ### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 

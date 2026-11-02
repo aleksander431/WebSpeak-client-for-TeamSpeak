@@ -407,14 +407,34 @@ function runConfirm() {
 
 // ------------------------------------------------------------ coordinates
 
+/**
+ * On large screens the whole page is CSS-zoomed (main.ts, --ui-scale). Pointer
+ * positions and getBoundingClientRect are then in zoomed pixels, while the
+ * canvas is laid out and drawn in unzoomed CSS pixels. Convert once here.
+ */
+function canvasFrame() {
+  const element = canvas.value!;
+  const rect = element.getBoundingClientRect();
+  const width = element.clientWidth, height = element.clientHeight;
+  return {
+    left: rect.left, top: rect.top, width, height,
+    scaleX: width > 0 && rect.width > 0 ? rect.width / width : 1,
+    scaleY: height > 0 && rect.height > 0 ? rect.height / height : 1,
+  };
+}
+/** A pointer position in the canvas's own (unzoomed) pixels. */
+function localPoint(clientX: number, clientY: number) {
+  const frame = canvasFrame();
+  return { x: (clientX - frame.left) / frame.scaleX, y: (clientY - frame.top) / frame.scaleY };
+}
 function toWorld(clientX: number, clientY: number) {
-  const rect = canvas.value!.getBoundingClientRect();
-  return { x: (clientX - rect.left - view.x) / view.zoom, y: (clientY - rect.top - view.y) / view.zoom };
+  const local = localPoint(clientX, clientY);
+  return { x: (local.x - view.x) / view.zoom, y: (local.y - view.y) / view.zoom };
 }
 function toScreen(x: number, y: number) { return { x: x * view.zoom + view.x, y: y * view.zoom + view.y }; }
 function viewCenter() {
-  const rect = canvas.value?.getBoundingClientRect();
-  return rect ? toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2) : { x: 0, y: 0 };
+  const element = canvas.value;
+  return element ? { x: (element.clientWidth / 2 - view.x) / view.zoom, y: (element.clientHeight / 2 - view.y) / view.zoom } : { x: 0, y: 0 };
 }
 function zoomAt(screenX: number, screenY: number, zoom: number) {
   const next = Math.min(8, Math.max(0.1, zoom));
@@ -425,12 +445,13 @@ function zoomAt(screenX: number, screenY: number, zoom: number) {
   requestDraw();
 }
 function zoomBy(factor: number) {
-  const rect = canvas.value?.getBoundingClientRect();
-  if (rect) zoomAt(rect.width / 2, rect.height / 2, view.zoom * factor);
+  const element = canvas.value;
+  if (element) zoomAt(element.clientWidth / 2, element.clientHeight / 2, view.zoom * factor);
 }
 function resetView() {
   const bounds = unionBounds([...props.client.elements.values()].map(elementBounds));
-  const rect = canvas.value?.getBoundingClientRect();
+  const element = canvas.value;
+  const rect = element ? { width: element.clientWidth, height: element.clientHeight } : null;
   view.zoom = 1;
   if (bounds && rect) {
     const fit = Math.min(1, (rect.width - 80) / Math.max(1, bounds.w), (rect.height - 80) / Math.max(1, bounds.h));
@@ -517,8 +538,7 @@ function onPointerDown(event: PointerEvent) {
       // Second finger: switch to pinch zoom and drop whatever the first started.
       cancelInteraction();
       const [a, b] = [...touches.values()];
-      const rect = target.getBoundingClientRect();
-      const midX = (a!.x + b!.x) / 2 - rect.left, midY = (a!.y + b!.y) / 2 - rect.top;
+      const { x: midX, y: midY } = localPoint((a!.x + b!.x) / 2, (a!.y + b!.y) / 2);
       pinch = { distance: Math.hypot(a!.x - b!.x, a!.y - b!.y), zoom: view.zoom, worldX: (midX - view.x) / view.zoom, worldY: (midY - view.y) / view.zoom };
       return;
     }
@@ -526,12 +546,12 @@ function onPointerDown(event: PointerEvent) {
   }
   if (textEditor.value) { commitText(); if (tool.value === "text") return; }
   const world = toWorld(event.clientX, event.clientY);
-  const rect = target.getBoundingClientRect();
+  const local = localPoint(event.clientX, event.clientY);
   const panRequested = event.button === 1 || event.button === 2 || effectiveTool.value === "hand";
   if (event.button !== 0 && !panRequested) return;
   target.setPointerCapture(event.pointerId);
   if (panRequested) {
-    interaction.value = { kind: "pan", pointerId: event.pointerId, startX: event.clientX - rect.left, startY: event.clientY - rect.top, viewX: view.x, viewY: view.y };
+    interaction.value = { kind: "pan", pointerId: event.pointerId, startX: local.x, startY: local.y, viewX: view.x, viewY: view.y };
     return;
   }
   switch (tool.value) {
@@ -597,8 +617,8 @@ function onPointerMove(event: PointerEvent) {
     touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pinch && touches.size === 2) {
       const [a, b] = [...touches.values()];
-      const rect = canvas.value!.getBoundingClientRect();
-      const midX = (a!.x + b!.x) / 2 - rect.left, midY = (a!.y + b!.y) / 2 - rect.top;
+      const { x: midX, y: midY } = localPoint((a!.x + b!.x) / 2, (a!.y + b!.y) / 2);
+      // The finger distance ratio is the same in zoomed and unzoomed pixels.
       const zoom = Math.min(8, Math.max(0.1, pinch.zoom * Math.hypot(a!.x - b!.x, a!.y - b!.y) / Math.max(1, pinch.distance)));
       view.zoom = zoom;
       view.x = midX - pinch.worldX * zoom;
@@ -616,9 +636,9 @@ function onPointerMove(event: PointerEvent) {
   }
   switch (current.kind) {
     case "pan": {
-      const rect = canvas.value!.getBoundingClientRect();
-      view.x = current.viewX + (event.clientX - rect.left - current.startX);
-      view.y = current.viewY + (event.clientY - rect.top - current.startY);
+      const local = localPoint(event.clientX, event.clientY);
+      view.x = current.viewX + (local.x - current.startX);
+      view.y = current.viewY + (local.y - current.startY);
       break;
     }
     case "draw": {
@@ -769,9 +789,9 @@ function onDoubleClick(event: MouseEvent) {
 }
 
 function onWheel(event: WheelEvent) {
-  const rect = canvas.value!.getBoundingClientRect();
   if (event.ctrlKey || event.metaKey) {
-    zoomAt(event.clientX - rect.left, event.clientY - rect.top, view.zoom * Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.05 : 0.0025)));
+    const local = localPoint(event.clientX, event.clientY);
+    zoomAt(local.x, local.y, view.zoom * Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.05 : 0.0025)));
     return;
   }
   const scale = event.deltaMode === 1 ? 16 : 1;
@@ -869,7 +889,8 @@ async function addImage(blob: Blob, at?: { x: number; y: number }) {
   showHint(t("whiteboardImageProcessing"));
   try {
     const image = await prepareWhiteboardImage(blob);
-    const rect = canvas.value?.getBoundingClientRect();
+    const board = canvas.value;
+    const rect = board ? { width: board.clientWidth, height: board.clientHeight } : null;
     // Fit into about 60% of the visible area at the current zoom.
     const maxW = rect ? (rect.width * 0.6) / view.zoom : image.width;
     const maxH = rect ? (rect.height * 0.6) / view.zoom : image.height;
@@ -1013,8 +1034,11 @@ function draw() {
   const element = canvas.value;
   const host = stage.value;
   if (!element || !host) return;
-  const dpr = Math.min(3, window.devicePixelRatio || 1);
   const width = host.clientWidth, height = host.clientHeight;
+  // Include the page's CSS zoom so a zoomed board stays sharp instead of stretched.
+  const hostRect = host.getBoundingClientRect();
+  const pageZoom = width > 0 && hostRect.width > 0 ? hostRect.width / width : 1;
+  const dpr = Math.min(4, (window.devicePixelRatio || 1) * pageZoom);
   if (element.width !== Math.round(width * dpr) || element.height !== Math.round(height * dpr)) {
     element.width = Math.round(width * dpr);
     element.height = Math.round(height * dpr);

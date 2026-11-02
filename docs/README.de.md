@@ -193,6 +193,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Die Lautstärke von Übertragungen wird gespeichert.
 - `docker compose` nutzt standardmäßig das veröffentlichte Image des Forks; mit `WEBSPEAK_IMAGE` in `.env` lässt sich eine Version festlegen.
 - Optionaler TURN-Server (coturn) für Zuschauer hinter strengem NAT: mit `COMPOSE_PROFILES=turn` einschalten, Ports 3478 und 52000–52050.
+- Whiteboard: Auf großen Monitoren (vergrößerte Oberfläche) landet die Zeichnung nicht mehr neben dem Mauszeiger, und das Board wird scharf dargestellt.
 
 ### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 

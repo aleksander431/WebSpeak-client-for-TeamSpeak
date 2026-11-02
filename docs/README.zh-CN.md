@@ -207,6 +207,7 @@ relay.example.com {
 - 直播音量会被记住。
 - `docker compose` 默认使用分支发布的镜像；可在 `.env` 中用 `WEBSPEAK_IMAGE` 固定版本。
 - 可选的 TURN 服务器（coturn），用于处于严格 NAT 之后的观众：通过 `COMPOSE_PROFILES=turn` 启用，端口 3478 和 52000–52050。
+- 白板：在大显示器（界面放大）上，绘制位置不再偏离光标，白板显示也更清晰。
 
 ### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 
