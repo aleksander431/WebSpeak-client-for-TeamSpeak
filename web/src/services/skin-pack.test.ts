@@ -152,7 +152,7 @@ test("the ILLUSIA v3 example and bundled package import without replacing WebSpe
   const skin = await importSkinPack(new File([exampleBytes], "illusia-voice.wskin", { type: "application/octet-stream" }));
   assert.equal(skin.id, "community.illusia-voice");
   assert.equal(skin.name, "ILLUSIA风");
-  assert.equal(skin.version, "2.0.2");
+  assert.equal(skin.version, "2.0.3");
   assert.equal(skin.schemaVersion, 3);
   assert.equal(skin.packageType, "open-skin");
   assert.equal(skin.layoutData, undefined);
@@ -486,7 +486,7 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   const file = new File([archive], "kaak-voice.wskin", { type: "application/octet-stream" });
   const skin = await importSkinPack(file);
   assert.equal(skin.id, "community.kaak-voice");
-  assert.equal(skin.version, "3.1.132");
+  assert.equal(skin.version, "3.1.133");
   assert.deepEqual(skin.workspace, { apiVersion: 1, mode: "persistent" });
   assert.equal(skin.minAppVersion, "0.2.8");
   assert.equal(BUILTIN_SKIN_CATALOG.find((entry) => entry.id === skin.id)?.version, skin.version);

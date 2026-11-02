@@ -302,6 +302,34 @@
   background: #69d2c7;
 }
 
+/* Header and chat controls keep light backgrounds from the day theme otherwise. */
+.ws-skin-root[data-ws-skin="builtin.dark"] .skin-trigger,
+.ws-skin-root[data-ws-skin="builtin.dark"] .language-trigger,
+.ws-skin-root[data-ws-skin="builtin.dark"] .status-button,
+.ws-skin-root[data-ws-skin="builtin.dark"] [data-ws-part="voice.chat.tab"] {
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.ws-skin-root[data-ws-skin="builtin.dark"] .skin-trigger:hover,
+.ws-skin-root[data-ws-skin="builtin.dark"] .language-trigger:hover,
+.ws-skin-root[data-ws-skin="builtin.dark"] .status-button:hover,
+.ws-skin-root[data-ws-skin="builtin.dark"] [data-ws-part="voice.chat.tab"]:hover { color: var(--text-primary); background: #263936; }
+.ws-skin-root[data-ws-skin="builtin.dark"] [data-ws-part="voice.chat.tab"].active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.ws-skin-root[data-ws-skin="builtin.dark"] .disconnect-button {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 13%, var(--surface-1));
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+.ws-skin-root[data-ws-skin="builtin.dark"] .disconnect-button:hover { background: color-mix(in srgb, var(--danger) 22%, var(--surface-1)); }
+
+.ws-skin-root[data-ws-skin="builtin.dark"] .mobile-brand { color: var(--accent); }
+.ws-skin-root[data-ws-skin="builtin.dark"] .mobile-brand em { color: var(--text-primary); }
+
 @keyframes join-accent-breathe-dark {
   0%, 100% { transform: translateY(0); text-shadow: 0 0 8px rgba(125, 255, 174, .28), 0 0 18px rgba(105, 210, 199, .14); }
   50% { transform: translateY(-2px); text-shadow: 0 0 13px rgba(125, 255, 174, .5), 0 0 26px rgba(105, 210, 199, .22); }

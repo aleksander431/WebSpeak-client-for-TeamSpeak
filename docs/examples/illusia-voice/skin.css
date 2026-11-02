@@ -1217,3 +1217,23 @@
     transition-duration: .01ms;
   }
 }
+
+/* Readability over the artwork. The headset stays a foreground decoration
+   but no longer washes out channel names under it. */
+[data-ws-part="voice.member-panel"]::before {
+  opacity: .55;
+}
+
+[data-ws-part="voice.member-panel"] .channel-no-members {
+  color: #5f8087;
+}
+
+@media (max-width: 740px) {
+  /* On a phone the mascots would sit on top of the card title and the button text. */
+  [data-ws-part="home.join-card"] {
+    background-image: none;
+  }
+  [data-ws-part="home"] [data-ws-part="home.connect"] {
+    background: linear-gradient(100deg, #38d6d0 0%, #0c9caf 62%, #08788d 100%) center / cover no-repeat;
+  }
+}

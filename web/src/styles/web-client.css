@@ -8906,8 +8906,9 @@
 }
 
 :deep(.chat-mention.self) {
-  color: #8a5300;
-  background: rgba(250, 176, 5, .25);
+  color: inherit;
+  background: rgba(250, 176, 5, .3);
+  box-shadow: inset 0 -2px 0 rgba(240, 160, 32, .8);
 }
 
 :deep(.message-row.mentions-me .message-bubble) {
@@ -9175,4 +9176,111 @@
 
 :deep(.chat-length.over) {
   color: var(--warning, #b7791f);
+}
+
+/* ---- Layout polish shared by every theme ---- */
+
+/* Dialogs sit above the workspace header (z-index 40) and its menus. */
+:deep(.modal-backdrop) {
+  z-index: 70;
+}
+
+/* Fields with a framed wrapper show focus on the wrapper, not as a second
+   square outline inside it. */
+.web-client :deep(.field-wrap input:focus-visible),
+.web-client :deep(.message-composer input:focus-visible),
+.web-client :deep(.message-composer textarea:focus-visible),
+.web-client :deep(.chat-search input:focus-visible) {
+  outline: none;
+}
+
+:deep(.message-composer:focus-within),
+:deep(.chat-search:focus-within) {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #006a64) 45%, transparent);
+}
+
+/* Join card: the lead line is separated from the first field. */
+.card-lead {
+  margin-bottom: 16px;
+}
+
+/* The activity section is the first thing in the room: no extra gap above it. */
+.voice-section[data-ws-part="voice.activity"] {
+  margin-top: 0;
+}
+
+/* Chat heading: title on the left, counter and search together on the right. */
+:deep(.chat-heading) {
+  gap: 10px;
+}
+
+:deep(.chat-heading .section-counter) {
+  margin-left: auto;
+}
+
+/* Rounded corners follow one scale: 6px small controls, 9px controls and
+   bubbles' code, 12px cards and popovers. */
+:deep(.chat-reaction-picker),
+:deep(.chat-reply-preview),
+:deep(.chat-mention-suggestions),
+:deep(.chat-search) {
+  border-radius: 12px;
+}
+
+@media (max-width: 740px) {
+  /* Decorations would overlap the card title on a phone. */
+  .join-card-waveform,
+  .join-card-sonar {
+    display: none;
+  }
+
+  /* One compact line instead of four squeezed columns. */
+  .join-footer {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px 8px;
+    font-size: 11px;
+    text-align: center;
+  }
+  .join-footer .footer-spacer,
+  .join-footer > span:nth-of-type(n+3) {
+    display: none;
+  }
+}
+
+/* Touch screens have no hover: message actions sit under the bubble instead
+   of beside it, so they never narrow the message. */
+@media (hover: none) {
+  :deep(.message-row) {
+    flex-wrap: wrap;
+  }
+  /* The message stays beside its avatar; only the actions take a new line. */
+  :deep(.message-body) {
+    flex: 0 1 auto;
+    max-width: calc(100% - 52px);
+  }
+  :deep(.message-actions) {
+    flex-basis: 100%;
+    order: 3;
+    justify-content: flex-start;
+    margin: -2px 0 0 43px;
+    opacity: .75;
+  }
+  :deep(.message-row.mine .message-actions) {
+    justify-content: flex-end;
+    margin: -2px 43px 0 0;
+  }
+  :deep(.message-actions > button) {
+    width: 30px;
+    height: 30px;
+    background: transparent;
+  }
+  :deep(.chat-reaction-picker) {
+    right: auto;
+    left: 0;
+  }
+  :deep(.message-row.mine .chat-reaction-picker) {
+    right: 0;
+    left: auto;
+  }
 }
