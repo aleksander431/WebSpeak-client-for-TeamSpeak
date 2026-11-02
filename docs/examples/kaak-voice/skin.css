@@ -18,9 +18,9 @@
 }
 
 [data-ws-plugin-part="kaak-home.home"] {
-  --skin-kaak-home-green: #77cb25;
-  --skin-kaak-home-text: #273248;
-  --skin-kaak-home-muted: #8995a5;
+  --skin-kaak-home-green: var(--skin-kaak-accent);
+  --skin-kaak-home-text: var(--skin-kaak-text);
+  --skin-kaak-home-muted: var(--skin-kaak-muted);
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -31,9 +31,9 @@
   overflow-x: hidden;
   overflow-y: auto;
   color: var(--skin-kaak-home-text);
-  color-scheme: light;
+  color-scheme: dark;
   font-family: var(--skin-kaak-font);
-  background: #effff0;
+  background: var(--skin-kaak-bg);
 }
 
 [data-ws-plugin-part="kaak-home.home-language"] {
@@ -63,24 +63,24 @@
   width: 48px;
   height: 48px;
   place-items: center;
-  border: 1px solid #dce4dc;
+  border: 1px solid var(--skin-kaak-border);
   border-radius: 14px;
-  color: #273248;
-  background: #fff;
-  box-shadow: 0 5px 14px rgba(39, 50, 72, .1);
+  color: var(--skin-kaak-text);
+  background: var(--skin-kaak-raised);
+  box-shadow: 0 5px 14px rgba(0, 0, 0, .28);
   transition: background .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
 }
 
 [data-ws-plugin-part="kaak-home.home-social-links"] a:hover,
 [data-ws-plugin-part="kaak-home.home-social-links"] a:focus-visible {
-  border-color: #c8d1c8;
-  background: #f4f6f3;
-  box-shadow: 0 7px 18px rgba(39, 50, 72, .14);
+  border-color: #45474e;
+  background: var(--skin-kaak-hover);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .34);
   transform: translateY(-1px);
 }
 
 [data-ws-plugin-part="kaak-home.home-social-links"] a:focus-visible {
-  outline: 2px solid #77cb25;
+  outline: 2px solid var(--skin-kaak-accent);
   outline-offset: 2px;
 }
 
@@ -98,11 +98,11 @@
   min-height: 48px;
   place-items: center;
   padding: 0;
-  border: 1px solid #dce4dc;
+  border: 1px solid var(--skin-kaak-border);
   border-radius: 14px;
-  color: #273248;
-  background: #fff;
-  box-shadow: 0 5px 14px rgba(39, 50, 72, .1);
+  color: var(--skin-kaak-text);
+  background: var(--skin-kaak-raised);
+  box-shadow: 0 5px 14px rgba(0, 0, 0, .28);
 }
 
 [data-ws-plugin-part="kaak-home.home-language"] .language-trigger > * {
@@ -118,10 +118,10 @@
 [data-ws-plugin-part="kaak-home.home-language"] .language-trigger:hover,
 [data-ws-plugin-part="kaak-home.home-language"] .language-switcher.open .language-trigger,
 [data-ws-plugin-part="kaak-home.home-language"] .language-trigger:focus-visible {
-  color: #273248;
-  border-color: #c8d1c8;
-  background: #f4f6f3;
-  box-shadow: 0 7px 18px rgba(39, 50, 72, .14);
+  color: var(--skin-kaak-text);
+  border-color: #45474e;
+  background: var(--skin-kaak-hover);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .34);
 }
 
 [data-ws-plugin-part="kaak-home.hero"] {
@@ -131,7 +131,8 @@
   min-width: 0;
   min-height: 0;
   overflow: visible;
-  background: linear-gradient(145deg, #f7ffbd, #d9ffb3 55%, #b7f89e);
+  background: radial-gradient(120% 90% at 0% 100%, #6cbf0024, transparent 60%), linear-gradient(145deg, #1f2a19, #17181b 58%, #141518);
+  border-right: 1px solid var(--skin-kaak-border);
 }
 
 [data-ws-plugin-part="kaak-home.hero"]::before {
@@ -141,7 +142,7 @@
   width: 330px;
   height: 250px;
   border-radius: 50%;
-  background: #effff0;
+  background: #6cbf000f;
   content: "";
 }
 
@@ -152,7 +153,7 @@
   width: 420px;
   height: 420px;
   border-radius: 50%;
-  background: #a4f18b;
+  background: #6cbf001c;
   content: "";
 }
 
@@ -163,7 +164,7 @@
   align-items: center;
   gap: 10px;
   margin: 35px 0 0 44px;
-  color: #1c2823;
+  color: var(--skin-kaak-text);
   font-size: 26px;
   font-weight: 900;
 }
@@ -175,14 +176,14 @@
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  color: #daff97;
-  background: #1c2823;
+  color: #10200a;
+  background: var(--skin-kaak-accent);
   font-size: 19px;
   font-weight: 900;
 }
 
 [data-ws-plugin-part="kaak-home.brand-name"] {
-  color: #1c2823;
+  color: var(--skin-kaak-text);
   font-size: 26px;
   font-weight: 900;
   letter-spacing: 0;
@@ -192,7 +193,7 @@
   position: relative;
   z-index: 2;
   margin: 12px 0 0 45px;
-  color: #627f5e;
+  color: #9bbf7a;
   font-size: 12px;
   letter-spacing: 1.1px;
 }
@@ -206,17 +207,17 @@
   margin: 20px 20px 0;
   padding: 13px 16px;
   overflow: hidden;
-  border: 1px solid rgba(39, 50, 72, .1);
+  border: 1px solid var(--skin-kaak-border);
   border-left: 3px solid var(--skin-kaak-home-green);
   border-radius: 12px;
-  background: rgba(255, 255, 255, .84);
-  box-shadow: 0 8px 24px rgba(39, 50, 72, .08);
+  background: #1d1e22e6;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
   backdrop-filter: blur(8px);
 }
 
 [data-ws-plugin-part="kaak-home.server-announcement"] [data-ws-part="home.server-announcement.title"] {
   margin: 0 0 5px;
-  color: #50634c;
+  color: #9bbf7a;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .04em;
@@ -226,7 +227,7 @@
   max-height: 96px;
   margin: 0;
   overflow: auto;
-  color: #273248;
+  color: var(--skin-kaak-text);
   font-size: 13px;
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -293,16 +294,17 @@
   width: 100%;
   padding: 32px 25px 25px;
   overflow: hidden;
+  border: 1px solid var(--skin-kaak-border);
   border-radius: 17px;
-  background: #fff;
-  box-shadow: 0 5px 20px #273f3012;
+  background: var(--skin-kaak-panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
 }
 
 [data-ws-plugin-part="kaak-home.connection-card"]::before {
   position: absolute;
   top: 0;
   right: 0;
-  border-top: 60px solid #79d02b;
+  border-top: 60px solid var(--skin-kaak-accent);
   border-left: 60px solid transparent;
   content: "";
 }
@@ -369,7 +371,7 @@
 
 [data-ws-plugin-part="kaak-home.description"] {
   margin: 0 0 25px;
-  color: #9aa4b0;
+  color: var(--skin-kaak-muted);
   font-size: 12px;
 }
 
@@ -402,7 +404,7 @@
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .field-label span {
-  color: #aab3bc;
+  color: var(--skin-kaak-dim);
   font-weight: 400;
 }
 
@@ -413,10 +415,10 @@
   min-height: 42px;
   gap: 0;
   padding: 0 12px;
-  border: 1px solid #e3e8ec;
+  border: 1px solid var(--skin-kaak-border);
   border-radius: 11px;
   color: var(--skin-kaak-home-muted);
-  background: #fff;
+  background: var(--skin-kaak-rail);
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .field-wrap > svg {
@@ -426,8 +428,8 @@
 [data-ws-plugin-part="kaak-home.connection-form"] .field-wrap:focus-within {
   border-color: var(--skin-kaak-home-green);
   color: var(--skin-kaak-home-text);
-  background: #fff;
-  box-shadow: 0 0 0 3px #79d02b22;
+  background: var(--skin-kaak-rail);
+  box-shadow: 0 0 0 3px #6cbf0033;
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .field-wrap input {
@@ -443,7 +445,7 @@
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .field-wrap input::placeholder {
-  color: #b6bec7;
+  color: var(--skin-kaak-dim);
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .connect-button {
@@ -459,7 +461,7 @@
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .connect-button:hover:not(:disabled) {
-  background: #66b91d;
+  background: var(--skin-kaak-accent-hover);
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .connect-button:disabled {
@@ -468,19 +470,19 @@
 
 [data-ws-plugin-part="kaak-home.connection-form"] .favorite-toggle,
 [data-ws-plugin-part="kaak-home.connection-form"] .identity-options summary {
-  color: #627f5e;
+  color: #9bbf7a;
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .local-servers {
   margin: 0 0 16px;
   padding: 11px 12px;
-  border: 1px solid #e8eee6;
+  border: 1px solid var(--skin-kaak-border);
   border-radius: 11px;
-  background: #f8fcf6;
+  background: var(--skin-kaak-raised);
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .local-server-item {
-  border-color: #edf1ec;
+  border-color: var(--skin-kaak-border);
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .acceleration-choice {
@@ -490,8 +492,8 @@
 
 [data-ws-plugin-part="kaak-home.connection-form"] .acceleration-choice select {
   color: var(--skin-kaak-home-text);
-  border-color: #e3e8ec;
-  background: #fff;
+  border-color: var(--skin-kaak-border);
+  background: var(--skin-kaak-rail);
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .identity-options {
@@ -510,12 +512,12 @@
 }
 
 [data-ws-plugin-part="kaak-home.connection-form"] .cancel-connect-button:hover {
-  color: #5ba91b;
+  color: var(--skin-kaak-accent-hover);
 }
 
 [data-ws-plugin-part="kaak-home.note"] {
   margin: 16px 0 0;
-  color: #a2abb2;
+  color: var(--skin-kaak-dim);
   text-align: center;
   font-size: 12px;
 }
@@ -527,7 +529,7 @@
 
 [data-ws-plugin-part="kaak-home.status"] [data-ws-part="home.connection-status"] {
   margin: 12px 0 0;
-  color: #9a6b20;
+  color: #e0b25c;
   text-align: center;
   font-size: 12px;
 }
@@ -4836,3 +4838,17 @@
   [data-ws-plugin-part="kaak-workspace.member-cards"] .voice-avatar-wrap { padding: 16px 0 0; }
   [data-ws-plugin-part="kaak-workspace.member-cards"] .voice-card [data-ws-part="voice.member.action-trigger"] { top: 2px; right: 2px; background: transparent; box-shadow: none; }
 }
+
+/* Guest page in KAAK's dark palette: framed inputs show focus once, fields are spaced,
+   the visitor pill matches the dark illustration. */
+[data-ws-plugin-part="kaak-home.connection-form"] .field-wrap input:focus-visible { outline: none; }
+[data-ws-plugin-part="kaak-home.connection-form"] .join-form > .field-wrap + .field-label { margin-top: 14px; }
+[data-ws-plugin-part="kaak-home.visitor-stats"] [data-ws-part="home.visitors"] {
+  color: var(--skin-kaak-text);
+  border-color: #6cbf0055;
+  background: #1d1e22f2;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .35);
+}
+[data-ws-plugin-part="kaak-home.visitor-stats"] [data-ws-part="home.visitors"]::before { background: linear-gradient(105deg, transparent, rgba(108, 191, 0, .14), transparent); }
+[data-ws-plugin-part="kaak-home.visitor-stats"] [data-ws-part="home.visitors.icon"] { color: #10200a; background: var(--skin-kaak-accent); }
+[data-ws-plugin-part="kaak-home.visitor-stats"] [data-ws-part="home.visitors.orbit"] { border-color: #6cbf0040; }

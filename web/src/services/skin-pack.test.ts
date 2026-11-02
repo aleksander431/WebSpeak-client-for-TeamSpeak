@@ -486,7 +486,7 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   const file = new File([archive], "kaak-voice.wskin", { type: "application/octet-stream" });
   const skin = await importSkinPack(file);
   assert.equal(skin.id, "community.kaak-voice");
-  assert.equal(skin.version, "3.1.134");
+  assert.equal(skin.version, "3.1.135");
   assert.deepEqual(skin.workspace, { apiVersion: 1, mode: "persistent" });
   assert.equal(skin.minAppVersion, "0.2.8");
   assert.equal(BUILTIN_SKIN_CATALOG.find((entry) => entry.id === skin.id)?.version, skin.version);
@@ -558,7 +558,7 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   assert.match(skin.css, /kaak-home\.visitor-stats"\]\s*\{[^}]*position: absolute;[^}]*top: 64%;[^}]*left: 50%;[^}]*max-width: 58%;/, "visitor statistics are contained within the monitor screen by the package");
   assert.match(skin.css, /\[data-ws-plugin-part="kaak-home\.hero"\]\s*\{[^}]*overflow: visible;/, "the hero does not clip the announcement as it spans the full home width");
   assert.match(skin.css, /\[data-ws-plugin-part="kaak-home\.server-announcement"\][^}]*width: calc\(100% - 40px\);[^}]*margin: 20px 20px 0;/, "the announcement card fills its half-width hero with 20px side margins");
-  assert.match(skin.css, /\[data-ws-plugin-part="kaak-home\.server-announcement"\] \[data-ws-part="home\.server-announcement\.body"\]\s*\{[^}]*color: #273248;/, "the announcement uses the published semantic text part with a readable color");
+  assert.match(skin.css, /\[data-ws-plugin-part="kaak-home\.server-announcement"\] \[data-ws-part="home\.server-announcement\.body"\]\s*\{[^}]*color: var\(--skin-kaak-text\);/, "the announcement uses the published semantic text part with a readable color");
   const illustration = findPart(home?.root, "illustration");
   assert.equal(illustration?.attributes?.viewbox, "0 0 640 480", "the KAAK illustration uses a balanced 4:3 viewBox");
   const monitorFrame = illustration?.children?.[5];
@@ -823,7 +823,7 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   assert.match(skin.css, /rail-language"\] \.language-trigger\s*\{[^}]*width: 58px;[^}]*height: 58px;[^}]*border-radius: 18px;[^}]*background: var\(--skin-kaak-rail-item-bg\);/);
   assert.match(skin.css, /rail-language"\] \.language-trigger > \.language-current-icon\s*\{\s*display: block;[^}]*width: 24px;[^}]*height: 24px;/);
   assert.match(skin.css, /kaak-home\.home-language"\]\s*\{[^}]*position: fixed;[^}]*top: 18px;[^}]*right: 18px;/);
-  assert.match(skin.css, /kaak-home\.home-language"\] \.language-trigger\s*\{[^}]*width: 48px;[^}]*height: 48px;[^}]*background: #fff;/);
+  assert.match(skin.css, /kaak-home\.home-language"\] \.language-trigger\s*\{[^}]*width: 48px;[^}]*height: 48px;[^}]*background: var\(--skin-kaak-raised\);/);
   assert.match(skin.css, /kaak-home\.home-language"\] \.language-trigger > \.language-current-icon\s*\{\s*display: block;/);
   assert.doesNotMatch(skin.css, /language-trigger::before\s*\{\s*content: "文\/A";/);
   assert.match(skin.css, /skin-add-divider"\]\s*\{\s*order: 1;/);
