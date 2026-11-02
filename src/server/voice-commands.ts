@@ -14,9 +14,13 @@ export interface VoiceCommandContext extends AudioStatsSource {
   members: ReadonlyMap<number, { uid?: string }>;
   whisperTargetIds: Set<number>;
   whisperActive: boolean;
+  /** Push-to-talk gate; closed drops the user's voice without the TeamSpeak mute flag. */
+  voiceGateOpen: boolean;
   lastLatencyProbeAt: number;
   lastAudioStatsProbeAt: number;
-  webrtc: Pick<WebRtcAudioSession, "getStats" | "setMicrophoneMuted" | "setAccompanimentActive" | "setMemberVolume"> | null;
+  webrtc: Pick<WebRtcAudioSession, "getStats" | "setMicrophoneMuted" | "setVoiceGateOpen" | "setAccompanimentActive" | "setMemberVolume"> | null;
+  /** TeamSpeak does not echo our own messages; record them for server-side history. */
+  onChatSent?(scope: "channel" | "server", channelId: string, message: string): void;
 }
 
 export async function handleCommand(
@@ -109,10 +113,16 @@ export async function handleCommand(
         return;
       }
       const message = command.payload.message.trim();
-      if (message) await entry.tsClient.sendTextMessage("channel", message, channelId);
+      if (message) {
+        await entry.tsClient.sendTextMessage("channel", message, channelId);
+        entry.onChatSent?.("channel", String(channelId), message);
+      }
     } else if (command.type === "sendServerMessage") {
       const message = command.payload.message.trim();
-      if (message) await entry.tsClient.sendTextMessage("server", message);
+      if (message) {
+        await entry.tsClient.sendTextMessage("server", message);
+        entry.onChatSent?.("server", "", message);
+      }
     } else if (command.type === "sendPrivateMessage") {
       const clientId = command.payload.clientId;
       const recipient = entry.members.get(clientId);
@@ -153,6 +163,9 @@ export async function handleCommand(
       const muted = command.payload.muted;
       await entry.tsClient.setInputMuted(muted);
       entry.webrtc?.setMicrophoneMuted(muted);
+    } else if (command.type === "setVoiceGate") {
+      entry.voiceGateOpen = command.payload.open;
+      entry.webrtc?.setVoiceGateOpen(command.payload.open);
     } else if (command.type === "setAccompanimentActive") {
       const peer = entry.webrtc;
       if (peer) {

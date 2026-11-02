@@ -35,6 +35,19 @@ export interface DesktopBridgeOptions {
   stopStream: () => unknown;
   /** Screen share is starting (picker open, negotiation running). */
   streamStarting: () => boolean;
+  /** Push-to-talk: the desktop client turns the mode on and reports the key. */
+  setPushToTalkMode?: (enabled: boolean) => void;
+  setPushToTalkHeld?: (held: boolean) => void;
+}
+
+/** Push-to-talk messages from the desktop shell; they never play a sound. */
+export function runPushToTalkAction(action: "pttDown" | "pttUp" | "pttModeOn" | "pttModeOff", options: DesktopBridgeOptions): string {
+  if (action === "pttModeOn" || action === "pttModeOff") {
+    options.setPushToTalkMode?.(action === "pttModeOn");
+    return action === "pttModeOn" ? "ptt-mode-on" : "ptt-mode-off";
+  }
+  options.setPushToTalkHeld?.(action === "pttDown");
+  return action === "pttDown" ? "ptt-down" : "ptt-up";
 }
 
 type Tone = "on" | "off" | "denied";
@@ -106,6 +119,7 @@ export function useDesktopBridge(options: DesktopBridgeOptions, target: Window &
   if (!host) return { isDesktop: false, openSettings: () => {} };
 
   target.__webspeakDesktopAction = (action: unknown, sound: unknown) => {
+    if (action === "pttDown" || action === "pttUp" || action === "pttModeOn" || action === "pttModeOff") return runPushToTalkAction(action, options);
     if (action !== "mic" && action !== "sound" && action !== "stream") return "unknown-action";
     return runDesktopAction(action, options, playDesktopTone, sound === true);
   };
@@ -115,6 +129,7 @@ export function useDesktopBridge(options: DesktopBridgeOptions, target: Window &
 
   onUnmounted(() => {
     stopWatching();
+    options.setPushToTalkMode?.(false);
     if (target.__webspeakDesktopAction) delete target.__webspeakDesktopAction;
   });
   return { isDesktop: true, openSettings: () => host.openSettings() };

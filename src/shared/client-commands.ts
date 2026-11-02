@@ -10,6 +10,8 @@ export interface ClientCommandPayloads {
   setWhisperTargets: { targetIds: number[] };
   setWhisperActive: { active: boolean };
   setMicrophoneMuted: { muted: boolean };
+  /** Push-to-talk: false while the key is released. Separate from mute, which TeamSpeak shows. */
+  setVoiceGate: { open: boolean };
   setAccompanimentActive: { active: boolean };
   setMemberVolume: { clientId: number; volume: number };
   latencyProbe: { sequence: string };
@@ -36,7 +38,7 @@ export function parseClientCommand(raw: string): ClientCommandResult {
   if (value.requestId !== undefined && (typeof value.requestId !== "string" || value.requestId.length > 64)) {
     return { error: { code: "INVALID_REQUEST_ID", message: "请求标识无效" } };
   }
-  const supportedTypes = new Set(["switchChannel", "moveClient", "sendTextMessage", "sendServerMessage", "sendPrivateMessage", "poke", "setAway", "setWhisperTargets", "setWhisperActive", "setMicrophoneMuted", "setAccompanimentActive", "setMemberVolume", "latencyProbe", "audioStatsProbe"]);
+  const supportedTypes = new Set(["switchChannel", "moveClient", "sendTextMessage", "sendServerMessage", "sendPrivateMessage", "poke", "setAway", "setWhisperTargets", "setWhisperActive", "setMicrophoneMuted", "setVoiceGate", "setAccompanimentActive", "setMemberVolume", "latencyProbe", "audioStatsProbe"]);
   if (!supportedTypes.has(value.type)) {
     return { error: { code: "UNKNOWN_MESSAGE_TYPE", message: "不支持的消息类型" } };
   }
@@ -90,6 +92,9 @@ export function parseClientCommand(raw: string): ClientCommandResult {
   }
   if (value.type === "setMicrophoneMuted" && typeof value.payload.muted !== "boolean") {
     return { error: { code: "INVALID_MICROPHONE_STATE", message: "麦克风状态无效" } };
+  }
+  if (value.type === "setVoiceGate" && typeof value.payload.open !== "boolean") {
+    return { error: { code: "INVALID_VOICE_GATE", message: "Invalid push-to-talk state" } };
   }
   if (value.type === "setAccompanimentActive" && typeof value.payload.active !== "boolean") {
     return { error: { code: "INVALID_ACCOMPANIMENT_STATE", message: "伴奏状态无效" } };

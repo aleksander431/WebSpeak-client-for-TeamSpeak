@@ -13,7 +13,8 @@ import { resolveVoiceMediaAddresses } from "./webrtc-config.js";
 import type { ServerEvent as SharedServerEvent } from "../shared/voice-models.js";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage, Server } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import type { ChatStorage } from "./chat-storage.js";
 import { BlockList, isIP } from "node:net";
 import { parseIdentity } from "@honeybbq/teamspeak/client";
 import { TSClient, type TSClientOptions } from "./ts-client.js";
@@ -63,6 +64,16 @@ export interface VoiceBridgeOptions {
   trustedProxies?: readonly string[];
   /** Where channel whiteboards are kept; defaults to memory (lost on restart). */
   whiteboardStore?: WhiteboardStore;
+  /** Chat attachments and server-side chat history; absent disables both. */
+  chatStorage?: ChatStorage;
+}
+
+/** What an HTTP chat request may act for: one connected session's server and channel. */
+export interface ChatSessionScope {
+  entryId: string;
+  targetKey: string;
+  channelId: string;
+  nickname: string;
 }
 
 interface VoiceBridgeDependencies {
@@ -112,11 +123,17 @@ interface WebClientEntry extends SessionDirectoryState {
   lastAudioStatsProbeAt: number;
   connectionFailureCode?: string;
   screenPeerId: string;
+  /** Bearer token for this session's chat uploads and history reads. */
+  chatToken: string;
+  /** Push-to-talk gate (desktop client); applied to every WebRTC peer of the session. */
+  voiceGateOpen: boolean;
+  onChatSent?(scope: "channel" | "server", channelId: string, message: string): void;
 }
 
 export class VoiceBridge {
   private readonly sessionManager = new SessionManager();
   private readonly entries = new Map<string, WebClientEntry>();
+  private readonly chatTokens = new Map<string, WebClientEntry>();
   private readonly screenShares: ScreenShareCoordinator;
   private readonly whiteboards: WhiteboardCoordinator;
   private readonly identityLeases = new IdentityLeaseStore();
@@ -267,6 +284,7 @@ export class VoiceBridge {
         audioTransport: null,
         whisperTargetIds: new Set(),
         whisperActive: false,
+        voiceGateOpen: true,
         isAlive: true,
         lastPongAt: Date.now(),
         missedHeartbeats: 0,
@@ -277,8 +295,17 @@ export class VoiceBridge {
         lastLatencyProbeAt: 0,
         lastAudioStatsProbeAt: 0,
         screenPeerId: entryId,
+        chatToken: randomBytes(24).toString("base64url"),
       };
       this.entries.set(entryId, entry!);
+      this.chatTokens.set(entry.chatToken, entry);
+      const chatStorage = this.options.chatStorage;
+      if (chatStorage) {
+        entry.onChatSent = (scope, channelId, message) => chatStorage.recordMessage({
+          targetKey: teamSpeakTargetKey(entry!.target), scope, channelId: scope === "channel" ? channelId : "",
+          senderUid: "", senderName: entry!.nickname, message,
+        });
+      }
       let tsReady = false;
       const sendJson = (message: ServerMessage) => {
         if (this.entries.get(entryId) === entry && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -352,6 +379,11 @@ export class VoiceBridge {
           screenShareIceServers: this.getScreenShareIceServers(),
           accelerated: Boolean(entry!.acceleration),
           ...(entry!.rememberIdentity ? { identity: tsClient.getIdentityString() } : {}),
+          ...(this.options.chatStorage ? { chat: {
+            token: entry!.chatToken,
+            maxFileBytes: this.options.chatStorage.uploadLimit(),
+            historyEnabled: this.options.chatStorage.settings().historyEnabled,
+          } } : {}),
         });
         sendJson({ type: "channelList", channels: entry!.channelTree });
         if (wasReconnecting) sendJson({ type: "reconnected" });
@@ -509,6 +541,9 @@ export class VoiceBridge {
         isPublished: () => tsReady && initialStateSent,
         isConnected: () => tsReady && session.state === "connected",
         sendJson, addEvent: addServerEvent, onDirectoryReady: sendInitialState,
+        onChatMessage: (scope, channelId, senderUid, senderName, message) => this.options.chatStorage?.recordMessage({
+          targetKey: teamSpeakTargetKey(entry!.target), scope, channelId: scope === "channel" ? channelId : "", senderUid, senderName, message,
+        }),
         onClientLeave: id => {
           this.screenShares.onClientLeave(entry!, id);
           entry!.webrtc?.removeClient(id);
@@ -759,7 +794,16 @@ export class VoiceBridge {
     await this.sessionManager.teardown(entryId, reason);
   }
 
+  /** The connected session a chat token belongs to, with its current channel. */
+  resolveChatSession(token: string | undefined): ChatSessionScope | null {
+    if (!token) return null;
+    const entry = this.chatTokens.get(token);
+    if (!entry || this.entries.get(entry.id) !== entry || entry.session.state !== "connected") return null;
+    return { entryId: entry.id, targetKey: teamSpeakTargetKey(entry.target), channelId: String(entry.tsClient.getChannelId()), nickname: entry.nickname };
+  }
+
   private async cleanupEntry(entry: WebClientEntry, reason: SessionTeardownReason): Promise<void> {
+    if (this.chatTokens.get(entry.chatToken) === entry) this.chatTokens.delete(entry.chatToken);
     this.screenShares.removePeer(entry.id);
     this.whiteboards.removePeer(entry.id);
     if (this.entries.get(entry.id) === entry) this.entries.delete(entry.id);
@@ -914,6 +958,7 @@ export class VoiceBridge {
         udpPortRange: config.udpPortRange,
         logger: this.logger,
         microphoneMuted: muted,
+        voiceGateOpen: entry.voiceGateOpen,
         accompanimentActive: offer.accompanimentActive === true,
         onVoiceFrame: (data, codec) => {
           if (isCurrentPeer()) entry.audioTransport?.receiveWebRtc(data, codec);

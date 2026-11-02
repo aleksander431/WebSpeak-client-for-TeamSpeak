@@ -51,6 +51,8 @@ export interface SessionEventOptions {
   onKick(error: WebSpeakError): void;
   onDisconnect(error?: Error): void;
   onAvatarError(id: number, uid: string, error: unknown): void;
+  /** A channel or server message arrived (for server-side history). */
+  onChatMessage?(scope: "channel" | "server", channelId: string, senderUid: string, senderName: string, message: string): void;
 }
 
 /** SDK listeners, directory projection and optional work owned by one session. */
@@ -156,6 +158,7 @@ export class SessionEventCoordinator {
         senderUid: message.invokerUid, timestamp: Date.now(), invokerName: message.invokerName,
         invokerId: message.invokerId, message: message.message,
       });
+      if (scope !== "private") options.onChatMessage?.(scope, String(effectiveTargetId), message.invokerUid ?? "", message.invokerName ?? "", message.message);
     });
     this.listen("poked", event => {
       options.sendJson({ type: "pokeReceived", invokerId: event.invokerID, invokerUid: event.invokerUID, invokerName: event.invokerName, message: event.message, timestamp: Date.now() });

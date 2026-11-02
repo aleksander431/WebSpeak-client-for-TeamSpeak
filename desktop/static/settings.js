@@ -9,7 +9,7 @@
 
   const $ = (id) => document.getElementById(id);
   const actions = [["mic", "hotkeyMic"], ["sound", "hotkeySound"], ["stream", "hotkeyStream"]];
-  const draft = { hotkeys: { ...snapshot.settings.hotkeys } };
+  const draft = { hotkeys: { ...snapshot.settings.hotkeys }, pushToTalk: snapshot.settings.pushToTalk || "" };
   let listening = null;
 
   // --- accelerators -------------------------------------------------------
@@ -50,7 +50,7 @@
     return parts.length > 1 || !TYPING_KEYS.test(parts[parts.length - 1]);
   }
   const MODIFIER_CODES = /^(Control|Shift|Alt|Meta|OS)(Left|Right)?$/;
-  const NAMES = { Mouse4: t("mouseBack"), Mouse5: t("mouseForward"), numdec: "Num .", numadd: "Num +", numsub: "Num −", nummult: "Num *", numdiv: "Num /", Capslock: "Caps Lock", Numlock: "Num Lock", Scrolllock: "Scroll Lock", PrintScreen: "Print Screen", PageUp: "Page Up", PageDown: "Page Down" };
+  const NAMES = { Mouse3: t("mouseMiddle"), Mouse4: t("mouseBack"), Mouse5: t("mouseForward"), numdec: "Num .", numadd: "Num +", numsub: "Num −", nummult: "Num *", numdiv: "Num /", Capslock: "Caps Lock", Numlock: "Num Lock", Scrolllock: "Scroll Lock", PrintScreen: "Print Screen", PageUp: "Page Up", PageDown: "Page Down" };
   const label = (accelerator) => accelerator.split("+").map((part) => part === "CommandOrControl" ? "Ctrl" : part === "Super" ? "Win"
     : /^num[0-9]$/.test(part) ? `Num ${part.slice(3)}` : NAMES[part] || part).join(" + ");
 
@@ -76,6 +76,35 @@
     capture.addEventListener("click", () => startListening(action));
     clear.addEventListener("click", () => { stopListening(); draft.hotkeys[action] = ""; renderHotkeys(); });
   }
+  // Push-to-talk: one key held down. It is not taken from other programs, so
+  // any key works on its own, including letters and Ctrl/Alt/Shift.
+  {
+    const row = document.createElement("div");
+    row.className = "hotkey";
+    const name = document.createElement("span");
+    name.textContent = t("pttKey");
+    const capture = document.createElement("button");
+    capture.type = "button";
+    capture.className = "capture";
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "button";
+    clear.textContent = t("hotkeyClear");
+    const status = document.createElement("p");
+    status.className = "status hint";
+    row.append(name, capture, clear, status);
+    $("ptt").append(row);
+    rows.ptt = { capture, status };
+    capture.addEventListener("click", () => startListening("ptt"));
+    clear.addEventListener("click", () => { stopListening(); draft.pushToTalk = ""; renderHotkeys(); });
+  }
+  const PTT_MODIFIERS = { ControlLeft: "Ctrl", ControlRight: "Ctrl", AltLeft: "Alt", AltRight: "Alt", ShiftLeft: "Shift", ShiftRight: "Shift" };
+  const PTT_UNSUPPORTED = /^(?:Media|Volume)/;
+  function setPushToTalk(value) {
+    draft.pushToTalk = value;
+    stopListening();
+  }
+
   function startListening(action) {
     stopListening();
     listening = action;
@@ -93,6 +122,16 @@
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.shiftKey) { stopListening(); return; }
+    if (listening === "ptt") {
+      const key = PTT_MODIFIERS[event.code] || keyFromCode(event.code);
+      if (key && !PTT_UNSUPPORTED.test(key)) setPushToTalk(key);
+      else if (!MODIFIER_CODES.test(event.code)) {
+        rows.ptt.status.className = "status hint invalid";
+        rows.ptt.status.textContent = t("hotkeyUnsupported");
+        rows.ptt.status.hidden = false;
+      }
+      return;
+    }
     const accelerator = acceleratorFrom(event);
     if (!accelerator) {
       // A modifier on its own: keep waiting. Any other unknown key: say so.
@@ -111,6 +150,12 @@
   window.addEventListener("blur", () => stopListening());
   // Mouse side buttons (back/forward) can be hotkeys too.
   document.addEventListener("mousedown", (event) => {
+    if (listening === "ptt" && (event.button === 1 || event.button === 3 || event.button === 4)) {
+      event.preventDefault();
+      event.stopPropagation();
+      setPushToTalk(event.button === 1 ? "Mouse3" : event.button === 3 ? "Mouse4" : "Mouse5");
+      return;
+    }
     if (!listening || (event.button !== 3 && event.button !== 4)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -123,8 +168,10 @@
   api.onHotkeyStatus((status) => { snapshot.hotkeyStatus = status; renderHotkeys(); });
 
   function duplicateOf(action) {
-    const value = draft.hotkeys[action].toLowerCase();
-    return value && actions.some(([other]) => other !== action && draft.hotkeys[other].toLowerCase() === value);
+    const value = (action === "ptt" ? draft.pushToTalk : draft.hotkeys[action]).toLowerCase();
+    if (!value) return false;
+    if (action !== "ptt" && draft.pushToTalk.toLowerCase() === value) return true;
+    return actions.some(([other]) => other !== action && draft.hotkeys[other].toLowerCase() === value);
   }
   function renderHotkeys() {
     for (const [action] of actions) {
@@ -139,7 +186,20 @@
       status.textContent = state === "taken" ? t("hotkeyTaken") : state === "invalid" ? t("hotkeyInvalid") : state === "duplicate" ? t("hotkeyDuplicate") : state === "unsupported" ? t("hotkeyUnsupported") : "";
       status.hidden = !status.textContent;
     }
-    $("save").disabled = actions.some(([action]) => !isValid(draft.hotkeys[action]) || duplicateOf(action));
+    {
+      const { capture, status } = rows.ptt;
+      const value = draft.pushToTalk;
+      capture.classList.toggle("listening", listening === "ptt");
+      capture.classList.toggle("empty", !value && listening !== "ptt");
+      capture.textContent = listening === "ptt" ? t("pttPress") : value ? label(value) : t("hotkeyNone");
+      const saved = (snapshot.settings.pushToTalk || "") === value;
+      const state = duplicateOf("ptt") ? "duplicate" : saved && value ? snapshot.hotkeyStatus.ptt : "";
+      status.className = `status hint ${state}`;
+      status.textContent = state === "taken" ? t("pttTaken") : state === "invalid" ? t("hotkeyInvalid") : state === "duplicate" ? t("hotkeyDuplicate")
+        : state === "unsupported" ? t("pttUnsupported") : state === "active" ? t("pttActive") : "";
+      status.hidden = !status.textContent;
+    }
+    $("save").disabled = actions.some(([action]) => !isValid(draft.hotkeys[action]) || duplicateOf(action)) || duplicateOf("ptt");
   }
 
   // --- updates ------------------------------------------------------------
@@ -188,11 +248,13 @@
       hotkeySounds: $("hotkeySounds").checked,
       streamHotkeySource: $("streamHotkeySource").value,
       hotkeys: draft.hotkeys,
+      pushToTalk: draft.pushToTalk,
     });
     if (!result) return;
     if (result.error === "serverInvalid") { $("serverError").hidden = false; $("serverUrl").focus(); return; }
     snapshot = { ...result, strings };
     Object.assign(draft.hotkeys, snapshot.settings.hotkeys);
+    draft.pushToTalk = snapshot.settings.pushToTalk || "";
     fill();
     const note = $("savedNote");
     note.hidden = false;

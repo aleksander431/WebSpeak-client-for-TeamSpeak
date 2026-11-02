@@ -32,6 +32,7 @@ async function main() {
     import("./server/join-ticket.js"),
   ]);
   const { SqliteWhiteboardStore } = await import("./server/whiteboard-store.js");
+  const { ChatStorage } = await import("./server/chat-storage.js");
   const logger = createLogger(LOG_DIR);
   const database = new WebSpeakDatabase(path.join(DATA_DIR, "webspeak.db"));
   const masterSecret = loadOrCreateMasterSecret(path.join(DATA_DIR, "master.key"));
@@ -50,6 +51,8 @@ async function main() {
   logger.info({ dataDir: DATA_DIR }, "Starting WebSpeak server");
 
   const hasCert = existsSync(path.join(CERT_DIR, "cert.pem"));
+  const chatStorage = new ChatStorage(database, path.join(DATA_DIR, "chat-files"));
+  await chatStorage.initialize();
 
   const webServer = createWebServer({
     port: APP_PORT,
@@ -69,6 +72,7 @@ async function main() {
       acceleration: () => adminService.getAccelerationRelayOptions(),
       accelerationName: () => adminService.getAccelerationRelayName(),
       whiteboardStore: new SqliteWhiteboardStore(database),
+      chatStorage,
     },
     adminService,
     skinRegistry: new SkinRegistry(path.join(DATA_DIR, "skins")),

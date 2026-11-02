@@ -12,6 +12,11 @@ import { normalizeTeamSpeakKickedReason } from "../errors.js";
 import type { TSClient, TSClientAvatar, TSDirectorySnapshot } from "./ts-client.js";
 import type { AudioFlowStats } from "./audio-stats.js";
 import type { WebRtcAudioSession } from "./webrtc-audio.js";
+import { ChatStorage } from "./chat-storage.js";
+import { WebSpeakDatabase } from "../persistence/database.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 // Real loopback HTTP/WebSocket and native codec, with only the external SDK
 // replaced. This validates gateway wiring, not a connection to TeamSpeak.
@@ -37,6 +42,8 @@ class TeamSpeakStub extends EventEmitter {
   async getServerIcon() { return null; }
   async sendProtocolCommand() {}
   async setAccompanimentActive() {}
+  textMessages: Array<{ mode: string; message: string }> = [];
+  async sendTextMessage(mode: string, message: string) { this.textMessages.push({ mode, message }); }
   sendVoice(data: Buffer) { this.sent.push(data); this.emit("sent", data); }
   sendWhisper(data: Buffer) { this.sent.push(data); }
   getClientAvatar(id: number, uid: string) { return this.avatarRequest(id, uid); }
@@ -47,11 +54,12 @@ async function fixture(t: TestContext, overrides: {
   createEncoder?: () => Pick<OpusEncoder, "encode" | "dispose">;
   configureSdk?: (sdk: TeamSpeakStub) => void;
   waitForFirstMessage?: boolean;
+  chatStorage?: ChatStorage;
 } = {}) {
   const sdk = new TeamSpeakStub();
   overrides.configureSdk?.(sdk);
   const tickets = new JoinTicketStore();
-  const bridge = new VoiceBridge({ joinTickets: tickets }, pino({ enabled: false }), undefined, {
+  const bridge = new VoiceBridge({ joinTickets: tickets, ...(overrides.chatStorage ? { chatStorage: overrides.chatStorage } : {}) }, pino({ enabled: false }), undefined, {
     createTeamSpeakClient: overrides.createTeamSpeakClient ?? (() => sdk as unknown as TSClient),
     ...(overrides.createEncoder ? { createEncoder: overrides.createEncoder } : {}),
   });
@@ -428,3 +436,33 @@ for (const order of ["kick-first", "disconnect-first"] as const) {
     assert.match(failures[0].detail, /Removed by operator/);
   });
 }
+
+test("a session gets a chat token, and channel chat it sends or receives is kept once", { timeout: 5_000 }, async t => {
+  const directory = mkdtempSync(path.join(tmpdir(), "webspeak-bridge-chat-"));
+  const database = new WebSpeakDatabase(path.join(directory, "test.db"));
+  t.after(() => { database.close(); rmSync(directory, { recursive: true, force: true }); });
+  const storage = new ChatStorage(database, path.join(directory, "files"));
+  await storage.initialize();
+  const f = await fixture(t, { chatStorage: storage, waitForFirstMessage: false });
+  const connected = await waitForMessage<{ chat?: { token: string; maxFileBytes: number; historyEnabled: boolean } }>(f.socket, "connected");
+  assert.ok(connected.chat && connected.chat.token.length >= 16);
+  assert.equal(connected.chat.maxFileBytes, storage.uploadLimit());
+  const scope = f.bridge.resolveChatSession(connected.chat.token);
+  assert.equal(scope?.channelId, "1");
+  assert.equal(f.bridge.resolveChatSession("not-a-token"), null);
+
+  const done = waitForMessage(f.socket, "commandCompleted");
+  f.socket.send(JSON.stringify({ type: "sendTextMessage", requestId: "c1", payload: { message: "привет всем", channelId: "1" } }));
+  await done;
+  assert.deepEqual(f.sdk.textMessages, [{ mode: "channel", message: "привет всем" }]);
+  // Another gateway session in the channel hears the same message from TeamSpeak.
+  f.sdk.emit("textMessage", { targetMode: 2, targetId: 1n, invokerId: 7, invokerUid: "uid-7", invokerName: "Test", message: "привет всем" });
+  f.sdk.emit("textMessage", { targetMode: 2, targetId: 1n, invokerId: 9, invokerUid: "uid-9", invokerName: "Kria", message: "ответ" });
+  f.sdk.emit("textMessage", { targetMode: 1, targetId: 1n, invokerId: 9, invokerUid: "uid-9", invokerName: "Kria", message: "лично" });
+  await storage.flush();
+  assert.deepEqual(storage.history(scope!.targetKey, "channel", "1").map(message => [message.senderName, message.message]), [["Test", "привет всем"], ["Kria", "ответ"]]);
+
+  f.socket.close();
+  while (f.bridge.getActiveCount() > 0) await nextTurn();
+  assert.equal(f.bridge.resolveChatSession(connected.chat.token), null, "the token ends with the session");
+});

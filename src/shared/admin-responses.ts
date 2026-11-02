@@ -96,6 +96,9 @@ const deviceAccessDevice = object({
   createdAt: text, lastSeenAt: text, decidedAt: nullable(text), accountNickname: nullable(text),
 });
 const accessAccount = object({ id: text, nickname: text, createdAt: text, lastLoginAt: nullable(text), deviceCount: number, locked: boolean });
+const chatStorageSettings = object({ maxFileBytes: number, quotaBytes: number, historyEnabled: boolean });
+const chatStorageUsage = object({ usedBytes: number, fileBytes: number, fileCount: number, messageBytes: number, messageCount: number });
+const chatStorage = object({ settings: chatStorageSettings, usage: chatStorageUsage });
 const deviceAccess = object({ required: boolean, pendingCount: number, devices: array(deviceAccessDevice), accounts: array(accessAccount) });
 const savedTsAdminSettings = object({ ok: choice(true), settings: tsAdminSettings });
 const sessionStatus = object({ authenticated: boolean, mustChangePassword: optional(boolean), csrfToken: optional(text) });
@@ -126,6 +129,7 @@ export const adminResponses = {
   savedTsAdminSettings,
   tsAdminOverview,
   deviceAccess,
+  chatStorage,
   defaultSkin: object({ ok: choice(true), defaultSkinId: text }),
   updatedSkin: object({ ok: choice(true), skin, defaultSkinId: text }),
   uploadedSkin: object({ ok: choice(true), skin }),

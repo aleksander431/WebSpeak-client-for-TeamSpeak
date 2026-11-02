@@ -21,6 +21,7 @@ import { resolveVisitorTotal } from "./visitor-count.js";
 import { createTrustedProxies, isForwardedHttps, resolveClientIp } from "./voice-bridge.js";
 import { createDeviceToken, DEVICE_COOKIE_MAX_AGE_MS, DEVICE_COOKIE_NAME, isDeviceToken } from "../security/device-access.js";
 import { isSecureRequest, markForwardedHttps } from "../admin/admin-session.js";
+import { registerChatRoutes } from "./chat-routes.js";
 
 export interface WebServerOptions {
   port: number;
@@ -376,6 +377,16 @@ export function createWebServer(options: WebServerOptions): WebServer {
     response.status(201).json({ ok: true, ticket });
   });
 
+  const chatStorage = options.voiceBridgeOptions.chatStorage;
+  if (chatStorage) {
+    registerChatRoutes(app, {
+      storage: chatStorage,
+      resolveSession: token => voiceBridge.resolveChatSession(token),
+      isSameOrigin,
+      logger,
+    });
+  }
+
   app.use("/api/admin", createAdminRouter({
     service: options.adminService,
     sessions: adminSessions,
@@ -390,6 +401,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
     logFile: options.logFile,
     startedAt,
     clientIp,
+    ...(chatStorage ? { chatStorage } : {}),
   }));
 
   // Serve static frontend

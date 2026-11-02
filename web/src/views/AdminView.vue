@@ -151,6 +151,7 @@
             <RouterLink to="/admin/server" active-class="active"><Icon name="server" :size="18" />{{ tr('adminInstanceSettings') }}</RouterLink>
             <RouterLink to="/admin/operations" active-class="active"><Icon name="users" :size="18" />{{ tr('adminInstanceOperations') }}</RouterLink>
             <RouterLink to="/admin/access" active-class="active" class="admin-nav-access"><Icon name="lock" :size="18" /><span class="admin-nav-label">{{ tr('deviceAccessNav') }}</span><span v-if="adminDeviceAccess.access.pendingCount > 0" class="admin-nav-badge" :aria-label="tr('devicePendingBadge', { count: adminDeviceAccess.access.pendingCount })">{{ adminDeviceAccess.access.pendingCount }}</span></RouterLink>
+            <RouterLink to="/admin/chat" active-class="active"><Icon name="paperclip" :size="18" />{{ tr('chatStorageNav') }}</RouterLink>
             <RouterLink to="/admin/skins" active-class="active"><Icon name="compass" :size="18" />{{ tr('skinLibrary') }}</RouterLink>
           </div>
           <div class="admin-nav-group">
@@ -240,6 +241,11 @@
         <AdminDeviceAccess
           v-else-if="route.path === '/admin/access'"
           :model="adminDeviceAccess"
+          :i18n="i18n"
+        />
+        <AdminChatStorage
+          v-else-if="route.path === '/admin/chat'"
+          :model="adminChatStorage"
           :i18n="i18n"
         />
         <AdminSkins
@@ -407,6 +413,7 @@ import AdminOperations from "../components/admin/AdminOperations.vue";
 import AdminSkins from "../components/admin/AdminSkins.vue";
 import AdminTsAdmin from "../components/admin/AdminTsAdmin.vue";
 import AdminDeviceAccess from "../components/admin/AdminDeviceAccess.vue";
+import AdminChatStorage from "../components/admin/AdminChatStorage.vue";
 import LanguageSwitcher from "../components/LanguageSwitcher.vue";
 import { createAdminRequests } from "../services/admin-requests.js";
 import { useAdminServerSettings } from "../composables/useAdminServerSettings.js";
@@ -414,6 +421,7 @@ import { useAdminOperations } from "../composables/useAdminOperations.js";
 import { useAdminSkins } from "../composables/useAdminSkins.js";
 import { useAdminTsAdmin } from "../composables/useAdminTsAdmin.js";
 import { useAdminDeviceAccess } from "../composables/useAdminDeviceAccess.js";
+import { useAdminChatStorage } from "../composables/useAdminChatStorage.js";
 import { splitTeamSpeakTarget } from "../services/teamspeak-target.js";
 import type { SiteLanguage } from "../../../src/site-copy.js";
 import { applyTheme, getStoredTheme, isDarkTheme, nextTheme, saveTheme, type ThemeMode } from "../services/theme.js";
@@ -470,9 +478,10 @@ const adminDeviceAccess = useAdminDeviceAccess({
   active: computed(() => screen.value === "admin" && !loading.value),
 });
 const { load: loadDeviceAccess } = adminDeviceAccess;
+const adminChatStorage = useAdminChatStorage({ api: adminApi, errorMessage, errorText, tr });
 
 const passwordStrength = computed(() => Math.min(100, Math.max(8, newPassword.value.length * 5 + (/[\s\W]/.test(newPassword.value) ? 15 : 0))));
-const currentPageTitle = computed(() => route.path === "/admin/server" ? tr('adminInstanceSettings') : route.path === "/admin/operations" ? tr('adminInstanceOperations') : route.path === "/admin/access" ? tr('deviceAccessTitle') : route.path === "/admin/skins" ? tr('skinLibrary') : route.path === "/admin/ts-admin" ? tr('tsAdminTitle') : tr('overview'));
+const currentPageTitle = computed(() => route.path === "/admin/server" ? tr('adminInstanceSettings') : route.path === "/admin/operations" ? tr('adminInstanceOperations') : route.path === "/admin/access" ? tr('deviceAccessTitle') : route.path === "/admin/chat" ? tr('chatStorageTitle') : route.path === "/admin/skins" ? tr('skinLibrary') : route.path === "/admin/ts-admin" ? tr('tsAdminTitle') : tr('overview'));
 const targetStatusText = computed(() => overview.teamSpeak.status === "reachable" ? tr('reachable') : overview.teamSpeak.status === "unreachable" ? tr('unreachable') : tr('notTested'));
 const webrtcPortRangeText = computed(() => `${serverForm.webRtcUdpStart}–${serverForm.webRtcUdpEnd}`);
 
@@ -507,7 +516,7 @@ function cancelPendingWork() {
   loggingOut.value = false;
 }
 function resetPrivateState() {
-  serverSettings.reset(); adminOperations.reset(); adminSkins.reset(); adminTsAdmin.reset(); adminDeviceAccess.reset();
+  serverSettings.reset(); adminOperations.reset(); adminSkins.reset(); adminTsAdmin.reset(); adminDeviceAccess.reset(); adminChatStorage.reset();
   Object.assign(overview, emptyOverview());
   loginPassword.value = ""; newPassword.value = ""; confirmNewPassword.value = "";
   errorMessage.value = "";

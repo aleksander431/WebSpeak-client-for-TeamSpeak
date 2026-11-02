@@ -1,6 +1,18 @@
-import { computed, nextTick, onScopeDispose, ref, watch, type Ref } from "vue";
+import { computed, nextTick, onScopeDispose, reactive, ref, watch, type Ref } from "vue";
 import type { ChannelInfo, ChannelMember, ChatMessage } from "./useVoiceWebSocket.js";
 import { loadChatHistory, normalizeChatHistoryServerKey, saveChatHistoryMessage } from "../services/local-persistence.js";
+import { ChatFileError, fetchChatHistory, pastedFileName, uploadChatFile } from "../services/chat-files.js";
+import { chatAttachmentMessage, formatBytes, type ChatHistoryMessage, type ChatSessionAccess } from "../../../src/shared/chat-storage.js";
+
+export interface ChatUpload {
+  key: number;
+  name: string;
+  progress: number;
+  error: string;
+}
+
+/** Same message from local and server history (or the live session) within this window is one message. */
+const HISTORY_MATCH_WINDOW_MS = 120_000;
 
 export type WebClientChatTab = "channel" | "server" | "private" | "events";
 
@@ -29,6 +41,10 @@ interface UseWebClientChatOptions {
   sendPrivateMessage: (clientId: number, text: string, conversationId?: string, expectedKey?: string) => Promise<void>;
   notifyPrivateMessage: () => void;
   t: (key: string, variables?: Record<string, string | number>) => string;
+  /** Upload and server-history access of the current session. */
+  chatAccess?: Readonly<Ref<ChatSessionAccess | null>>;
+  /** Our own TeamSpeak identity, to recognise our messages in server history. */
+  self?: Readonly<Ref<{ uid: string; nickname: string }>>;
 }
 
 export function useWebClientChat({
@@ -49,6 +65,8 @@ export function useWebClientChat({
   sendPrivateMessage,
   notifyPrivateMessage,
   t,
+  chatAccess,
+  self,
 }: UseWebClientChatOptions) {
   const tab = ref<WebClientChatTab>("channel");
   const panelOpen = ref(!isMobileViewport.value);
@@ -175,6 +193,80 @@ export function useWebClientChat({
     panelOpen.value = !panelOpen.value;
   }
 
+  function sendToCurrentDestination(text: string): Promise<void> {
+    if (tab.value === "channel") return sendTextMessage(text, currentChannel.value?.id ?? selectedChannelId.value);
+    if (tab.value === "server") return sendServerMessage(text);
+    return sendPrivateMessage(privateClientId.value, text, String(privateClientId.value), privateConversationKey.value);
+  }
+
+  const uploads = reactive<ChatUpload[]>([]);
+  let uploadSequence = 0;
+  const uploadControllers = new Set<AbortController>();
+  const canAttach = computed(() => canSend.value && Boolean(chatAccess?.value && chatAccess.value.maxFileBytes > 0));
+  const maxFileBytes = computed(() => chatAccess?.value?.maxFileBytes ?? 0);
+
+  function uploadErrorText(error: unknown): string {
+    const code = error instanceof ChatFileError ? error.code : "UPLOAD_FAILED";
+    if (code === "FILE_TOO_LARGE") {
+      const limit = error instanceof ChatFileError && error.maxFileBytes ? error.maxFileBytes : maxFileBytes.value;
+      return limit ? t("chatFileTooLarge", { size: formatBytes(limit) }) : t("chatFileTooLargeProxy");
+    }
+    if (code === "CHAT_UPLOADS_DISABLED") return t("chatUploadsDisabled");
+    if (code === "FILE_EMPTY") return t("chatFileEmpty");
+    if (code === "CHAT_SESSION_REQUIRED") return t("chatNotConnected");
+    if (code === "RATE_LIMITED") return t("chatUploadRateLimited");
+    return t("chatUploadFailed");
+  }
+
+  function dismissUpload(key: number): void {
+    const index = uploads.findIndex(upload => upload.key === key);
+    if (index >= 0) uploads.splice(index, 1);
+  }
+
+  /**
+   * Upload files and share each as a chat message to the open conversation.
+   * The destination is captured first, so switching tabs mid-upload cannot
+   * send the link somewhere else.
+   */
+  async function sendFiles(files: readonly File[]): Promise<void> {
+    const access = chatAccess?.value;
+    if (disposed || !files.length || tab.value === "events") return;
+    if (!connected.value || !access) { sendError.value = "chatNotConnected"; return; }
+    if (tab.value === "private" && !recipient.value) { sendError.value = "chatTargetUnavailable"; return; }
+    const key = destination.value;
+    const send = (text: string) => sendToCurrentDestination(text);
+    const target = { tab: tab.value, channelId: currentChannel.value?.id ?? selectedChannelId.value, clientId: privateClientId.value, conversationKey: privateConversationKey.value };
+    const sendCaptured = (text: string) => destination.value === key ? send(text)
+      : target.tab === "channel" ? sendTextMessage(text, target.channelId)
+        : target.tab === "server" ? sendServerMessage(text)
+          : sendPrivateMessage(target.clientId, text, String(target.clientId), target.conversationKey);
+    for (const file of files) {
+      const name = pastedFileName(file);
+      const upload: ChatUpload = reactive({ key: ++uploadSequence, name, progress: 0, error: "" });
+      uploads.push(upload);
+      const controller = new AbortController();
+      uploadControllers.add(controller);
+      try {
+        const info = await uploadChatFile(file, name, access, fraction => { upload.progress = fraction; }, controller.signal);
+        if (disposed || chatAccess?.value?.token !== access.token) return;
+        await sendCaptured(chatAttachmentMessage(location.origin, info));
+        dismissUpload(upload.key);
+      } catch (error) {
+        if (disposed) return;
+        if (error instanceof ChatFileError && error.code === "UPLOAD_CANCELLED") dismissUpload(upload.key);
+        else upload.error = error instanceof ChatFileError ? uploadErrorText(error) : t("chatSendFailed");
+      } finally {
+        uploadControllers.delete(controller);
+      }
+    }
+  }
+
+  function cancelUploads(): void {
+    for (const controller of uploadControllers) controller.abort();
+    uploadControllers.clear();
+    uploads.splice(0, uploads.length);
+  }
+
   async function submitMessage(): Promise<void> {
     if (disposed || sending.value || !messageDraft.value.trim() || tab.value === "events") return;
     if (!connected.value) { sendError.value = "chatNotConnected"; return; }
@@ -188,9 +280,7 @@ export function useWebClientChat({
     sending.value = true;
     sendError.value = "";
     try {
-      if (tab.value === "channel") await sendTextMessage(text, currentChannel.value?.id ?? selectedChannelId.value);
-      else if (tab.value === "server") await sendServerMessage(text);
-      else await sendPrivateMessage(privateClientId.value, text, String(privateClientId.value), privateConversationKey.value);
+      await sendToCurrentDestination(text);
       if (isCurrent()) {
         if (destination.value === key && messageDraft.value === text) messageDraft.value = "";
         else if (drafts.get(key) === text) drafts.set(key, "");
@@ -236,8 +326,9 @@ export function useWebClientChat({
     drafts.clear();
     sending.value = false;
     sendError.value = "";
+    cancelUploads();
   }, { flush: "sync" });
-  onScopeDispose(() => { disposed = true; drafts.clear(); pending.clear(); errors.clear(); sending.value = false; });
+  onScopeDispose(() => { disposed = true; cancelUploads(); drafts.clear(); pending.clear(); errors.clear(); sending.value = false; });
 
   watch([connected, sessionEpoch, serverKey], async ([isConnected, _epoch, target]) => {
     const generation = ++historyGeneration;
@@ -247,10 +338,58 @@ export function useWebClientChat({
     const history = await loadChatHistory(normalizedKey);
     if (disposed || generation !== historyGeneration || !connected.value || normalizeChatHistoryServerKey(serverKey.value) !== normalizedKey) return;
     const existingIds = new Set(messages.map(message => message.id));
-    const additions = history.filter(message => !existingIds.has(message.id));
+    const additions = history.filter(message => !existingIds.has(message.id) && !alreadyShown(message));
     if (additions.length) messages.splice(0, messages.length, ...[...messages, ...additions].sort((left, right) => left.timestamp - right.timestamp));
     for (const message of messages) if (!message.isHistory) persistedMessageIds.add(message.id);
   }, { immediate: true });
+
+  /** Is this history entry already shown (live, or from browser-local history)? */
+  function alreadyShown(candidate: ChatMessage): boolean {
+    return messages.some(message => message.scope === candidate.scope
+      && (candidate.scope !== "channel" || (message.targetId ?? "") === (candidate.targetId ?? ""))
+      && message.message === candidate.message
+      && (message.isSelf ? candidate.isSelf : message.invokerName === candidate.invokerName)
+      && Math.abs(message.timestamp - candidate.timestamp) < HISTORY_MATCH_WINDOW_MS);
+  }
+
+  function mergeServerHistory(entries: readonly ChatHistoryMessage[]): void {
+    const me = self?.value;
+    const additions: ChatMessage[] = [];
+    for (const entry of entries) {
+      const isSelf = Boolean(me && ((entry.senderUid && entry.senderUid === me.uid) || (!entry.senderUid && entry.senderName === me.nickname)));
+      const candidate: ChatMessage = {
+        id: `server-history-${entry.scope}-${entry.id}`, scope: entry.scope,
+        ...(entry.scope === "channel" && entry.channelId ? { targetId: entry.channelId } : {}),
+        ...(entry.senderUid ? { senderUid: entry.senderUid } : {}),
+        invokerName: entry.senderName || "Unknown", message: entry.message, timestamp: entry.timestamp, isSelf, isHistory: true,
+      };
+      if (messages.some(message => message.id === candidate.id) || alreadyShown(candidate)) continue;
+      additions.push(candidate);
+    }
+    if (additions.length) messages.splice(0, messages.length, ...[...messages, ...additions].sort((left, right) => left.timestamp - right.timestamp));
+  }
+
+  let serverHistoryGeneration = 0;
+  let serverHistoryController: AbortController | null = null;
+  async function loadServerHistory(scopes: ("channel" | "server")[]): Promise<void> {
+    const access = chatAccess?.value;
+    if (!access?.historyEnabled || !connected.value) return;
+    serverHistoryController?.abort();
+    const controller = new AbortController();
+    serverHistoryController = controller;
+    const generation = ++serverHistoryGeneration;
+    try {
+      for (const scope of scopes) {
+        const entries = await fetchChatHistory(access, scope, controller.signal);
+        if (disposed || generation !== serverHistoryGeneration || chatAccess?.value?.token !== access.token) return;
+        mergeServerHistory(entries);
+      }
+    } catch { /* history is optional */ }
+  }
+  // The token arrives with each connection; the channel decides which history applies.
+  watch(() => chatAccess?.value?.token, token => { if (token) void loadServerHistory(["channel", "server"]); });
+  watch(() => currentChannel.value?.id, (id, previous) => { if (id && previous !== undefined && id !== previous) void loadServerHistory(["channel"]); });
+  onScopeDispose(() => serverHistoryController?.abort());
 
   watch(() => messages.length, () => {
     if (!connected.value || !serverKey.value) return;
@@ -289,6 +428,11 @@ export function useWebClientChat({
     openPrivateChat,
     openConversation,
     submitMessage,
+    uploads,
+    canAttach,
+    maxFileBytes,
+    sendFiles,
+    dismissUpload,
     scrollToEnd,
     onScroll,
     scrollIfFollowing,

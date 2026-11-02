@@ -2590,3 +2590,32 @@ test("connecting restores browser-local chat history before it is displayed", as
   chat.openPrivateChat(7);
   assert.deepEqual(chat.visibleMessages.value.map(message => message.id), ["saved-private"]);
 });
+
+test("desktop push-to-talk closes the voice between presses without showing a mute in TeamSpeak", async () => {
+  const { socket } = await connectWebRtc();
+  assert.deepEqual(socket.messages.filter(message => message.type === "setVoiceGate").map(message => message.payload), [{ open: true }],
+    "a new session tells the gateway the gate is open");
+  const micGain = AudioContextStub.gains.at(-2);
+  voice.setInputVolume(0.6);
+  const before = socket.messages.length;
+  const gates = () => socket.messages.slice(before).filter(message => message.type === "setVoiceGate").map(message => message.payload.open);
+  const mutes = () => socket.messages.slice(before).filter(message => message.type === "setMicrophoneMuted");
+
+  voice.setPushToTalkMode(true);
+  assert.equal(micGain.gain.value, 0, "released: silent");
+  voice.setPushToTalkHeld(true);
+  assert.equal(micGain.gain.value, 0.6, "held: heard at the chosen level");
+  voice.setPushToTalkHeld(true);
+  voice.setPushToTalkHeld(false);
+  assert.equal(micGain.gain.value, 0);
+  voice.setMicrophoneMuted(true);
+  voice.setPushToTalkHeld(true);
+  assert.equal(micGain.gain.value, 0, "a real mute still wins while the key is held");
+  voice.setMicrophoneMuted(false);
+  assert.equal(micGain.gain.value, 0.6);
+  voice.setPushToTalkMode(false);
+  assert.equal(micGain.gain.value, 0.6, "turning push-to-talk off leaves the microphone open");
+  assert.deepEqual(gates(), [false, true, false, true, true]);
+  assert.equal(mutes().length, 2, "only the explicit mute and unmute reach TeamSpeak's mute flag");
+  assert.equal(voice.pushToTalkHeld.value, false);
+});

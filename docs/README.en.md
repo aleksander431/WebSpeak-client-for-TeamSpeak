@@ -195,14 +195,22 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
-### [v0.3.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.2) · 2026-11-02
+### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 
 #### New features
 
+- Images and files in chat: the paperclip button, drag and drop, or paste a screenshot with Ctrl+V. Images show in the chat, other files download; plain TeamSpeak users get a clickable link.
+- Channel and server chat is kept on the gateway, so people who join later see what was written. Private messages are never stored.
+- New admin page “Chat & files”: largest file, total storage and history. When storage is full, the oldest items are removed automatically.
+- Desktop client: push-to-talk — you are heard while you hold a key or mouse button. Games still get the key, and TeamSpeak does not show you as muted between presses.
+- Accompaniment (music button) volume is adjustable; 50% by default.
+- Security: `docker compose` builds the image from your checkout instead of the original author's prebuilt image; admin login limits work behind nginx; vulnerable libraries were updated.
 - A new WebSpeak icon on the site, in the browser tab and in the desktop client.
 - Desktop client: the tray icon lights up green while you talk (like TeamSpeak); a muted microphone or sound still shows the red badge.
 - Whiteboard dark theme: follow the page, light or dark; drawing colours are the same for everyone, only black and white swap in the dark theme.
 - The remaining Chinese labels in the channel list and server header and the event log are now translated.
+
+Behind nginx, set `client_max_body_size` to at least the largest file size.
 
 ### [v0.3.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.1) · 2026-11-01
 

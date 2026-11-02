@@ -23,7 +23,7 @@ function fixture() {
     },
     channelTree: [{ id: "18446744073709551615", parentID: "0", name: "Large ID" }],
     members,
-    whisperTargetIds: new Set(), whisperActive: false,
+    whisperTargetIds: new Set(), whisperActive: false, voiceGateOpen: true,
     lastAudioStatsProbeAt: 0, lastLatencyProbeAt: 0,
     audio: createAudioFlowStats(), webrtc: null,
   };
@@ -113,7 +113,7 @@ test("mute state reaches the mixer only after TeamSpeak accepts the change", asy
   f.context.webrtc = {
     getStats: createAudioFlowStats,
     setMicrophoneMuted: value => { f.calls.push(["mixer-mute", value]); },
-    setAccompanimentActive() {}, setMemberVolume() {},
+    setVoiceGateOpen() {}, setAccompanimentActive() {}, setMemberVolume() {},
   };
   await f.run({ type: "setMicrophoneMuted", payload: { muted: true }, requestId: "mute" });
   assert.deepEqual(f.calls, [["mute", true], ["mixer-mute", true]]);
@@ -139,7 +139,7 @@ test("accompaniment changes reach the mixer only after TeamSpeak accepts them", 
   const f = fixture();
   let active = false;
   f.context.webrtc = {
-    getStats: createAudioFlowStats, setMicrophoneMuted() {}, setMemberVolume() {},
+    getStats: createAudioFlowStats, setMicrophoneMuted() {}, setVoiceGateOpen() {}, setMemberVolume() {},
     setAccompanimentActive: value => { active = value; },
   };
   f.context.tsClient.setAccompanimentActive = async () => { throw Object.assign(new Error("denied"), { id: 2568 }); };
@@ -163,4 +163,18 @@ test("audio probing is bounded per session and accepts the next request at the i
   assert.ok(f.messages[1]?.type === "audioStats");
   assert.equal(f.messages[1].sequence, "next");
   assert.equal(f.messages[1].stats.ingressFrames, 8);
+});
+
+test("push-to-talk gates the mixer without touching TeamSpeak's mute flag", async () => {
+  const f = fixture();
+  const gate: boolean[] = [];
+  f.context.webrtc = {
+    getStats: createAudioFlowStats, setMicrophoneMuted() {}, setMemberVolume() {}, setAccompanimentActive() {},
+    setVoiceGateOpen: value => { gate.push(value); },
+  };
+  await f.run({ type: "setVoiceGate", payload: { open: false }, requestId: "ptt-up" });
+  assert.equal(f.context.voiceGateOpen, false, "kept for a WebRTC peer created later");
+  await f.run({ type: "setVoiceGate", payload: { open: true }, requestId: "ptt-down" });
+  assert.deepEqual(gate, [false, true]);
+  assert.deepEqual(f.calls, [], "TeamSpeak is not told the user is muted");
 });

@@ -27,6 +27,7 @@ const eventLabels: Record<string, AdminTranslationKey> = {
   ADMIN_SKIN_INSTALLED: "skinInstalledEvent", ADMIN_SKIN_REMOVED: "skinRemovedEvent",
   ADMIN_SKIN_ENABLED: "skinEnabledEvent", ADMIN_SKIN_DISABLED: "skinDisabledEvent",
   INVITE_CREATED: "inviteCreatedEvent", INVITE_REVOKED: "inviteRevokedEvent", INVITE_CONSUMED: "inviteConsumedEvent",
+  CHAT_STORAGE_SETTINGS_CHANGED: "chatStorageSettingsEvent", CHAT_STORAGE_CLEARED: "chatStorageClearedEvent",
   DEVICE_APPROVAL_ENABLED: "deviceApprovalEnabledEvent", DEVICE_APPROVAL_DISABLED: "deviceApprovalDisabledEvent",
   DEVICE_ACCESS_REQUESTED: "deviceAccessRequestedEvent", DEVICE_ACCESS_APPROVED: "deviceAccessApprovedEvent",
   DEVICE_ACCESS_DENIED: "deviceAccessDeniedEvent", DEVICE_ACCESS_FORGOTTEN: "deviceAccessForgottenEvent",
@@ -40,6 +41,7 @@ const eventLabels: Record<string, AdminTranslationKey> = {
 const errorLabels: Record<string, AdminTranslationKey> = {
   DEVICE_NOT_FOUND: "deviceNotFoundError", INVALID_DEVICE_ID: "deviceNotFoundError",
   ACCOUNT_NOT_FOUND: "deviceNotFoundError", INVALID_ACCOUNT_ID: "deviceNotFoundError",
+  INVALID_CHAT_STORAGE_SETTINGS: "chatStorageInvalid",
   INVALID_PASSWORD: "invalidPassword", INVALID_ADMIN_PASSWORD: "setupPasswordShort", PASSWORD_CHANGE_REQUIRED: "changePasswordLead", RATE_LIMITED: "rateLimited",
   INVALID_WEBRTC_PUBLIC_HOST: "invalidWebRtcNetworkError", INVALID_WEBRTC_STUN_SERVER: "invalidWebRtcNetworkError", INVALID_WEBRTC_IPV6: "invalidWebRtcNetworkError",
   INVALID_WEBRTC_PORT_RANGE: "invalidWebRtcPortRangeError", WEBRTC_PORT_LOCKED: "webRtcPortLockedError",

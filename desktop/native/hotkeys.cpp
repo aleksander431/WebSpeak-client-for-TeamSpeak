@@ -5,12 +5,17 @@
 // reports presses on stdout:
 //
 //   stdin:  set <id> <spec>    spec: [Ctrl+][Alt+][Shift+][Win+]Pause|Mouse4|Mouse5
+//           hold <id> <key>    push-to-talk: one key, Ctrl/Alt/Shift, Mouse3/4/5
 //           clear
-//   stdout: ok <id> | taken <id> | invalid <id> | fire <id>
+//   stdout: ok <id> | taken <id> | invalid <id> | fire <id> | down <id> | up <id>
 //
 // Keys use RegisterHotKey (the key is taken from other programs, like
 // Electron's own hotkeys). Mouse side buttons use a low-level mouse hook
 // and are passed on to the focused program unchanged.
+//
+// A hold binding reports press and release through low-level hooks and
+// never swallows the input, so a game still sees its key. Only the bound
+// key is looked at; nothing else is recorded or reported.
 // The helper exits when stdin closes or the parent process ends.
 
 #define WIN32_LEAN_AND_MEAN
@@ -37,6 +42,16 @@ struct Binding {
 
 std::vector<Binding> g_bindings;
 HHOOK g_mouseHook = nullptr;
+HHOOK g_keyboardHook = nullptr;
+
+// Push-to-talk: at most one binding, reported as down/up.
+struct HoldBinding {
+  int id = 0;
+  UINT keys[2] = {0, 0};  // virtual keys (left/right variants for modifiers)
+  int mouseButton = 0;    // 3 middle, 4 back, 5 forward
+  bool held = false;
+};
+HoldBinding g_hold;
 CRITICAL_SECTION g_outputLock;
 
 void Emit(const char* kind, int id) {
@@ -55,7 +70,33 @@ UINT CurrentModifiers() {
   return flags;
 }
 
+void SetHeld(bool held) {
+  if (!g_hold.id || g_hold.held == held) return;
+  g_hold.held = held;
+  Emit(held ? "down" : "up", g_hold.id);
+}
+
+LRESULT CALLBACK KeyboardHook(int code, WPARAM wParam, LPARAM lParam) {
+  if (code == HC_ACTION && g_hold.id && !g_hold.mouseButton) {
+    const KBDLLHOOKSTRUCT* info = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+    if (info->vkCode == g_hold.keys[0] || (g_hold.keys[1] && info->vkCode == g_hold.keys[1])) {
+      // Auto-repeat sends more key-downs while held; SetHeld ignores them.
+      if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) SetHeld(true);
+      else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) SetHeld(false);
+    }
+  }
+  return CallNextHookEx(g_keyboardHook, code, wParam, lParam);
+}
+
 LRESULT CALLBACK MouseHook(int code, WPARAM wParam, LPARAM lParam) {
+  if (code == HC_ACTION && g_hold.mouseButton) {
+    const MSLLHOOKSTRUCT* info = reinterpret_cast<const MSLLHOOKSTRUCT*>(lParam);
+    const int xbutton = HIWORD(info->mouseData) == XBUTTON1 ? 4 : HIWORD(info->mouseData) == XBUTTON2 ? 5 : 0;
+    if (g_hold.mouseButton == 3 && wParam == WM_MBUTTONDOWN) SetHeld(true);
+    else if (g_hold.mouseButton == 3 && wParam == WM_MBUTTONUP) SetHeld(false);
+    else if (wParam == WM_XBUTTONDOWN && xbutton == g_hold.mouseButton) SetHeld(true);
+    else if (wParam == WM_XBUTTONUP && xbutton == g_hold.mouseButton) SetHeld(false);
+  }
   if (code == HC_ACTION && wParam == WM_XBUTTONDOWN) {
     const MSLLHOOKSTRUCT* info = reinterpret_cast<const MSLLHOOKSTRUCT*>(lParam);
     const int button = HIWORD(info->mouseData) == XBUTTON1 ? 4 : HIWORD(info->mouseData) == XBUTTON2 ? 5 : 0;
@@ -70,16 +111,54 @@ LRESULT CALLBACK MouseHook(int code, WPARAM wParam, LPARAM lParam) {
 }
 
 void UpdateMouseHook() {
-  bool needed = false;
+  bool needed = g_hold.mouseButton != 0;
   for (const Binding& binding : g_bindings) needed = needed || binding.mouseButton != 0;
   if (needed && !g_mouseHook) g_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHook, GetModuleHandleW(nullptr), 0);
   if (!needed && g_mouseHook) { UnhookWindowsHookEx(g_mouseHook); g_mouseHook = nullptr; }
 }
 
+void UpdateKeyboardHook() {
+  const bool needed = g_hold.id && !g_hold.mouseButton;
+  if (needed && !g_keyboardHook) g_keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, KeyboardHook, GetModuleHandleW(nullptr), 0);
+  if (!needed && g_keyboardHook) { UnhookWindowsHookEx(g_keyboardHook); g_keyboardHook = nullptr; }
+}
+
 void ClearBindings() {
   for (const Binding& binding : g_bindings) if (binding.registered) UnregisterHotKey(nullptr, binding.id);
   g_bindings.clear();
+  SetHeld(false);
+  g_hold = HoldBinding();
   UpdateMouseHook();
+  UpdateKeyboardHook();
+}
+
+// Key names as Electron writes them (settings.ts), plus bare modifiers and mouse buttons.
+bool ParseHoldKey(const std::string& name, HoldBinding* out) {
+  struct Named { const char* name; UINT key; };
+  static const Named kNamed[] = {
+    {"Space", VK_SPACE}, {"Tab", VK_TAB}, {"Backspace", VK_BACK}, {"Delete", VK_DELETE}, {"Insert", VK_INSERT},
+    {"Return", VK_RETURN}, {"Enter", VK_RETURN}, {"Up", VK_UP}, {"Down", VK_DOWN}, {"Left", VK_LEFT}, {"Right", VK_RIGHT},
+    {"Home", VK_HOME}, {"End", VK_END}, {"PageUp", VK_PRIOR}, {"PageDown", VK_NEXT}, {"Escape", VK_ESCAPE}, {"Esc", VK_ESCAPE},
+    {"numdec", VK_DECIMAL}, {"numadd", VK_ADD}, {"numsub", VK_SUBTRACT}, {"nummult", VK_MULTIPLY}, {"numdiv", VK_DIVIDE},
+    {"`", VK_OEM_3}, {"-", VK_OEM_MINUS}, {"=", VK_OEM_PLUS}, {"[", VK_OEM_4}, {"]", VK_OEM_6}, {"\\", VK_OEM_5},
+    {";", VK_OEM_1}, {"'", VK_OEM_7}, {",", VK_OEM_COMMA}, {".", VK_OEM_PERIOD}, {"/", VK_OEM_2},
+    {"Capslock", VK_CAPITAL}, {"Numlock", VK_NUMLOCK}, {"Scrolllock", VK_SCROLL}, {"PrintScreen", VK_SNAPSHOT}, {"Pause", VK_PAUSE},
+  };
+  if (name == "Mouse3") { out->mouseButton = 3; return true; }
+  if (name == "Mouse4") { out->mouseButton = 4; return true; }
+  if (name == "Mouse5") { out->mouseButton = 5; return true; }
+  // The low-level hook sees the left/right variant of a modifier.
+  if (name == "Ctrl") { out->keys[0] = VK_LCONTROL; out->keys[1] = VK_RCONTROL; return true; }
+  if (name == "Alt") { out->keys[0] = VK_LMENU; out->keys[1] = VK_RMENU; return true; }
+  if (name == "Shift") { out->keys[0] = VK_LSHIFT; out->keys[1] = VK_RSHIFT; return true; }
+  if (name.size() == 1 && ((name[0] >= 'A' && name[0] <= 'Z') || (name[0] >= '0' && name[0] <= '9'))) { out->keys[0] = static_cast<UINT>(name[0]); return true; }
+  if (name.size() >= 2 && name.size() <= 3 && name[0] == 'F') {
+    const int number = atoi(name.c_str() + 1);
+    if (number >= 1 && number <= 24) { out->keys[0] = VK_F1 + number - 1; return true; }
+  }
+  if (name.size() == 4 && name.compare(0, 3, "num") == 0 && name[3] >= '0' && name[3] <= '9') { out->keys[0] = VK_NUMPAD0 + (name[3] - '0'); return true; }
+  for (const Named& named : kNamed) if (name == named.name) { out->keys[0] = named.key; return true; }
+  return false;
 }
 
 // Parse "[Ctrl+][Alt+][Shift+][Win+]Key".
@@ -114,6 +193,20 @@ void HandleCommand(char* line) {
   if (strcmp(line, "clear") == 0) { ClearBindings(); return; }
   int id = 0;
   char spec[128] = {0};
+  if (sscanf(line, "hold %d %127s", &id, spec) == 2) {
+    if (id <= 0 || id > 0xBFFF) return;
+    SetHeld(false);
+    HoldBinding hold;
+    hold.id = id;
+    if (!ParseHoldKey(spec, &hold)) { g_hold = HoldBinding(); UpdateMouseHook(); UpdateKeyboardHook(); Emit("invalid", id); return; }
+    g_hold = hold;
+    UpdateMouseHook();
+    UpdateKeyboardHook();
+    const bool hooked = hold.mouseButton ? g_mouseHook != nullptr : g_keyboardHook != nullptr;
+    if (!hooked) { g_hold = HoldBinding(); Emit("taken", id); return; }
+    Emit("ok", id);
+    return;
+  }
   if (sscanf(line, "set %d %127s", &id, spec) != 2 || id <= 0 || id > 0xBFFF) return;
   Binding binding = {id, 0, 0, 0, false};
   if (!ParseSpec(spec, &binding)) { Emit("invalid", id); return; }

@@ -199,14 +199,22 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
-### [v0.3.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.2) · 2026-11-02
+### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 
 #### 新功能
 
+- 聊天中发送图片和文件：回形针按钮、拖放，或用 Ctrl+V 粘贴截图。图片直接显示在聊天中，其他文件可下载；普通 TeamSpeak 用户看到可点击的链接。
+- 频道和服务器聊天保存在网关上，稍后加入的人也能看到之前的消息。私聊从不保存。
+- 新的管理页面“聊天与文件”：单个文件上限、总存储上限和聊天记录。存储已满时自动删除最旧的内容。
+- 桌面客户端：按键说话——按住按键或鼠标键时别人才能听到你。游戏仍能收到该键，未按键时 TeamSpeak 也不会显示你为静音。
+- 伴奏（音符按钮）音量可调，默认 50%。
+- 安全：`docker compose` 从你的代码构建镜像，而不是使用原作者的预构建镜像；管理后台登录限制在 nginx 之后也能生效；更新了存在漏洞的依赖库。
 - 全新的 WebSpeak 图标，用于网站、浏览器标签页和桌面客户端。
 - 桌面客户端：说话时托盘图标亮起绿色光环（与 TeamSpeak 相同）；麦克风或声音静音时仍显示红色标记。
 - 白板深色主题：跟随页面、浅色或深色；所有人看到的绘图颜色一致，深色主题下仅黑白互换。
 - 频道列表、服务器标题和事件记录中残留的中文文本现已翻译为其他语言。
+
+如果网站位于 nginx 之后，请把 `client_max_body_size` 设为不小于单个文件上限。
 
 ### [v0.3.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.1) · 2026-11-01
 

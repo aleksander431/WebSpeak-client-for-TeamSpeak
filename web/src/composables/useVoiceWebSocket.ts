@@ -16,6 +16,7 @@ import { createScreenShareController } from "../voice/screen-share.js";
 import { requestMediaBeforeAudioResume } from "../services/microphone-start.js";
 export type { ScreenShareOutputSettings, ScreenShareCaptureStats, ScreenSharePeerStats, ScreenShareWebRtcStats } from "../voice/screen-share.js";
 import { parseServerMessage } from "../../../src/shared/server-messages.js";
+import { parseChatSessionAccess, type ChatSessionAccess } from "../../../src/shared/chat-storage.js";
 import { parseWhiteboardServerMessage, type WhiteboardClientMessage, type WhiteboardServerMessage } from "../../../src/shared/whiteboard.js";
 import type { ChatMessage } from "../../../src/shared/voice-models.js";
 import type { ClientCommandPayloads, ClientCommandType } from "../../../src/shared/client-commands.js";
@@ -201,6 +202,8 @@ class CancelledMediaOperation extends Error {
 
 export function useVoiceWebSocket() {
   const ws = shallowRef<WebSocket | null>(null);
+  /** Upload/history access for the current gateway session; null when unavailable. */
+  const chatAccess = shallowRef<ChatSessionAccess | null>(null);
   const serverInfo = shallowRef<VoiceServerInfo | null>(null);
   const state = reactive<VoiceState>({ connected: false, connecting: false, reconnecting: false, reconnectAttempt: 0, reconnectFailed: false, tsClientId: 0, error: "", errorCode: "", microphoneError: "", microphoneErrorCode: "", audioNotice: "", audioNoticeCode: "", channelSwitchedChannelId: "" });
   const sessionState = createVoiceSessionState({
@@ -226,6 +229,7 @@ export function useVoiceWebSocket() {
       state.connecting = false;
       state.reconnecting = false;
       state.tsClientId = 0;
+      chatAccess.value = null;
       if (!state.reconnectFailed) sessionState.reset();
       if (event.code !== 1000 && !state.reconnectFailed && !state.errorCode) {
         state.errorCode = closeErrorCode(event.code, event.reason);
@@ -316,6 +320,12 @@ export function useVoiceWebSocket() {
     onError: error => { setMicrophoneError(error); },
   });
   const microphoneMuted = ref(false);
+  /** Desktop push-to-talk: the voice is open only while the key is held. */
+  const pushToTalkMode = ref(false);
+  const pushToTalkHeld = ref(false);
+  const voiceGateOpen = () => !pushToTalkMode.value || pushToTalkHeld.value;
+  /** The microphone reaches other people: not muted, and push-to-talk (if on) held. */
+  const transmitting = () => !microphoneMuted.value && voiceGateOpen();
   const noiseSuppressionEnabled = ref(true);
   let noiseSuppressionTouched = false;
   let committedNoiseSuppressionEnabled = noiseSuppressionEnabled.value;
@@ -362,13 +372,14 @@ export function useVoiceWebSocket() {
     },
     stopPcm: stopCaptureGraph,
     muted: () => microphoneMuted.value,
+    voiceGateClosed: () => !voiceGateOpen(),
     inputVolume: () => inputVolume.value,
     accompanimentVolume: () => accompanimentVolume.value,
     accompanimentActive: () => accompanimentActive.value,
     releaseAccompaniment: () => accompaniment.stop(),
     onLevel(rms, track) {
       micLevel.value = rms === null ? 0 : Math.min(1, rms * 6);
-      if (rms !== null && !microphoneMuted.value && track.enabled && rms >= voxThreshold.value) markSpeaking(state.tsClientId);
+      if (rms !== null && transmitting() && track.enabled && rms >= voxThreshold.value) markSpeaking(state.tsClientId);
       else if (state.tsClientId) clearSpeaking(state.tsClientId);
     },
     onReady: syncWebRtcMemberVolumes,
@@ -656,14 +667,15 @@ export function useVoiceWebSocket() {
     if (!input.length) return;
     micLevel.value = Math.min(1, (rms ?? Math.sqrt(input.reduce((sum, sample) => sum + sample * sample, 0) / input.length)) * 6);
     const socket = ws.value;
-    const shouldSend = !microphoneMuted.value
+    const shouldSend = transmitting()
       && !microphoneTestActive.value
       && !webrtc.active
       && socket?.readyState === WebSocket.OPEN
-      && voxGate(input);
+      // A held push-to-talk key sends everything, like TeamSpeak; otherwise voice activation decides.
+      && (pushToTalkMode.value || voxGate(input));
     if (!shouldSend) {
       accumLen = 0;
-      if (microphoneMuted.value) {
+      if (!transmitting()) {
         voxAttack = 0;
         voxRelease = 0;
       }
@@ -1049,6 +1061,7 @@ export function useVoiceWebSocket() {
     state.errorCode = "";
     state.channelSwitchedChannelId = "";
     if (!keepRememberedIdentity) identityMaterial.value = "";
+    chatAccess.value = null;
     sessionState.reset();
     for (const key of Object.keys(volumes)) delete volumes[Number(key)];
   }
@@ -1108,8 +1121,10 @@ export function useVoiceWebSocket() {
         // as soon as the session is ready so a muted reconnect is visible to
         // native TeamSpeak users even before WebRTC negotiation completes.
         sendCmd("setMicrophoneMuted", { muted: microphoneMuted.value });
+        sendCmd("setVoiceGate", { open: voiceGateOpen() });
         screenShare.setIceServers(msg.screenShareIceServers);
         webRtcStunServer = msg.webRtcStunServer ?? "";
+        chatAccess.value = msg.chat ? parseChatSessionAccess(msg.chat) : null;
         sessionState.connected(msg);
         applyWhisperState(msg.whisperTargetIds, msg.whisperActive);
         if (typeof msg.identity === "string" && msg.identity.length <= 8192) {
@@ -1342,11 +1357,41 @@ export function useVoiceWebSocket() {
     voxAttack = 0;
     voxRelease = 0;
     accumLen = 0;
-    if (webrtc.active) micStream?.getAudioTracks().forEach((track) => { track.enabled = !muted; });
-    webrtc.input?.setVolume(muted ? 0 : inputVolume.value);
+    applyTransmitState();
     sendCmd("setMicrophoneMuted", { muted });
     if (muted && state.tsClientId) clearSpeaking(state.tsClientId);
     void saveAudioPreferences();
+  }
+
+  /** Open or close the outgoing voice locally for the current mute and push-to-talk state. */
+  function applyTransmitState(): void {
+    const open = transmitting();
+    if (webrtc.active) micStream?.getAudioTracks().forEach((track) => { track.enabled = open; });
+    webrtc.input?.setVolume(open ? inputVolume.value : 0);
+  }
+
+  function applyVoiceGate(): void {
+    voxAttack = 0;
+    voxRelease = 0;
+    accumLen = 0;
+    applyTransmitState();
+    // The gateway drops voice frames while closed; TeamSpeak's mute flag is not touched.
+    if (state.connected) sendCmd("setVoiceGate", { open: voiceGateOpen() });
+    if (!transmitting() && state.tsClientId) clearSpeaking(state.tsClientId);
+  }
+
+  /** The desktop client turns push-to-talk on once its key is registered. */
+  function setPushToTalkMode(enabled: boolean): void {
+    if (pushToTalkMode.value === enabled) return;
+    pushToTalkMode.value = enabled;
+    pushToTalkHeld.value = false;
+    applyVoiceGate();
+  }
+
+  function setPushToTalkHeld(held: boolean): void {
+    if (!pushToTalkMode.value || pushToTalkHeld.value === held) return;
+    pushToTalkHeld.value = held;
+    applyVoiceGate();
   }
 
   function clearError(): void {
@@ -1418,7 +1463,7 @@ export function useVoiceWebSocket() {
   function setInputVolume(volume: number): void {
     inputVolume.value = Math.max(0, Math.min(1, volume));
     microphoneCapture?.setVolume(inputVolume.value);
-    webrtc.input?.setVolume(microphoneMuted.value ? 0 : inputVolume.value);
+    applyTransmitState();
     void saveAudioPreferences();
   }
 
@@ -1464,6 +1509,7 @@ export function useVoiceWebSocket() {
   return {
     ...screenShare.api,
     whiteboard,
+    chatAccess,
     ws,
     state,
     serverInfo,
@@ -1504,6 +1550,10 @@ export function useVoiceWebSocket() {
     setVolume,
     setInputVolume,
     setAccompanimentVolume,
+    pushToTalkMode,
+    pushToTalkHeld,
+    setPushToTalkMode,
+    setPushToTalkHeld,
     setNoiseSuppressionEnabled,
     setOutputVolume,
     toggleOutputMute,

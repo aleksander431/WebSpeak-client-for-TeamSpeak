@@ -4,7 +4,21 @@
     :data-ws-chat-tab="chatTab"
     :data-ws-chat-panel-open="panelOpen"
     data-ws-part="voice.chat"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
   >
+    <div
+      v-if="dragActive"
+      class="chat-drop-overlay"
+      data-ws-part="voice.chat.drop-overlay"
+      ><Icon
+        name="paperclip"
+        :size="28"
+      /><strong>{{ t("chatDropFiles") }}</strong
+      ><span v-if="maxFileBytes">{{ t("chatFileLimit", { size: formatBytes(maxFileBytes) }) }}</span></div
+    >
     <div
       class="chat-tabs"
       data-ws-part="voice.chat.tabs"
@@ -157,7 +171,11 @@
             ><div
               class="message-bubble"
               data-ws-part="voice.chat.message-bubble"
-              >{{ message.message }}</div
+              ><ChatMessageContent
+                :message="message.message"
+                :t="t"
+                @media-loaded="scrollIfFollowing"
+            /></div
             ></div
           >
         </article>
@@ -169,9 +187,65 @@
       data-ws-part="voice.chat.composer"
       @submit.prevent="!composing && submitMessage()"
     >
+      <ul
+        v-if="uploads.length"
+        class="chat-uploads"
+        data-ws-part="voice.chat.uploads"
+      >
+        <li
+          v-for="upload in uploads"
+          :key="upload.key"
+          :data-ws-state="upload.error ? 'failed' : 'uploading'"
+          ><Icon
+            name="paperclip"
+            :size="14"
+          /><span class="chat-upload-name">{{ upload.name }}</span
+          ><span
+            v-if="upload.error"
+            class="chat-upload-error"
+            role="alert"
+            >{{ upload.error }}</span
+          ><progress
+            v-else
+            max="1"
+            :value="upload.progress"
+            :aria-label="t('chatUploading')"
+          ></progress
+          ><button
+            v-if="upload.error"
+            type="button"
+            :title="t('close')"
+            :aria-label="t('close')"
+            @click="dismissUpload(upload.key)"
+            ><Icon
+              name="close"
+              :size="13" /></button
+        ></li>
+      </ul>
+      <button
+        v-if="canAttach"
+        class="attach-button"
+        type="button"
+        data-ws-part="voice.chat.attach"
+        :title="t('chatAttach')"
+        :aria-label="t('chatAttach')"
+        @click="fileInput?.click()"
+        ><Icon
+          name="paperclip"
+          :size="18"
+      /></button>
+      <input
+        ref="fileInput"
+        class="chat-file-input"
+        type="file"
+        multiple
+        hidden
+        @change="onFilesChosen"
+      />
       <input
         v-model="messageDraft"
         maxlength="500"
+        @paste="onPaste"
         enterkeyhint="send"
         autocomplete="off"
         @compositionstart="composing = true"
@@ -204,6 +278,8 @@
 <script setup lang="ts">
 import { ref, type CSSProperties } from "vue";
 import Icon from "../Icon.vue";
+import ChatMessageContent from "./ChatMessageContent.vue";
+import { formatBytes } from "../../../../src/shared/chat-storage.js";
 import type { useWebClientChat } from "../../composables/useWebClientChat.js";
 import type { ChatMessage, ServerEvent } from "../../composables/useVoiceWebSocket.js";
 
@@ -212,6 +288,7 @@ type ChatPanelModel = Pick<ReturnType<typeof useWebClientChat>,
   | "panelOpen"
   | "listElement" | "conversations" | "visibleMessages" | "tabLabel" | "title"
   | "placeholder" | "openConversation" | "submitMessage" | "onScroll"
+  | "uploads" | "canAttach" | "maxFileBytes" | "sendFiles" | "dismissUpload" | "scrollIfFollowing"
 >;
 
 const props = defineProps<{
@@ -244,7 +321,56 @@ const {
   openConversation,
   submitMessage,
   onScroll,
+  uploads,
+  canAttach,
+  maxFileBytes,
+  sendFiles,
+  dismissUpload,
+  scrollIfFollowing,
 } = props.model;
+
+const fileInput = ref<HTMLInputElement | null>(null);
+function onFilesChosen(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const files = [...(input.files ?? [])];
+  input.value = "";
+  if (files.length) void sendFiles(files);
+}
+
+/** A screenshot pasted into the message box is sent as a file. */
+function onPaste(event: ClipboardEvent): void {
+  const files = [...(event.clipboardData?.files ?? [])];
+  if (!files.length || !canAttach.value) return;
+  event.preventDefault();
+  void sendFiles(files);
+}
+
+const dragActive = ref(false);
+let dragDepth = 0;
+const carriesFiles = (event: DragEvent) => Boolean(event.dataTransfer?.types.includes("Files"));
+function onDragEnter(event: DragEvent): void {
+  if (!carriesFiles(event) || !canAttach.value) return;
+  dragDepth += 1;
+  dragActive.value = true;
+}
+function onDragOver(event: DragEvent): void {
+  if (!carriesFiles(event) || !canAttach.value) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+}
+function onDragLeave(event: DragEvent): void {
+  if (!carriesFiles(event)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) dragActive.value = false;
+}
+function onDrop(event: DragEvent): void {
+  if (!carriesFiles(event)) return;
+  event.preventDefault();
+  dragDepth = 0;
+  dragActive.value = false;
+  const files = [...(event.dataTransfer?.files ?? [])];
+  if (files.length && canAttach.value) void sendFiles(files);
+}
 
 const composing = ref(false);
 function guardComposition(event: KeyboardEvent): void {

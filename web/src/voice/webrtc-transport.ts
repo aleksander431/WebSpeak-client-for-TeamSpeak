@@ -19,6 +19,8 @@ interface TransportOptions {
   stunServer?(): string;
   stopPcm(): void;
   muted(): boolean;
+  /** Push-to-talk released: silent like a mute, but TeamSpeak is not told. */
+  voiceGateClosed?(): boolean;
   inputVolume(): number;
   accompanimentVolume?(): number;
   accompanimentActive(): boolean;
@@ -132,8 +134,9 @@ export function createWebRtcTransport(options: TransportOptions) {
       const stunServer = options.stunServer?.();
       const peer = new RTCPeerConnection({ iceServers: stunServer ? [{ urls: stunServer }] : [] });
       record.peer = peer;
-      track.enabled = !options.muted();
-      const input = createWebRtcInput(context, processedStream, options.muted() ? 0 : options.inputVolume(), options.accompanimentVolume?.() ?? 1);
+      const silent = options.muted() || options.voiceGateClosed?.() === true;
+      track.enabled = !silent;
+      const input = createWebRtcInput(context, processedStream, silent ? 0 : options.inputVolume(), options.accompanimentVolume?.() ?? 1);
       record.input = input;
       peer.addTrack(input.stream.getAudioTracks()[0]!, input.stream);
       peer.ontrack = event => {

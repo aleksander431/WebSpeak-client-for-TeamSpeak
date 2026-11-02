@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { desktopHost, runDesktopAction, type DesktopState } from "./useDesktopBridge.js";
+import { desktopHost, runDesktopAction, runPushToTalkAction, type DesktopState } from "./useDesktopBridge.js";
 
 function harness(initial: Partial<DesktopState> = {}) {
   const state: DesktopState = { connected: true, micMuted: false, soundMuted: false, streaming: false, ...initial };
@@ -50,4 +50,17 @@ test("the bridge only activates inside the desktop client", () => {
   assert.equal(desktopHost({}), null);
   assert.equal(desktopHost({ webspeakDesktop: { platform: "windows" } }), null);
   assert.ok(desktopHost({ webspeakDesktop: { platform: "windows", reportState() {}, openSettings() {} } }));
+});
+
+test("push-to-talk messages switch the mode and the held key without sounds", () => {
+  const h = harness();
+  const events: string[] = [];
+  const options = { ...h.options, setPushToTalkMode: (on: boolean) => events.push(`mode:${on}`), setPushToTalkHeld: (held: boolean) => events.push(`held:${held}`) };
+  assert.equal(runPushToTalkAction("pttModeOn", options), "ptt-mode-on");
+  assert.equal(runPushToTalkAction("pttDown", options), "ptt-down");
+  assert.equal(runPushToTalkAction("pttUp", options), "ptt-up");
+  assert.equal(runPushToTalkAction("pttModeOff", options), "ptt-mode-off");
+  assert.deepEqual(events, ["mode:true", "held:true", "held:false", "mode:false"]);
+  assert.deepEqual(h.tones, []);
+  assert.deepEqual(h.calls, [], "push-to-talk never toggles the mute");
 });

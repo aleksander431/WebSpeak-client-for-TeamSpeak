@@ -10,7 +10,7 @@ test("all command payloads preserve request IDs through the shared parser", () =
     sendServerMessage: { message: "hello" }, sendPrivateMessage: { clientId: 2, message: "hello" },
     poke: { clientId: 2, message: "hello" }, setAway: { away: true, message: "away" },
     setWhisperTargets: { targetIds: [2, 3] }, setWhisperActive: { active: true },
-    setMicrophoneMuted: { muted: false }, setAccompanimentActive: { active: true },
+    setMicrophoneMuted: { muted: false }, setVoiceGate: { open: false }, setAccompanimentActive: { active: true },
     setMemberVolume: { clientId: 2, volume: 0 }, latencyProbe: { sequence: "old" }, audioStatsProbe: { sequence: "new" },
   };
   for (const [type, payload] of Object.entries(payloads)) {

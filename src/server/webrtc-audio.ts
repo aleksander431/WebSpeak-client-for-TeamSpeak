@@ -52,6 +52,8 @@ export interface WebRtcAudioSessionOptions {
   /** Mirrors `VoiceBridgeDependencies.createEncoder`; production uses `@discordjs/opus`. */
   createEncoder?: () => MixerEncoder;
   microphoneMuted?: boolean;
+  /** Push-to-talk gate; false drops voice frames like a mute, without TeamSpeak's mute flag. */
+  voiceGateOpen?: boolean;
   accompanimentActive?: boolean;
   onVoiceFrame: (data: Buffer, codec: 4 | 5) => void;
   onVoiceActivity: (clientIds: number[]) => void;
@@ -113,6 +115,7 @@ export class WebRtcAudioSession {
   private lastIngressRtpAt: number | null = null;
   private lastEgressRtpAt: number | null = null;
   private microphoneMuted: boolean;
+  private voiceGateOpen: boolean;
   private accompanimentActive: boolean;
   private readonly stats: WebRtcAudioStats = {
     webrtcIngressRtpFrames: 0,
@@ -140,6 +143,7 @@ export class WebRtcAudioSession {
     this.onVoiceFrame = options.onVoiceFrame;
     this.onVoiceActivity = options.onVoiceActivity;
     this.microphoneMuted = options.microphoneMuted === true;
+    this.voiceGateOpen = options.voiceGateOpen !== false;
     this.accompanimentActive = options.accompanimentActive === true;
     this.outgoingTrack = new MediaStreamTrack({ kind: "audio" });
 
@@ -175,7 +179,8 @@ export class WebRtcAudioSession {
         // those packets makes TeamSpeak keep the user in the speaking state.
         // When accompaniment is active, keep forwarding the mixed track: the
         // browser has already removed only the microphone component.
-        if (this.microphoneMuted && !this.accompanimentActive) return;
+        // A released push-to-talk key closes the same way.
+        if ((this.microphoneMuted || !this.voiceGateOpen) && !this.accompanimentActive) return;
         // Forward every valid negotiated Opus payload unchanged. Do not
         // decode it for RMS analysis or pass it through a speech/silence gate:
         // quiet frames are still part of the codec timeline and dropping them
@@ -415,6 +420,10 @@ export class WebRtcAudioSession {
 
   setMicrophoneMuted(muted: boolean): void {
     this.microphoneMuted = muted;
+  }
+
+  setVoiceGateOpen(open: boolean): void {
+    this.voiceGateOpen = open;
   }
 
   setAccompanimentActive(active: boolean): void {

@@ -6,7 +6,7 @@ import type { AdminCredential } from "../security/admin-password.js";
 import type { TeamSpeakProtocol } from "../server/teamspeak-adapter.js";
 import { DEFAULT_WEBRTC_UDP_PORT_RANGE } from "../server/webrtc-config.js";
 
-export const DATABASE_SCHEMA_VERSION = 15;
+export const DATABASE_SCHEMA_VERSION = 16;
 export type AccessMode = "fixed" | "open";
 
 export interface PersistedSettings {
@@ -38,6 +38,27 @@ export interface PersistedSettings {
   relayPort: number;
   relayTokenEncrypted: string | null;
   updatedAt: string;
+}
+
+export interface ChatFileRow {
+  id: string;
+  targetKey: string;
+  name: string;
+  mime: string;
+  size: number;
+  createdAt: number;
+}
+
+export interface ChatHistoryRow {
+  id: number;
+  targetKey: string;
+  scope: string;
+  channelId: string;
+  senderUid: string;
+  senderName: string;
+  message: string;
+  size: number;
+  createdAt: number;
 }
 
 export interface SettingsUpdate {
@@ -680,6 +701,77 @@ export class WebSpeakDatabase {
     }
   }
 
+  insertChatFile(file: ChatFileRow): void {
+    this.database.prepare("INSERT INTO chat_files (id, target_key, name, mime, size, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(file.id, file.targetKey, file.name, file.mime, file.size, file.createdAt);
+  }
+
+  getChatFile(id: string): ChatFileRow | null {
+    const row = this.database.prepare("SELECT id, target_key, name, mime, size, created_at FROM chat_files WHERE id = ?").get(id) as
+      { id: string; target_key: string; name: string; mime: string; size: number; created_at: number } | undefined;
+    return row ? { id: row.id, targetKey: row.target_key, name: row.name, mime: row.mime, size: Number(row.size), createdAt: Number(row.created_at) } : null;
+  }
+
+  oldestChatFile(): { id: string; size: number; createdAt: number } | null {
+    const row = this.database.prepare("SELECT id, size, created_at FROM chat_files ORDER BY created_at ASC, id ASC LIMIT 1").get() as
+      { id: string; size: number; created_at: number } | undefined;
+    return row ? { id: row.id, size: Number(row.size), createdAt: Number(row.created_at) } : null;
+  }
+
+  deleteChatFile(id: string): boolean {
+    const result = this.database.prepare("DELETE FROM chat_files WHERE id = ?").run(id) as { changes?: number | bigint };
+    return Number(result.changes ?? 0) > 0;
+  }
+
+  listChatFileIds(): string[] {
+    return (this.database.prepare("SELECT id FROM chat_files").all() as { id: string }[]).map(row => row.id);
+  }
+
+  insertChatHistory(entry: Omit<ChatHistoryRow, "id">): number {
+    const result = this.database.prepare(
+      `INSERT INTO chat_history (target_key, scope, channel_id, sender_uid, sender_name, message, size, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(entry.targetKey, entry.scope, entry.channelId, entry.senderUid, entry.senderName, entry.message, entry.size, entry.createdAt) as { lastInsertRowid?: number | bigint };
+    return Number(result.lastInsertRowid ?? 0);
+  }
+
+  /** Newest first, at most `limit`, strictly older than `before` when given. */
+  listChatHistory(targetKey: string, scope: string, channelId: string, limit: number, before?: number): ChatHistoryRow[] {
+    const rows = (before === undefined
+      ? this.database.prepare(
+        `SELECT * FROM chat_history WHERE target_key = ? AND scope = ? AND channel_id = ?
+         ORDER BY created_at DESC, id DESC LIMIT ?`).all(targetKey, scope, channelId, limit)
+      : this.database.prepare(
+        `SELECT * FROM chat_history WHERE target_key = ? AND scope = ? AND channel_id = ? AND created_at < ?
+         ORDER BY created_at DESC, id DESC LIMIT ?`).all(targetKey, scope, channelId, before, limit)) as Array<{
+      id: number; target_key: string; scope: string; channel_id: string; sender_uid: string; sender_name: string; message: string; size: number; created_at: number;
+    }>;
+    return rows.map(row => ({ id: Number(row.id), targetKey: row.target_key, scope: row.scope, channelId: row.channel_id, senderUid: row.sender_uid,
+      senderName: row.sender_name, message: row.message, size: Number(row.size), createdAt: Number(row.created_at) }));
+  }
+
+  oldestChatHistory(): { id: number; size: number; createdAt: number } | null {
+    const row = this.database.prepare("SELECT id, size, created_at FROM chat_history ORDER BY created_at ASC, id ASC LIMIT 1").get() as
+      { id: number; size: number; created_at: number } | undefined;
+    return row ? { id: Number(row.id), size: Number(row.size), createdAt: Number(row.created_at) } : null;
+  }
+
+  deleteChatHistory(id: number): void {
+    this.database.prepare("DELETE FROM chat_history WHERE id = ?").run(id);
+  }
+
+  chatStorageUsage(): { fileBytes: number; fileCount: number; messageBytes: number; messageCount: number } {
+    const files = this.database.prepare("SELECT COALESCE(SUM(size), 0) AS bytes, COUNT(*) AS count FROM chat_files").get() as { bytes: number; count: number };
+    const messages = this.database.prepare("SELECT COALESCE(SUM(size), 0) AS bytes, COUNT(*) AS count FROM chat_history").get() as { bytes: number; count: number };
+    return { fileBytes: Number(files.bytes), fileCount: Number(files.count), messageBytes: Number(messages.bytes), messageCount: Number(messages.count) };
+  }
+
+  clearChatStorage(): void {
+    this.transaction(() => {
+      this.database.exec("DELETE FROM chat_files; DELETE FROM chat_history;");
+    });
+  }
+
   getMeta(key: string): string | null {
     const row = this.database.prepare("SELECT value FROM metadata WHERE key = ?").get(key) as { value?: string } | undefined;
     return row?.value ?? null;
@@ -1021,6 +1113,39 @@ export class WebSpeakDatabase {
             PRIMARY KEY (board_key, sheet_id, id)
           );
           PRAGMA user_version = 15;
+        `);
+      });
+      version = 15;
+    }
+    if (version === 15) {
+      this.transaction(() => {
+        // Chat attachments (bytes live on disk under chat-files/) and the
+        // server-side channel/server chat history. Both count against one
+        // administrator-set quota and are rotated oldest first.
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS chat_files (
+            id TEXT PRIMARY KEY,
+            target_key TEXT NOT NULL,
+            name TEXT NOT NULL,
+            mime TEXT NOT NULL,
+            size INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS chat_files_created_idx ON chat_files(created_at);
+          CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_key TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            sender_uid TEXT NOT NULL,
+            sender_name TEXT NOT NULL,
+            message TEXT NOT NULL,
+            size INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS chat_history_lookup_idx ON chat_history(target_key, scope, channel_id, created_at);
+          CREATE INDEX IF NOT EXISTS chat_history_created_idx ON chat_history(created_at);
+          PRAGMA user_version = 16;
         `);
       });
     }

@@ -1100,6 +1100,7 @@ const {
   members,
   channels,
   chatMessages,
+  chatAccess,
   serverEvents,
   pokeNotifications,
   microphoneMuted,
@@ -1133,6 +1134,8 @@ const {
   setVoxThreshold,
   setNotificationVolume,
   setAccompanimentVolume,
+  setPushToTalkMode,
+  setPushToTalkHeld,
   prepareInputDevices,
   refreshAudioDevices,
   setInputDevice,
@@ -1451,6 +1454,8 @@ useDesktopBridge({
   startStream: () => screenShareControls.startWithSettings(),
   stopStream: () => stopScreenShare(),
   streamStarting: () => screenShareStarting.value,
+  setPushToTalkMode,
+  setPushToTalkHeld,
 });
 const {
   channelTree,
@@ -1506,6 +1511,11 @@ const chat = useWebClientChat({
   sendPrivateMessage,
   notifyPrivateMessage: () => playNotification("private"),
   t,
+  chatAccess,
+  self: computed(() => {
+    const me = members.find(member => member.id === voiceState.tsClientId);
+    return { uid: me?.uid ?? "", nickname: me?.nickname ?? nickname.value };
+  }),
 });
 watch(() => mobileViewport.height, () => chat.scrollIfFollowing(), { flush: "post" });
 const { tab: chatTab, openPrivateChat } = chat;

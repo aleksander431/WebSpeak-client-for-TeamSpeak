@@ -15,6 +15,8 @@ export interface DesktopSettings {
   closeToTray: boolean;
   /** Electron accelerators; an empty string means no hotkey. */
   hotkeys: Record<HotkeyAction, string>;
+  /** Push-to-talk: while this key or mouse button is held you are heard; empty is off. */
+  pushToTalk: string;
   /** What the stream hotkey shares: ask with the picker or take the main screen at once. */
   streamHotkeySource: "picker" | "screen";
   /** Short sounds when a hotkey mutes or unmutes. */
@@ -33,6 +35,7 @@ export const DEFAULT_SETTINGS: DesktopSettings = Object.freeze({
   startHidden: true,
   closeToTray: true,
   hotkeys: Object.freeze({ mic: "CommandOrControl+Shift+M", sound: "CommandOrControl+Shift+D", stream: "CommandOrControl+Shift+L" }) as Record<HotkeyAction, string>,
+  pushToTalk: "",
   streamHotkeySource: "picker",
   hotkeySounds: true,
   shareSystemAudio: false,
@@ -72,6 +75,16 @@ export function isValidAccelerator(value: string): boolean {
   return modifiers.length > 0 || !TYPING_KEYS.test(key);
 }
 
+/**
+ * A push-to-talk key: one key (any, including letters: it is not taken from
+ * other programs), Ctrl/Alt/Shift on their own, or a mouse button.
+ */
+const PUSH_TO_TALK_PATTERN = /^(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|Space|Tab|Backspace|Delete|Insert|Return|Enter|Up|Down|Left|Right|Home|End|PageUp|PageDown|num[0-9]|numdec|numadd|numsub|nummult|numdiv|[`\-=[\]\\;',./]|Capslock|Numlock|Scrolllock|PrintScreen|Pause|Ctrl|Alt|Shift|Mouse3|Mouse4|Mouse5)$/;
+
+export function isValidPushToTalk(value: string): boolean {
+  return value === "" || PUSH_TO_TALK_PATTERN.test(value);
+}
+
 /** Only http(s) origins; anything else falls back to the default server. */
 export function normalizeServerUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -106,12 +119,16 @@ export function sanitizeSettings(value: unknown, base: DesktopSettings = DEFAULT
     if (seen.has(key)) hotkeys[action] = "";
     seen.add(key);
   }
+  // Push-to-talk cannot share a key with a toggle hotkey.
+  let pushToTalk = typeof input.pushToTalk === "string" && isValidPushToTalk(input.pushToTalk) ? input.pushToTalk : base.pushToTalk;
+  if (pushToTalk && seen.has(pushToTalk.toLowerCase())) pushToTalk = "";
   const settings: DesktopSettings = {
     serverUrl: input.serverUrl === "" ? "" : normalizeServerUrl(input.serverUrl) ?? base.serverUrl,
     launchAtLogin: bool("launchAtLogin"),
     startHidden: bool("startHidden"),
     closeToTray: bool("closeToTray"),
     hotkeys,
+    pushToTalk,
     streamHotkeySource: input.streamHotkeySource === "screen" || input.streamHotkeySource === "picker" ? input.streamHotkeySource : base.streamHotkeySource,
     hotkeySounds: bool("hotkeySounds"),
     shareSystemAudio: bool("shareSystemAudio"),

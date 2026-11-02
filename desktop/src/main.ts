@@ -18,7 +18,7 @@ import {
   type Session,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import { HotkeyManager, type HotkeyStatus } from "./hotkeys.js";
+import { HotkeyManager, type HotkeyStatusMap } from "./hotkeys.js";
 import { createTranslator } from "./i18n.js";
 import { SettingsStore, normalizeServerUrl, type DesktopSettings, type HotkeyAction } from "./settings.js";
 import { parseWebClientState, type WebClientState } from "./state.js";
@@ -53,7 +53,9 @@ let settingsWindow: BrowserWindow | null = null;
 let pickerWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let hotkeys: HotkeyManager;
-let hotkeyStatus: Record<HotkeyAction, HotkeyStatus> = { mic: "off", sound: "off", stream: "off" };
+let hotkeyStatus: HotkeyStatusMap = { mic: "off", sound: "off", stream: "off", ptt: "off" };
+/** Push-to-talk mode last told to the page; null until the page has been told after a load. */
+let pagePushToTalkMode: boolean | null = null;
 let webState: WebClientState = { connected: false, micMuted: false, soundMuted: false, streaming: false, speaking: false };
 let quitting = false;
 let updateState: { status: "idle" | "checking" | "downloading" | "ready" | "error" | "current"; version?: string } = { status: "idle" };
@@ -120,6 +122,8 @@ function createMainWindow(): BrowserWindow {
     }
   });
   window.on("closed", () => { if (mainWindow === window) mainWindow = null; });
+  // A new page load has not been told about push-to-talk yet.
+  window.webContents.on("did-navigate", () => { pagePushToTalkMode = null; });
   let boundsTimer: NodeJS.Timeout | null = null;
   const scheduleSave = () => {
     if (boundsTimer) clearTimeout(boundsTimer);
@@ -302,6 +306,31 @@ async function runWebAction(action: HotkeyAction, fromHotkey: boolean): Promise<
   }
 }
 
+/** Push-to-talk pressed or released: the page opens the voice only while held. */
+function runPushToTalk(held: boolean): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed() || !isServerUrl(window.webContents.getURL())) return;
+  window.webContents.executeJavaScript(
+    `typeof window.__webspeakDesktopAction === "function" ? window.__webspeakDesktopAction(${JSON.stringify(held ? "pttDown" : "pttUp")}, false) : "unavailable"`,
+    true,
+  ).catch(() => { /* the page is reloading */ });
+}
+
+/**
+ * Tell the page whether push-to-talk is on. It is on only while the helper
+ * has confirmed the key, so a missing helper never leaves the voice closed.
+ */
+function syncPushToTalkMode(force = false): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed() || !isServerUrl(window.webContents.getURL())) return;
+  const enabled = hotkeys.pushToTalkActive;
+  if (!force && pagePushToTalkMode === enabled) return;
+  window.webContents.executeJavaScript(
+    `typeof window.__webspeakDesktopAction === "function" ? window.__webspeakDesktopAction(${JSON.stringify(enabled ? "pttModeOn" : "pttModeOff")}, false) : "unavailable"`,
+    true,
+  ).then((result: unknown) => { if (result !== "unavailable") pagePushToTalkMode = enabled; }, () => {});
+}
+
 // ------------------------------------------------------------------ tray
 
 type TrayLook = "normal" | "speaking" | "muted";
@@ -376,7 +405,7 @@ function openSettings(): void {
   window.on("closed", () => {
     if (settingsWindow === window) settingsWindow = null;
     // Hotkeys were paused while a field was capturing keys.
-    hotkeyStatus = hotkeys.apply(settings.value.hotkeys);
+    hotkeyStatus = hotkeys.apply(settings.value.hotkeys, settings.value.pushToTalk);
   });
   void window.loadFile(join(STATIC, "settings.html"));
 }
@@ -389,7 +418,8 @@ function applySettings(next: DesktopSettings, previous: DesktopSettings): void {
   if (app.isPackaged) {
     app.setLoginItemSettings({ openAtLogin: next.launchAtLogin, path: process.execPath, args: ["--hidden"] });
   }
-  hotkeyStatus = hotkeys.apply(next.hotkeys);
+  hotkeyStatus = hotkeys.apply(next.hotkeys, next.pushToTalk);
+  syncPushToTalkMode();
   if (next.serverUrl !== previous.serverUrl && mainWindow) loadServer(mainWindow);
   refreshTray();
 }
@@ -410,7 +440,7 @@ function registerIpc(): void {
   ipcMain.on("settings:capture", (event, capturing: unknown) => {
     if (!fromSettings(event.sender)) return;
     if (capturing === true) hotkeys.clear();
-    else hotkeyStatus = hotkeys.apply(settings.value.hotkeys);
+    else hotkeyStatus = hotkeys.apply(settings.value.hotkeys, settings.value.pushToTalk);
   });
   ipcMain.on("settings:check-updates", (event) => { if (fromSettings(event.sender)) checkForUpdates(true); });
   ipcMain.on("settings:install-update", (event) => { if (fromSettings(event.sender)) installUpdate(); });
@@ -419,6 +449,8 @@ function registerIpc(): void {
     if (!mainWindow || event.sender !== mainWindow.webContents || !isServerUrl(event.senderFrame?.url ?? "")) return;
     const parsed = parseWebClientState(value);
     if (!parsed) return;
+    // The page reports its state as soon as it is ready; a fresh page has not been told about push-to-talk.
+    if (pagePushToTalkMode === null) syncPushToTalkMode(true);
     // The share ended: release the clean system-sound capture.
     if (webState.streaming && !parsed.streaming) systemAudio.stop();
     const onlySpeakingChanged = webState.connected === parsed.connected && webState.micMuted === parsed.micMuted
@@ -544,13 +576,15 @@ void app.whenReady().then(() => {
     (action, status) => hotkeys.nativeResult(action, status),
     (message) => console.log(message),
     Boolean(process.env.WEBSPEAK_HOTKEY_HELPER),
+    (held) => hotkeys.nativeHold(held),
   );
   app.on("will-quit", () => nativeHotkeys.stop());
   hotkeys = new HotkeyManager(globalShortcut, (action) => void runWebAction(action, true), undefined, nativeHotkeys, (status) => {
     hotkeyStatus = status;
     settingsWindow?.webContents.send("settings:hotkey-status", status);
-  });
-  hotkeyStatus = hotkeys.apply(settings.value.hotkeys);
+    syncPushToTalkMode();
+  }, (held) => runPushToTalk(held));
+  hotkeyStatus = hotkeys.apply(settings.value.hotkeys, settings.value.pushToTalk);
 
   tray = new Tray(nativeImage.createFromPath(join(STATIC, "tray.png")));
   tray.on("click", () => showWindow());

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { DEFAULT_SETTINGS, SettingsStore, isValidAccelerator, normalizeServerUrl, sanitizeSettings } from "./settings.js";
+import { DEFAULT_SETTINGS, SettingsStore, isValidAccelerator, isValidPushToTalk, normalizeServerUrl, sanitizeSettings } from "./settings.js";
 import { HotkeyManager } from "./hotkeys.js";
 import { parseWebClientState } from "./state.js";
 import { ALL_LANGUAGES, createTranslator } from "./i18n.js";
@@ -63,7 +63,7 @@ test("hotkeys report taken keys, ignore auto-repeat and re-register cleanly", ()
     unregister: (accelerator) => { registered.delete(accelerator); },
   }, (action) => fired.push(action), () => now);
   const status = manager.apply({ mic: "CommandOrControl+Shift+M", sound: "Alt+F10", stream: "" });
-  assert.deepEqual(status, { mic: "active", sound: "taken", stream: "off" });
+  assert.deepEqual(status, { mic: "active", sound: "taken", stream: "off", ptt: "off" });
   const press = registered.get("CommandOrControl+Shift+M")!;
   press(); now += 40; press(); now += 40; press();
   assert.deepEqual(fired, ["mic"], "a held key is one press");
@@ -104,7 +104,7 @@ test("Pause and mouse buttons go to the native helper and report its answers", (
     (status) => changes.push(status),
   );
   const status = manager.apply({ mic: "Pause", sound: "CommandOrControl+Shift+D", stream: "Mouse5" });
-  assert.deepEqual(status, { mic: "active", sound: "active", stream: "active" });
+  assert.deepEqual(status, { mic: "active", sound: "active", stream: "active", ptt: "off" });
   assert.deepEqual(sets.at(-1), [{ action: "mic", accelerator: "Pause" }, { action: "stream", accelerator: "Mouse5" }]);
   manager.nativeResult("stream", "taken");
   assert.equal(manager.statuses().stream, "taken");
@@ -118,4 +118,52 @@ test("Pause and mouse buttons go to the native helper and report its answers", (
   assert.equal(manager.apply({ mic: "Pause", sound: "", stream: "" }).mic, "unsupported", "no helper (not Windows) is reported");
   manager.clear();
   assert.deepEqual(sets.at(-1), [], "clearing stops the helper's hotkeys");
+});
+
+test("push-to-talk accepts one held key, modifier or mouse button", () => {
+  for (const key of ["", "V", "Capslock", "`", "F13", "Ctrl", "Alt", "Shift", "Mouse3", "Mouse4", "Mouse5", "num0", "Space"]) assert.ok(isValidPushToTalk(key), key);
+  for (const key of ["Ctrl+V", "MediaPlayPause", "VolumeUp", "Win", "v", "Mouse1"]) assert.equal(isValidPushToTalk(key), false, key);
+  assert.equal(DEFAULT_SETTINGS.pushToTalk, "");
+  assert.equal(sanitizeSettings({ pushToTalk: "Mouse4" }).pushToTalk, "Mouse4");
+  assert.equal(sanitizeSettings({ pushToTalk: "Ctrl+V" }).pushToTalk, "");
+  assert.equal(sanitizeSettings({ hotkeys: { mic: "Mouse4", sound: "", stream: "" }, pushToTalk: "Mouse4" }).pushToTalk, "", "it cannot share a key with a toggle hotkey");
+});
+
+test("push-to-talk goes to the native helper, reports press and release, and never stays held", () => {
+  const sets: Array<{ bindings: unknown[]; ptt: string | null | undefined }> = [];
+  const holds: boolean[] = [];
+  const changes: Array<Record<string, string>> = [];
+  let helperAvailable = true;
+  const manager = new HotkeyManager(
+    { register: () => true, unregister: () => {} },
+    () => {}, () => 0,
+    { set: (bindings, ptt) => { sets.push({ bindings, ptt }); return helperAvailable; } },
+    (status) => changes.push(status),
+    (held) => holds.push(held),
+  );
+  const status = manager.apply({ mic: "Alt+F9", sound: "", stream: "" }, "Mouse4");
+  assert.equal(status.ptt, "active");
+  assert.deepEqual(sets.at(-1), { bindings: [], ptt: "Mouse4" }, "the helper runs for push-to-talk alone");
+  assert.equal(manager.pushToTalkActive, true);
+  manager.nativeHold(true);
+  manager.nativeHold(true);
+  manager.nativeHold(false);
+  assert.deepEqual(holds, [true, false], "repeats are ignored");
+  manager.nativeHold(true);
+  manager.nativeResult("ptt", "unsupported");
+  assert.deepEqual(holds, [true, false, true, false], "losing the helper releases a held key");
+  assert.equal(manager.pushToTalkActive, false);
+  assert.equal(changes.at(-1)?.ptt, "unsupported");
+
+  manager.apply({ mic: "", sound: "", stream: "" }, "V");
+  manager.nativeHold(true);
+  manager.clear();
+  assert.equal(holds.at(-1), false, "pausing hotkeys (settings capture) releases push-to-talk");
+  assert.deepEqual(sets.at(-1), { bindings: [], ptt: null });
+
+  helperAvailable = false;
+  const without = manager.apply({ mic: "", sound: "", stream: "" }, "V");
+  assert.equal(without.ptt, "unsupported");
+  assert.equal(manager.pushToTalkActive, false, "without the helper the page keeps an open microphone");
+  assert.equal(manager.apply({ mic: "", sound: "", stream: "" }, "Ctrl+V").ptt, "invalid");
 });

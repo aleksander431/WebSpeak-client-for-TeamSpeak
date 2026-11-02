@@ -185,14 +185,22 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
-### [v0.3.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.2) · 2026-11-02
+### [v0.4.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.0) · 2026-11-02
 
 #### Neue Funktionen
 
+- Bilder und Dateien im Chat: Büroklammer, Ziehen und Ablegen oder einen Screenshot mit Strg+V einfügen. Bilder erscheinen im Chat, andere Dateien werden heruntergeladen; normale TeamSpeak-Nutzer sehen einen anklickbaren Link.
+- Kanal- und Serverchat bleibt auf dem Gateway, damit später Hinzukommende sehen, was geschrieben wurde. Private Nachrichten werden nie gespeichert.
+- Neue Admin-Seite „Chat & Dateien“: größte Datei, Gesamtspeicher und Verlauf. Ist der Speicher voll, werden die ältesten Einträge automatisch entfernt.
+- Desktop-Client: Push-to-Talk – man hört dich, solange du eine Taste oder Maustaste hältst. Spiele bekommen die Taste weiterhin, und TeamSpeak zeigt dich zwischen den Tastendrücken nicht als stumm.
+- Die Lautstärke des Begleittons (Notenschlüssel) ist einstellbar; standardmäßig 50 %.
+- Sicherheit: `docker compose` baut das Image aus deinem Code statt das fertige Image des ursprünglichen Autors zu nutzen; die Anmeldebegrenzung der Verwaltung funktioniert hinter nginx; anfällige Bibliotheken wurden aktualisiert.
 - Ein neues WebSpeak-Symbol auf der Website, im Browser-Tab und im Desktop-Client.
 - Desktop-Client: Das Symbol im Infobereich leuchtet grün, während du sprichst (wie bei TeamSpeak); stummes Mikrofon oder stummer Ton zeigen weiterhin das rote Abzeichen.
 - Dunkles Design für das Whiteboard: wie die Seite, hell oder dunkel; die Zeichenfarben sind für alle gleich, im dunklen Design tauschen nur Schwarz und Weiß.
 - Die restlichen chinesischen Beschriftungen in der Kanalliste, der Serverkopfzeile und im Ereignisprotokoll sind übersetzt.
+
+Hinter nginx `client_max_body_size` mindestens auf die größte Dateigröße setzen.
 
 ### [v0.3.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.3.1) · 2026-11-01
 

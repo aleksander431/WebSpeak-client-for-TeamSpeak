@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { Logger } from "../logger.js";
 import { AdminInputError, AdminService, type AdminSettingsInput, type RelayNodeInput, type TsAdminSettingsInput } from "./admin-service.js";
 import { AdminSessionStore, isSecureRequest } from "./admin-session.js";
+import { ChatStorage, ChatStorageError } from "../server/chat-storage.js";
 import { AdminLoginRateLimiter, waitFor } from "./login-rate-limit.js";
 import { TeamSpeakProbeError } from "../server/teamspeak-probe.js";
 import type { AdminSessionSummary } from "../server/voice-bridge.js";
@@ -41,6 +42,7 @@ export interface AdminRouterOptions {
   startedAt: number;
   /** Client address, honouring trusted reverse proxies. Defaults to the socket peer. */
   clientIp?: (request: Request) => string;
+  chatStorage?: ChatStorage;
 }
 
 export function createAdminRouter(options: AdminRouterOptions): Router {
@@ -309,6 +311,38 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
         return;
       }
       response.json({ ok: true });
+    } catch (error: unknown) {
+      sendAdminError(response, error);
+    }
+  });
+
+  router.get("/chat-storage", (_request, response) => {
+    const storage = options.chatStorage;
+    if (!storage) { response.status(404).json({ ok: false, code: "CHAT_STORAGE_UNAVAILABLE" }); return; }
+    response.json({ settings: storage.settings(), usage: storage.currentUsage() });
+  });
+
+  router.put("/chat-storage/settings", requireSameOrigin, requireCsrf(options.sessions), async (request, response) => {
+    const storage = options.chatStorage;
+    if (!storage) { response.status(404).json({ ok: false, code: "CHAT_STORAGE_UNAVAILABLE" }); return; }
+    const body = asRecord(request.body);
+    try {
+      const settings = await storage.updateSettings({
+        maxFileBytes: body.maxFileBytes as number, quotaBytes: body.quotaBytes as number, historyEnabled: body.historyEnabled as boolean,
+      });
+      response.json({ settings, usage: storage.currentUsage() });
+    } catch (error: unknown) {
+      if (error instanceof ChatStorageError) response.status(400).json({ ok: false, code: error.code });
+      else sendAdminError(response, error);
+    }
+  });
+
+  router.post("/chat-storage/clear", requireSameOrigin, requireCsrf(options.sessions), async (_request, response) => {
+    const storage = options.chatStorage;
+    if (!storage) { response.status(404).json({ ok: false, code: "CHAT_STORAGE_UNAVAILABLE" }); return; }
+    try {
+      await storage.clear();
+      response.json({ settings: storage.settings(), usage: storage.currentUsage() });
     } catch (error: unknown) {
       sendAdminError(response, error);
     }
