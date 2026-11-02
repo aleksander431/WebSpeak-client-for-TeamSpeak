@@ -13,7 +13,8 @@
   --skin-kaak-accent-hover: #7ac51a;
   --skin-kaak-danger: #e36b6b;
   --skin-kaak-radius: 9px;
-  --skin-kaak-font: "PingFang SC", "Microsoft YaHei New", 微软雅黑, "Microsoft Yahei", "Microsoft JhengHei", 宋体, SimSun, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* The standard WebSpeak font; CJK faces only as a fallback for Chinese text. */
+  --skin-kaak-font: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 [data-ws-plugin-part="kaak-home.home"] {
@@ -31,7 +32,7 @@
   overflow-y: auto;
   color: var(--skin-kaak-home-text);
   color-scheme: light;
-  font-family: Arial, "Microsoft YaHei", sans-serif;
+  font-family: var(--skin-kaak-font);
   background: #effff0;
 }
 

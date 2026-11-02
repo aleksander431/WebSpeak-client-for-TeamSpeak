@@ -486,7 +486,7 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   const file = new File([archive], "kaak-voice.wskin", { type: "application/octet-stream" });
   const skin = await importSkinPack(file);
   assert.equal(skin.id, "community.kaak-voice");
-  assert.equal(skin.version, "3.1.133");
+  assert.equal(skin.version, "3.1.134");
   assert.deepEqual(skin.workspace, { apiVersion: 1, mode: "persistent" });
   assert.equal(skin.minAppVersion, "0.2.8");
   assert.equal(BUILTIN_SKIN_CATALOG.find((entry) => entry.id === skin.id)?.version, skin.version);
@@ -721,7 +721,7 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   assert.match(skin.css, /ws-voice-channel-node\[data-current="true"\][\s\S]*?box-shadow: inset 2px 0 var\(--skin-kaak-accent\);/);
   assert.match(skin.css, /ws-voice-channel-branch\[data-expanded="false"\][\s\S]*?grid-template-rows: 0fr;/);
   assert.match(skin.css, /ws-voice-channel-member-avatar[\s\S]*?border-radius: 50%;/);
-  assert.match(skin.css, /--skin-kaak-font:[\s\S]*?PingFang SC/);
+  assert.match(skin.css, /--skin-kaak-font: Inter, ui-sans-serif,[^;]*"Segoe UI"[^;]*PingFang SC/, "KAAK uses the standard WebSpeak font, with CJK faces as fallback");
   assert.match(skin.css, /--skin-kaak-accent: #6cbf00;/);
   assert.match(skin.css, /\[data-ws-part="auth\.password\.backdrop"\]\s*\{[^}]*background: rgba\(10, 11, 13, \.54\);/);
   assert.match(skin.css, /\[data-ws-part="auth\.password\.dialog"\]\s*\{[^}]*width: min\(438px, calc\(100vw - 32px\)\);[^}]*min-height: 204px;[^}]*background: #242529;/);
@@ -775,7 +775,7 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   assert.match(skin.css, /\.settings-select:hover:not\(:disabled\) \{\s*border-color: #6cbf00;/);
   assert.match(skin.css, /\.microphone-toggle:not\(\.muted\):active,[\s\S]*?background: #60ab00;\s*border-color: #60ab00;/);
   assert.doesNotMatch(skin.css, /#58c877/);
-  assert.match(skin.css, /\[data-ws-plugin-part="kaak-home\.home"\] \{[^}]*font-family: Arial, "Microsoft YaHei", sans-serif;/);
+  assert.match(skin.css, /\[data-ws-plugin-part="kaak-home\.home"\] \{[^}]*font-family: var\(--skin-kaak-font\);/);
   assert.match(skin.css, /\[data-ws-part="home\.identity-provider\.button"\][\s\S]*?clip-path: polygon\(0 0, 100% 0, 100% 100%\);/);
   assert.match(skin.css, /\[data-ws-part="home\.identity-provider\.label"\][\s\S]*?color: #fff;[\s\S]*?transform: rotate\(45deg\);/);
   assert.match(skin.css, /settings-select-menu[\s\S]*?background: #25262a/);
