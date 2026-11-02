@@ -24,7 +24,7 @@ services:
   # Optional TURN relay for screen sharing, for viewers whose network blocks a
   # direct connection (black screen). Off unless COMPOSE_PROFILES=turn is in .env.
   # Needs TURN_PASSWORD, TURN_REALM and TURN_PRIVATE_IP (this host's LAN address);
-  # forward UDP+TCP 3478 and UDP 49160-49200 on the router to this host.
+  # forward UDP+TCP 3478 and UDP 52000-52050 on the router to this host.
   turn:
     image: coturn/coturn:4.6.2
     profiles: ["turn"]
@@ -41,8 +41,8 @@ services:
       - --realm=${TURN_REALM:-webspeak}
       - --user=webspeak:${TURN_PASSWORD:-}
       - --listening-port=3478
-      - --min-port=49160
-      - --max-port=49200
+      - --min-port=52000
+      - --max-port=52050
       # Public address (looked up at start) mapped to this host's LAN address.
       - --external-ip=$$(detect-external-ip)/${TURN_PRIVATE_IP:-}
       - --relay-ip=${TURN_PRIVATE_IP:-}
