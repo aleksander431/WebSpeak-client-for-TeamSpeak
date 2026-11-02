@@ -46,6 +46,43 @@
   </section>
 
   <section>
+    <h2 data-t="overlayTitle"></h2>
+    <p class="hint" data-t="overlayHint"></p>
+    <label class="check"><input type="checkbox" id="overlayEnabled"> <span data-t="overlayEnabled"></span></label>
+    <fieldset id="overlayOptions" class="overlay-options">
+      <label class="field"><span data-t="overlayCorner"></span>
+        <select id="overlayCorner">
+          <option value="top-left" data-t="overlayCornerTopLeft"></option>
+          <option value="top-right" data-t="overlayCornerTopRight"></option>
+          <option value="bottom-left" data-t="overlayCornerBottomLeft"></option>
+          <option value="bottom-right" data-t="overlayCornerBottomRight"></option>
+        </select>
+      </label>
+      <label class="field"><span data-t="overlayMode"></span>
+        <select id="overlayMode">
+          <option value="channel" data-t="overlayModeChannel"></option>
+          <option value="speaking" data-t="overlayModeSpeaking"></option>
+        </select>
+      </label>
+      <label class="field range"><span data-t="overlayScale"></span>
+        <input type="range" id="overlayScale" min="60" max="200" step="10"><output id="overlayScaleValue"></output>
+      </label>
+      <label class="field range"><span data-t="overlayOpacity"></span>
+        <input type="range" id="overlayOpacity" min="20" max="100" step="5"><output id="overlayOpacityValue"></output>
+      </label>
+      <div class="field"><span data-t="overlayOffset"></span>
+        <div class="offsets">
+          <label><span data-t="overlayOffsetX"></span> <input type="number" id="overlayOffsetX" min="0" max="2000" step="1"></label>
+          <label><span data-t="overlayOffsetY"></span> <input type="number" id="overlayOffsetY" min="0" max="2000" step="1"></label>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="overlayShowSelf"> <span data-t="overlayShowSelf"></span></label>
+      <label class="check"><input type="checkbox" id="overlayShowChannel"> <span data-t="overlayShowChannel"></span></label>
+      <p class="hint" data-t="overlayFullscreenHint"></p>
+    </fieldset>
+  </section>
+
+  <section>
     <h2 data-t="updates"></h2>
     <div class="update-row">
       <span id="version"></span>

@@ -87,6 +87,19 @@ test("history is kept once per message and read per channel", async t => {
   assert.deepEqual(storage.history("ts:1", "channel", "5"), [], "disabled history is neither shown nor stored");
 });
 
+test("history search is case-insensitive, per conversation and newest first", async t => {
+  const { storage, tick } = fixture(t);
+  await storage.initialize();
+  const record = { targetKey: "ts:1", scope: "channel" as const, channelId: "5", senderUid: "", senderName: "Kria", message: "" };
+  for (const message of ["Сборка УПАЛА", "всё ок", "сборка снова упала", "Deploy done"]) { storage.recordMessage({ ...record, message }); tick(20_000); }
+  storage.recordMessage({ ...record, channelId: "6", message: "сборка в другом канале" });
+  await storage.flush();
+  assert.deepEqual(storage.search("ts:1", "channel", "5", "  упала ").map(message => message.message), ["сборка снова упала", "Сборка УПАЛА"]);
+  assert.deepEqual(storage.search("ts:1", "channel", "5", "kria").length, 4, "sender names match too");
+  assert.deepEqual(storage.search("ts:1", "channel", "5", "   "), []);
+  assert.deepEqual(storage.search("ts:2", "channel", "5", "сборка"), []);
+});
+
 test("startup removes files without a row and rows without a file", async t => {
   const { storage, database } = fixture(t);
   await storage.initialize();

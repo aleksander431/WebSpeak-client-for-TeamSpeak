@@ -46,6 +46,8 @@ export interface ChatMessage {
   isSelf?: boolean;
   /** Message came from browser-local history rather than the active session. */
   isHistory?: boolean;
+  /** Gateway reference for reactions (channel and server messages only). */
+  ref?: string;
 }
 
 export interface ServerEvent {

@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld("webspeakSettings", {
   onHotkeyStatus: (listener: (status: unknown) => void) => {
     ipcRenderer.on("settings:hotkey-status", (_event, status) => listener(status));
   },
+  onChanged: (listener: (snapshot: unknown) => void) => {
+    ipcRenderer.on("settings:changed", (_event, snapshot) => listener(snapshot));
+  },
   onUpdateState: (listener: (state: unknown) => void) => {
     ipcRenderer.on("settings:update-state", (_event, state) => listener(state));
   },

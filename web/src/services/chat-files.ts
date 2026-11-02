@@ -52,8 +52,8 @@ export function uploadChatFile(
   });
 }
 
-export async function fetchChatHistory(access: ChatSessionAccess, scope: "channel" | "server", signal?: AbortSignal): Promise<ChatHistoryMessage[]> {
-  const response = await fetch(`/api/chat/history?scope=${scope}`, { headers: { [CHAT_TOKEN_HEADER]: access.token }, cache: "no-store", ...(signal ? { signal } : {}) });
+export async function fetchChatHistory(access: ChatSessionAccess, scope: "channel" | "server", signal?: AbortSignal, query = ""): Promise<ChatHistoryMessage[]> {
+  const response = await fetch(`/api/chat/history?scope=${scope}${query ? `&q=${encodeURIComponent(query.slice(0, 100))}` : ""}`, { headers: { [CHAT_TOKEN_HEADER]: access.token }, cache: "no-store", ...(signal ? { signal } : {}) });
   if (!response.ok) return [];
   return parseChatHistory(await response.json().catch(() => null)) ?? [];
 }

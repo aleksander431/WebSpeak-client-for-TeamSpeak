@@ -25,6 +25,8 @@ if (isFile) {
   contextBridge.exposeInMainWorld("webspeakDesktop", {
     platform: "windows",
     reportState: (state: unknown) => ipcRenderer.send("webspeak:state", state),
+    /** The in-game overlay: "roster" (who is in the channel) or "speaking" (ids talking now). */
+    reportOverlay: (kind: unknown, value: unknown) => ipcRenderer.send("webspeak:overlay", kind, value),
     openSettings: () => ipcRenderer.send("webspeak:open-settings"),
   });
 }

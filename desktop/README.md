@@ -7,6 +7,8 @@ A small Electron shell around the WebSpeak site of your server:
 - global hotkeys for microphone, sound and screen sharing that also work inside games — single keys such as F-keys, numpad or Pause and the mouse side buttons included (`native/hotkeys.cpp` for what Electron cannot register)
   (a game running as administrator needs WebSpeak started as administrator too);
 - its own window/screen picker for sharing, optionally with the PC's sound — on Windows 10 2004+ without WebSpeak's own voices (`native/audio-capture.cpp`, process loopback);
+- push-to-talk on any held key or mouse button, without taking the key from games;
+- an optional in-game overlay (off by default; Settings or the tray) listing who is in your channel and who is talking, click-through and always on top — corner, size, opacity, offset and "everyone / only talkers" are configurable; exclusive full-screen games hide it, borderless mode does not;
 - updates itself from the GitHub releases of this repository (`latest.yml` + installer).
 
 ```sh

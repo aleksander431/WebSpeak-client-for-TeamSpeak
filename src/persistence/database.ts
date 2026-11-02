@@ -750,6 +750,26 @@ export class WebSpeakDatabase {
       senderName: row.sender_name, message: row.message, size: Number(row.size), createdAt: Number(row.created_at) }));
   }
 
+  /**
+   * Newest-first rows of one conversation that `matches` accepts, scanning at
+   * most `maxScan` rows so a search cannot walk an unbounded history.
+   */
+  searchChatHistory(targetKey: string, scope: string, channelId: string, matches: (row: { senderName: string; message: string }) => boolean, limit: number, maxScan: number): ChatHistoryRow[] {
+    const statement = this.database.prepare(
+      `SELECT * FROM chat_history WHERE target_key = ? AND scope = ? AND channel_id = ?
+       ORDER BY created_at DESC, id DESC LIMIT ?`);
+    const found: ChatHistoryRow[] = [];
+    for (const raw of statement.iterate(targetKey, scope, channelId, maxScan) as Iterable<{
+      id: number; target_key: string; scope: string; channel_id: string; sender_uid: string; sender_name: string; message: string; size: number; created_at: number;
+    }>) {
+      if (!matches({ senderName: raw.sender_name, message: raw.message })) continue;
+      found.push({ id: Number(raw.id), targetKey: raw.target_key, scope: raw.scope, channelId: raw.channel_id, senderUid: raw.sender_uid,
+        senderName: raw.sender_name, message: raw.message, size: Number(raw.size), createdAt: Number(raw.created_at) });
+      if (found.length >= limit) break;
+    }
+    return found;
+  }
+
   oldestChatHistory(): { id: number; size: number; createdAt: number } | null {
     const row = this.database.prepare("SELECT id, size, created_at FROM chat_history ORDER BY created_at ASC, id ASC LIMIT 1").get() as
       { id: number; size: number; created_at: number } | undefined;

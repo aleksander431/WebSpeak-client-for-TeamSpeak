@@ -3,11 +3,13 @@ import type { Logger } from "../logger.js";
 import { ChatStorage, ChatStorageError } from "./chat-storage.js";
 import { JoinRateLimiter } from "./join-rate-limit.js";
 import type { ChatSessionScope } from "./voice-bridge.js";
-import { CHAT_TOKEN_HEADER, isChatImageMime } from "../shared/chat-storage.js";
+import { CHAT_TOKEN_HEADER, isChatImageMime, type ChatHistoryMessage } from "../shared/chat-storage.js";
 
 export interface ChatRouteOptions {
   storage: ChatStorage;
   resolveSession(token: string | undefined): ChatSessionScope | null;
+  /** Adds reaction references to history as the reading session sees them. */
+  decorateHistory?(scope: ChatSessionScope, messages: ChatHistoryMessage[]): ChatHistoryMessage[];
   isSameOrigin(request: express.Request): boolean;
   logger: Pick<Logger, "info" | "warn">;
 }
@@ -75,6 +77,11 @@ export function registerChatRoutes(app: express.Express, options: ChatRouteOptio
     const kind = request.query.scope === "server" ? "server" : "channel";
     const before = typeof request.query.before === "string" && /^\d+$/.test(request.query.before) ? Number(request.query.before) : undefined;
     // A session reads only its own server and the channel it is in now.
-    response.json({ messages: chatStorage.history(scope.targetKey, kind, kind === "channel" ? scope.channelId : "", before) });
+    const channelId = kind === "channel" ? scope.channelId : "";
+    const query = typeof request.query.q === "string" ? request.query.q : "";
+    const messages = query.trim()
+      ? chatStorage.search(scope.targetKey, kind, channelId, query).reverse()
+      : chatStorage.history(scope.targetKey, kind, channelId, before);
+    response.json({ messages: options.decorateHistory ? options.decorateHistory(scope, messages) : messages });
   });
 }

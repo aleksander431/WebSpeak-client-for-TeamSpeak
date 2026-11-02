@@ -382,6 +382,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
     registerChatRoutes(app, {
       storage: chatStorage,
       resolveSession: token => voiceBridge.resolveChatSession(token),
+      decorateHistory: (scope, messages) => voiceBridge.decorateChatHistory(scope, messages),
       isSameOrigin,
       logger,
     });

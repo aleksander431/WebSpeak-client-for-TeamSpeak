@@ -203,6 +203,9 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Member volumes are remembered more reliably: besides the UID they follow the nickname, so they survive someone joining from another browser or the desktop client.
 - KAAK skin: the channel list and the chat can be resized by dragging their edge. The width is remembered; double-click the edge to restore the default.
 - Noise suppression has a third level, “Maximum (AI)”: the DeepFilterNet3 neural network, much closer to Discord or TeamSpeak than RNNoise. It removes hiss and fans far better and keeps the voice intact, but uses more CPU and adds ~30 ms of delay; about 22 MB is downloaded the first time. If it cannot start, RNNoise is used; if the computer cannot keep up, the settings say so.
+- Chat: code blocks with syntax highlighting and a Copy button (```js … ```), inline `code`, **bold**, *italic*, ~~strike~~ (TeamSpeak’s [b]/[i] work too). Shift+Enter starts a new line; a message too long for TeamSpeak is sent as a text file.
+- Chat: replies (quote the message you answer; TeamSpeak clients see it as a quote too), emoji reactions (between WebSpeak users), search including older history on the server, and @mentions with suggestions, a highlight and a sound when someone mentions you.
+- Desktop client: in-game overlay showing who is in the channel and who is talking, drawn over games. Off by default; turn it on in Settings or the tray menu, and choose its corner, size, opacity, offset and whether to show everyone or only who is talking.
 
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 

@@ -14,6 +14,8 @@ const META_HISTORY = "chat_history_enabled";
 /** One user's identical message seen by several gateway sessions is stored once. */
 const DUPLICATE_WINDOW_MS = 10_000;
 const HISTORY_PAGE_LIMIT = 100;
+const SEARCH_RESULT_LIMIT = 50;
+const SEARCH_SCAN_LIMIT = 50_000;
 /** Fixed bookkeeping cost per stored message, so empty messages still count. */
 const MESSAGE_OVERHEAD_BYTES = 64;
 
@@ -200,6 +202,18 @@ export class ChatStorage {
   history(targetKey: string, scope: "channel" | "server", channelId: string, before?: number): ChatHistoryMessage[] {
     if (!this.settings().historyEnabled) return [];
     return this.database.listChatHistory(targetKey, scope, channelId, HISTORY_PAGE_LIMIT, before).reverse().map(row => ({
+      id: row.id, scope, channelId: row.channelId, senderUid: row.senderUid, senderName: row.senderName, message: row.message, timestamp: row.createdAt,
+    }));
+  }
+
+  /** Messages of one conversation containing `query` (case-insensitive), newest first. */
+  search(targetKey: string, scope: "channel" | "server", channelId: string, query: string): ChatHistoryMessage[] {
+    if (!this.settings().historyEnabled) return [];
+    const needle = query.trim().toLocaleLowerCase().slice(0, 100);
+    if (!needle) return [];
+    return this.database.searchChatHistory(targetKey, scope, channelId,
+      row => row.message.toLocaleLowerCase().includes(needle) || row.senderName.toLocaleLowerCase().includes(needle),
+      SEARCH_RESULT_LIMIT, SEARCH_SCAN_LIMIT).map(row => ({
       id: row.id, scope, channelId: row.channelId, senderUid: row.senderUid, senderName: row.senderName, message: row.message, timestamp: row.createdAt,
     }));
   }

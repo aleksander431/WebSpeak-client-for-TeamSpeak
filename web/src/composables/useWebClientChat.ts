@@ -3,6 +3,8 @@ import type { ChannelInfo, ChannelMember, ChatMessage } from "./useVoiceWebSocke
 import { loadChatHistory, normalizeChatHistoryServerKey, saveChatHistoryMessage } from "../services/local-persistence.js";
 import { ChatFileError, fetchChatHistory, pastedFileName, uploadChatFile } from "../services/chat-files.js";
 import { chatAttachmentMessage, formatBytes, type ChatHistoryMessage, type ChatSessionAccess } from "../../../src/shared/chat-storage.js";
+import { CHAT_MESSAGE_MAX_BYTES, chatMessageBytes, chatPlainText, chatReplyPrefix, parseChatMarkup } from "../../../src/shared/chat-markup.js";
+import type { ChatReaction } from "../../../src/shared/chat-reactions.js";
 
 export interface ChatUpload {
   key: number;
@@ -45,6 +47,11 @@ interface UseWebClientChatOptions {
   chatAccess?: Readonly<Ref<ChatSessionAccess | null>>;
   /** Our own TeamSpeak identity, to recognise our messages in server history. */
   self?: Readonly<Ref<{ uid: string; nickname: string }>>;
+  /** Reactions by message reference (the session's live map; history seeds it). */
+  reactions?: Map<string, ChatReaction[]>;
+  reactToChat?: (ref: string, emoji: string, active: boolean) => Promise<void>;
+  /** Someone wrote @our-nickname in a channel or server message. */
+  notifyMention?: () => void;
 }
 
 export function useWebClientChat({
@@ -67,6 +74,9 @@ export function useWebClientChat({
   t,
   chatAccess,
   self,
+  reactions,
+  reactToChat,
+  notifyMention,
 }: UseWebClientChatOptions) {
   const tab = ref<WebClientChatTab>("channel");
   const panelOpen = ref(!isMobileViewport.value);
@@ -130,7 +140,22 @@ export function useWebClientChat({
     return [...byConversation.values()].sort((left, right) => right.lastMessage - left.lastMessage);
   });
 
-  const visibleMessages = computed(() => {
+  const replyTo = ref<ChatMessage | null>(null);
+  const searchOpen = ref(false);
+  const searchQuery = ref("");
+  const searching = ref(false);
+  /** Names that `@Name` can mention: everyone the session can see. */
+  const mentionNames = computed(() => [...new Set(members.map(member => member.nickname).filter(Boolean))]);
+  const selfName = computed(() => self?.value.nickname ?? "");
+  const draftBytes = computed(() => chatMessageBytes(composeText(messageDraft.value)));
+  /** Too long for one TeamSpeak message: sent as a text file instead, when uploads are allowed. */
+  const draftTooLong = computed(() => draftBytes.value > CHAT_MESSAGE_MAX_BYTES);
+  function composeText(draft: string): string {
+    const reply = replyTo.value;
+    return reply && draft.trim() ? `${chatReplyPrefix(reply.isSelf ? selfName.value || reply.invokerName : reply.invokerName, reply.message)}${draft}` : draft;
+  }
+
+  const conversationMessages = computed(() => {
     if (tab.value === "server") return messages.filter((message) => message.scope === "server");
     if (tab.value === "private") return messages.filter(message => message.scope === "private" && messageKey(message) === privateConversationKey.value);
     if (tab.value !== "channel") return [];
@@ -138,6 +163,54 @@ export function useWebClientChat({
     return messages.filter((message) => message.scope === "channel"
       && (!message.targetId || message.targetId === "0" || (channelId ? message.targetId === channelId : false)));
   });
+  const normalizedQuery = computed(() => searchOpen.value ? searchQuery.value.trim().toLocaleLowerCase() : "");
+  const visibleMessages = computed(() => {
+    const query = normalizedQuery.value;
+    if (!query) return conversationMessages.value;
+    return conversationMessages.value.filter(message => message.invokerName.toLocaleLowerCase().includes(query)
+      || chatPlainText(message.message).toLocaleLowerCase().includes(query));
+  });
+
+  function startReply(message: ChatMessage): void {
+    if (disposed || tab.value === "events") return;
+    replyTo.value = message;
+  }
+  function cancelReply(): void { replyTo.value = null; }
+
+  function reactionsOf(message: ChatMessage): ChatReaction[] {
+    return message.ref ? reactions?.get(message.ref) ?? [] : [];
+  }
+  function toggleReaction(message: ChatMessage, emoji: string): void {
+    if (!message.ref || !reactToChat || !connected.value) return;
+    const mine = reactionsOf(message).some(reaction => reaction.emoji === emoji && reaction.mine);
+    void reactToChat(message.ref, emoji, !mine).catch(() => undefined);
+  }
+
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  let searchController: AbortController | null = null;
+  function toggleSearch(): void {
+    searchOpen.value = !searchOpen.value;
+    if (!searchOpen.value) { searchQuery.value = ""; searchController?.abort(); searching.value = false; }
+  }
+  // Older messages are looked up on the gateway too and merged into the conversation.
+  watch([normalizedQuery, tab], ([query, currentTab]) => {
+    clearTimeout(searchTimer);
+    searchController?.abort();
+    searching.value = false;
+    const access = chatAccess?.value;
+    if (query.length < 2 || !access?.historyEnabled || (currentTab !== "channel" && currentTab !== "server")) return;
+    searching.value = true;
+    searchTimer = setTimeout(async () => {
+      const controller = new AbortController();
+      searchController = controller;
+      try {
+        const found = await fetchChatHistory(access, currentTab, controller.signal, query);
+        if (!disposed && searchController === controller) mergeServerHistory(found);
+      } catch { /* the local results stay */ }
+      finally { if (searchController === controller) searching.value = false; }
+    }, 300);
+  });
+  onScopeDispose(() => { clearTimeout(searchTimer); searchController?.abort(); });
 
   const tabLabel = computed(() => tab.value === "channel" ? t("textChannel") : tab.value === "server" ? t("serverChat") : tab.value === "private" ? t("privateMessage") : t("eventLog"));
   const title = computed(() => tab.value === "channel"
@@ -271,7 +344,16 @@ export function useWebClientChat({
     if (disposed || sending.value || !messageDraft.value.trim() || tab.value === "events") return;
     if (!connected.value) { sendError.value = "chatNotConnected"; return; }
     if (tab.value === "private" && !recipient.value) { sendError.value = "chatTargetUnavailable"; return; }
-    const text = messageDraft.value;
+    const draft = messageDraft.value;
+    const text = composeText(draft);
+    if (chatMessageBytes(text) > CHAT_MESSAGE_MAX_BYTES) {
+      if (!canAttach.value) { sendError.value = "chatMessageTooLong"; return; }
+      // A long paste (a log, a whole file) goes as a text attachment.
+      messageDraft.value = "";
+      replyTo.value = null;
+      await sendFiles([new File([draft], longMessageFileName(draft), { type: "text/plain" })]);
+      return;
+    }
     const key = destination.value;
     const operation = {};
     pending.set(key, operation);
@@ -282,8 +364,8 @@ export function useWebClientChat({
     try {
       await sendToCurrentDestination(text);
       if (isCurrent()) {
-        if (destination.value === key && messageDraft.value === text) messageDraft.value = "";
-        else if (drafts.get(key) === text) drafts.set(key, "");
+        if (destination.value === key && messageDraft.value === draft) { messageDraft.value = ""; replyTo.value = null; }
+        else if (drafts.get(key) === draft) drafts.set(key, "");
       }
     } catch (error) {
       if (isCurrent()) {
@@ -306,6 +388,7 @@ export function useWebClientChat({
     scrollIfFollowing();
     drafts.set(previous, messageDraft.value);
     messageDraft.value = drafts.get(next) ?? "";
+    replyTo.value = null;
     sending.value = pending.has(next);
     sendError.value = errors.get(next) ?? "";
   }, { flush: "sync" });
@@ -323,6 +406,9 @@ export function useWebClientChat({
     tab.value = "channel";
     panelOpen.value = !isMobileViewport.value;
     messageDraft.value = "";
+    replyTo.value = null;
+    searchOpen.value = false;
+    searchQuery.value = "";
     drafts.clear();
     sending.value = false;
     sendError.value = "";
@@ -362,7 +448,15 @@ export function useWebClientChat({
         ...(entry.scope === "channel" && entry.channelId ? { targetId: entry.channelId } : {}),
         ...(entry.senderUid ? { senderUid: entry.senderUid } : {}),
         invokerName: entry.senderName || "Unknown", message: entry.message, timestamp: entry.timestamp, isSelf, isHistory: true,
+        ...(entry.ref ? { ref: entry.ref } : {}),
       };
+      if (entry.ref && entry.reactions?.length && reactions && !reactions.has(entry.ref)) reactions.set(entry.ref, entry.reactions);
+      if (entry.ref) {
+        // A live message the gateway referenced later than our copy: adopt its reference.
+        const shown = messages.find(message => !message.ref && message.scope === candidate.scope && message.message === candidate.message
+          && Math.abs(message.timestamp - candidate.timestamp) < HISTORY_MATCH_WINDOW_MS && (message.isSelf ? isSelf : message.invokerName === candidate.invokerName));
+        if (shown) shown.ref = entry.ref;
+      }
       if (messages.some(message => message.id === candidate.id) || alreadyShown(candidate)) continue;
       additions.push(candidate);
     }
@@ -409,6 +503,8 @@ export function useWebClientChat({
   watch(() => messages.length, (length, previousLength) => {
     const latest = messages[length - 1];
     if (latest && length > previousLength && latest.scope === "private" && !latest.isSelf) notifyPrivateMessage();
+    else if (latest && length > previousLength && !latest.isSelf && !latest.isHistory && (latest.scope === "channel" || latest.scope === "server")
+      && selfName.value && parseChatMarkup(latest.message, { mentionNames: [selfName.value], selfName: selfName.value }).mentionsSelf) notifyMention?.();
   });
 
   return {
@@ -436,5 +532,20 @@ export function useWebClientChat({
     scrollToEnd,
     onScroll,
     scrollIfFollowing,
+    replyTo, startReply, cancelReply,
+    reactionsOf, toggleReaction, canReact: computed(() => Boolean(reactToChat) && connected.value),
+    searchOpen, searchQuery, searching, toggleSearch,
+    mentionNames, selfName, draftBytes, draftTooLong,
   };
+}
+
+/** A file name for a message too long to send: the code block's language decides the extension. */
+function longMessageFileName(text: string): string {
+  const language = /^```([A-Za-z0-9_+#.-]{1,24})/m.exec(text)?.[1]?.toLowerCase() ?? "";
+  const extensions: Record<string, string> = { js: "js", javascript: "js", ts: "ts", typescript: "ts", py: "py", python: "py",
+    json: "json", sh: "sh", bash: "sh", c: "c", cpp: "cpp", cs: "cs", csharp: "cs", java: "java", go: "go", rust: "rs", rs: "rs",
+    sql: "sql", yaml: "yaml", yml: "yaml", html: "html", css: "css", xml: "xml", lua: "lua", php: "php", kotlin: "kt", log: "log", diff: "diff" };
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `message-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.${extensions[language] ?? "txt"}`;
 }

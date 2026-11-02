@@ -1515,7 +1515,28 @@
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-heading { border-color: var(--skin-kaak-border); }
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-bubble { color: var(--skin-kaak-text); background: var(--skin-kaak-panel); }
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-composer { border-color: var(--skin-kaak-border); background: var(--skin-kaak-panel); }
-[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-composer input { color: var(--skin-kaak-text); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-composer input,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-composer textarea { color: var(--skin-kaak-text); }
+/* Chat search, replies, reactions and mentions in KAAK colours. */
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-search-toggle { color: var(--skin-kaak-muted); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-search-toggle[aria-pressed="true"],
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-search-toggle:hover { color: var(--skin-kaak-accent); background: #ffffff0b; }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-search,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-reply-preview,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-mention-suggestions,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-reaction-picker { color: var(--skin-kaak-muted); background: var(--skin-kaak-raised); border-color: var(--skin-kaak-border); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-search input,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-reply-preview strong,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-mention-suggestions li { color: var(--skin-kaak-text); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-mention-suggestions li.active,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-mention-suggestions li:hover,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-reaction-picker button:hover { color: var(--skin-kaak-accent); background: var(--skin-kaak-hover); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-actions > button { color: var(--skin-kaak-muted); background: var(--skin-kaak-raised); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-actions > button:hover { color: var(--skin-kaak-accent); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-reaction { color: var(--skin-kaak-text); background: var(--skin-kaak-raised); border-color: var(--skin-kaak-border); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-reaction.mine { border-color: var(--skin-kaak-accent); background: #6cbf0026; }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-mention { color: #9be031; background: #6cbf0024; }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-length { color: var(--skin-kaak-dim); }
 
 [data-ws-plugin-part="kaak-workspace.voice-stage"] {
   grid-column: 3;

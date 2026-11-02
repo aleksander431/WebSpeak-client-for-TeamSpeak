@@ -19,8 +19,13 @@ export interface VoiceCommandContext extends AudioStatsSource {
   lastLatencyProbeAt: number;
   lastAudioStatsProbeAt: number;
   webrtc: Pick<WebRtcAudioSession, "getStats" | "setMicrophoneMuted" | "setVoiceGateOpen" | "setAccompanimentActive" | "setMemberVolume"> | null;
-  /** TeamSpeak does not echo our own messages; record them for server-side history. */
-  onChatSent?(scope: "channel" | "server", channelId: string, message: string): void;
+  /**
+   * TeamSpeak does not echo our own messages; record them for server-side
+   * history. Returns the message's reaction reference, if reactions are kept.
+   */
+  onChatSent?(scope: "channel" | "server", channelId: string, message: string): string | undefined;
+  /** Add or remove this session's reaction; false when the message is not visible to it. */
+  onChatReact?(ref: string, emoji: string, active: boolean): boolean;
 }
 
 export async function handleCommand(
@@ -82,6 +87,7 @@ export async function handleCommand(
     return;
   }
 
+  let chatRef: string | undefined;
   try {
     if (command.type === "moveClient") {
       const clientId = command.payload.clientId;
@@ -115,13 +121,13 @@ export async function handleCommand(
       const message = command.payload.message.trim();
       if (message) {
         await entry.tsClient.sendTextMessage("channel", message, channelId);
-        entry.onChatSent?.("channel", String(channelId), message);
+        chatRef = entry.onChatSent?.("channel", String(channelId), message);
       }
     } else if (command.type === "sendServerMessage") {
       const message = command.payload.message.trim();
       if (message) {
         await entry.tsClient.sendTextMessage("server", message);
-        entry.onChatSent?.("server", "", message);
+        chatRef = entry.onChatSent?.("server", "", message);
       }
     } else if (command.type === "sendPrivateMessage") {
       const clientId = command.payload.clientId;
@@ -172,11 +178,16 @@ export async function handleCommand(
         await entry.tsClient.setAccompanimentActive(command.payload.active);
         if (entry.webrtc === peer) peer.setAccompanimentActive(command.payload.active);
       }
+    } else if (command.type === "chatReact") {
+      if (!entry.onChatReact?.(command.payload.ref, command.payload.emoji, command.payload.active)) {
+        sendJson({ type: "error", requestId: command.requestId, error: { code: "REACTION_UNAVAILABLE", message: "This message can no longer be reacted to", recoverable: false } });
+        return;
+      }
     } else if (command.type === "setMemberVolume") {
       const clientId = command.payload.clientId;
       entry.webrtc?.setMemberVolume(clientId, command.payload.volume);
     }
-    if (command.requestId) sendJson({ type: "commandCompleted", requestId: command.requestId });
+    if (command.requestId) sendJson({ type: "commandCompleted", requestId: command.requestId, ...(chatRef ? { chatRef } : {}) });
   } catch (error: unknown) {
     const operation = classifyOperationError(error, "OPERATION_FAILED", "操作失败");
     sendJson({ type: "error", requestId: command.requestId, error: { code: operation.code, message: operation.message, recoverable: false } });

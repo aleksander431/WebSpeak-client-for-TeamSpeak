@@ -1100,6 +1100,8 @@ const {
   members,
   channels,
   chatMessages,
+  chatReactions,
+  reactToChat,
   chatAccess,
   serverEvents,
   pokeNotifications,
@@ -1466,6 +1468,20 @@ useDesktopBridge({
   streamStarting: () => screenShareStarting.value,
   setPushToTalkMode,
   setPushToTalkHeld,
+  overlayRoster: () => ({
+    connected: voiceState.connected,
+    channel: voiceState.connected ? currentChannelName.value : "",
+    members: voiceState.connected ? (currentChannel.value?.members ?? []).map(member => {
+      const self = member.id === voiceState.tsClientId;
+      return {
+        id: member.id, name: member.nickname, self,
+        muted: self ? microphoneMuted.value || outputMuted.value : Boolean(member.inputMuted || member.outputMuted),
+        ...(member.avatar?.startsWith("data:image/") ? { avatar: member.avatar } : {}),
+      };
+    }) : [],
+  }),
+  speakingIds: () => voiceState.connected
+    ? [...speakingIds].filter(id => id !== voiceState.tsClientId || !microphoneMuted.value) : [],
 });
 const {
   channelTree,
@@ -1520,6 +1536,9 @@ const chat = useWebClientChat({
   sendServerMessage,
   sendPrivateMessage,
   notifyPrivateMessage: () => playNotification("private"),
+  notifyMention: () => playNotification("mention"),
+  reactions: chatReactions,
+  reactToChat,
   t,
   chatAccess,
   self: computed(() => {

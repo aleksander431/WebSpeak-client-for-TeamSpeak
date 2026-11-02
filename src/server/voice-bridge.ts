@@ -31,6 +31,8 @@ import type { AccelerationRelayOptions, ConfiguredAccelerationRelay } from "./ac
 import { normalizeScreenShareIceServers, parseScreenShareMessage, type ScreenShareIceServer } from "./screen-share.js";
 import { OpusEncoder } from "./opus-codec.js";
 import { avatarDataUrl } from "./directory-view.js";
+import { ChatReactionHub } from "./chat-reactions.js";
+import type { ChatHistoryMessage } from "../shared/chat-storage.js";
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const MAX_MISSED_HEARTBEATS = 2;
@@ -74,6 +76,8 @@ export interface ChatSessionScope {
   targetKey: string;
   channelId: string;
   nickname: string;
+  /** Who this session is for reactions: TeamSpeak UID, or nickname without one. */
+  viewerKey: string;
 }
 
 interface VoiceBridgeDependencies {
@@ -127,13 +131,15 @@ interface WebClientEntry extends SessionDirectoryState {
   chatToken: string;
   /** Push-to-talk gate (desktop client); applied to every WebRTC peer of the session. */
   voiceGateOpen: boolean;
-  onChatSent?(scope: "channel" | "server", channelId: string, message: string): void;
+  onChatSent?(scope: "channel" | "server", channelId: string, message: string): string | undefined;
+  onChatReact?(ref: string, emoji: string, active: boolean): boolean;
 }
 
 export class VoiceBridge {
   private readonly sessionManager = new SessionManager();
   private readonly entries = new Map<string, WebClientEntry>();
   private readonly chatTokens = new Map<string, WebClientEntry>();
+  private readonly chatReactions = new ChatReactionHub();
   private readonly screenShares: ScreenShareCoordinator;
   private readonly whiteboards: WhiteboardCoordinator;
   private readonly identityLeases = new IdentityLeaseStore();
@@ -300,12 +306,14 @@ export class VoiceBridge {
       this.entries.set(entryId, entry!);
       this.chatTokens.set(entry.chatToken, entry);
       const chatStorage = this.options.chatStorage;
-      if (chatStorage) {
-        entry.onChatSent = (scope, channelId, message) => chatStorage.recordMessage({
-          targetKey: teamSpeakTargetKey(entry!.target), scope, channelId: scope === "channel" ? channelId : "",
-          senderUid: "", senderName: entry!.nickname, message,
-        });
-      }
+      entry.onChatSent = (scope, channelId, message) => {
+        // The nickname TeamSpeak shows (it may differ from the requested one),
+        // so other sessions that receive this message match it.
+        const identity = { targetKey: teamSpeakTargetKey(entry!.target), scope, channelId: scope === "channel" ? channelId : "", senderName: this.ownNickname(entry!), message };
+        chatStorage?.recordMessage({ ...identity, senderUid: "" });
+        return this.chatReactions.refFor(identity);
+      };
+      entry.onChatReact = (ref, emoji, active) => this.reactToChat(entry!, ref, emoji, active);
       let tsReady = false;
       const sendJson = (message: ServerMessage) => {
         if (this.entries.get(entryId) === entry && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -541,9 +549,11 @@ export class VoiceBridge {
         isPublished: () => tsReady && initialStateSent,
         isConnected: () => tsReady && session.state === "connected",
         sendJson, addEvent: addServerEvent, onDirectoryReady: sendInitialState,
-        onChatMessage: (scope, channelId, senderUid, senderName, message) => this.options.chatStorage?.recordMessage({
-          targetKey: teamSpeakTargetKey(entry!.target), scope, channelId: scope === "channel" ? channelId : "", senderUid, senderName, message,
-        }),
+        onChatMessage: (scope, channelId, senderUid, senderName, message) => {
+          const identity = { targetKey: teamSpeakTargetKey(entry!.target), scope, channelId: scope === "channel" ? channelId : "", senderName, message };
+          this.options.chatStorage?.recordMessage({ ...identity, senderUid });
+          return this.chatReactions.refFor(identity);
+        },
         onClientLeave: id => {
           this.screenShares.onClientLeave(entry!, id);
           entry!.webrtc?.removeClient(id);
@@ -799,7 +809,42 @@ export class VoiceBridge {
     if (!token) return null;
     const entry = this.chatTokens.get(token);
     if (!entry || this.entries.get(entry.id) !== entry || entry.session.state !== "connected") return null;
-    return { entryId: entry.id, targetKey: teamSpeakTargetKey(entry.target), channelId: String(entry.tsClient.getChannelId()), nickname: entry.nickname };
+    return { entryId: entry.id, targetKey: teamSpeakTargetKey(entry.target), channelId: String(entry.tsClient.getChannelId()), nickname: entry.nickname, viewerKey: this.viewerKey(entry) };
+  }
+
+  /** Add message references and reactions to stored history, as one viewer sees them. */
+  decorateChatHistory(scope: ChatSessionScope, messages: ChatHistoryMessage[]): ChatHistoryMessage[] {
+    return messages.map(message => {
+      const ref = this.chatReactions.lookup({ targetKey: scope.targetKey, scope: message.scope, channelId: message.channelId, senderName: message.senderName, message: message.message }, message.timestamp);
+      if (!ref) return message;
+      const reactions = this.chatReactions.summary(ref, scope.viewerKey);
+      return { ...message, ref, ...(reactions.length ? { reactions } : {}) };
+    });
+  }
+
+  private ownNickname(entry: WebClientEntry): string {
+    return entry.members.get(entry.tsClient.getClientId())?.nickname || entry.nickname;
+  }
+
+  private viewerKey(entry: WebClientEntry): string {
+    const uid = entry.members.get(entry.tsClient.getClientId())?.uid;
+    return uid ? `uid:${uid}` : `name:${this.ownNickname(entry)}`;
+  }
+
+  /** A session may react only to messages of its server, and of its current channel. */
+  private reactToChat(entry: WebClientEntry, ref: string, emoji: string, active: boolean): boolean {
+    const message = this.chatReactions.get(ref);
+    const targetKey = teamSpeakTargetKey(entry.target);
+    const sees = (candidate: WebClientEntry) => candidate.session.state === "connected" && teamSpeakTargetKey(candidate.target) === targetKey
+      && (message?.scope === "server" || String(candidate.tsClient.getChannelId()) === message?.channelId);
+    if (!message || message.targetKey !== targetKey || !sees(entry)) return false;
+    if (!this.chatReactions.react(ref, { key: this.viewerKey(entry), name: this.ownNickname(entry) }, emoji, active)) return false;
+    for (const candidate of this.entries.values()) {
+      if (!sees(candidate) || candidate.ws.readyState !== WebSocket.OPEN) continue;
+      const update: ServerMessage = { type: "chatReactions", ref, reactions: this.chatReactions.summary(ref, this.viewerKey(candidate)) };
+      candidate.ws.send(JSON.stringify(update));
+    }
+    return true;
   }
 
   private async cleanupEntry(entry: WebClientEntry, reason: SessionTeardownReason): Promise<void> {

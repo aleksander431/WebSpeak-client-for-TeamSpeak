@@ -24,6 +24,8 @@ import { SettingsStore, normalizeServerUrl, type DesktopSettings, type HotkeyAct
 import { parseWebClientState, type WebClientState } from "./state.js";
 import { SystemAudio } from "./system-audio.js";
 import { NativeHotkeys } from "./native-hotkeys.js";
+import { OverlayController } from "./overlay.js";
+import { EMPTY_ROSTER, parseOverlayRoster, parseOverlaySpeaking, type OverlayRoster } from "./overlay-state.js";
 import { needsNativeHotkey } from "./settings.js";
 
 /*
@@ -63,6 +65,10 @@ let manualUpdateCheck = false;
 /** The next display-media request comes from the stream hotkey with "main screen" chosen. */
 let directScreenRequest = false;
 let systemAudio: SystemAudio;
+let overlay: OverlayController | null = null;
+/** The page's latest report, kept while the overlay is off so turning it on shows the channel at once. */
+let overlayRoster: OverlayRoster = EMPTY_ROSTER;
+let overlaySpeaking: number[] = [];
 /** Stops the clean system sound if the page never actually starts sharing. */
 let systemAudioWatchdog: NodeJS.Timeout | null = null;
 // The locale is only known once the app is ready.
@@ -121,9 +127,13 @@ function createMainWindow(): BrowserWindow {
       settings.update({ trayHintShown: true });
     }
   });
-  window.on("closed", () => { if (mainWindow === window) mainWindow = null; });
-  // A new page load has not been told about push-to-talk yet.
-  window.webContents.on("did-navigate", () => { pagePushToTalkMode = null; });
+  window.on("closed", () => {
+    if (mainWindow === window) mainWindow = null;
+    // Without the page there is nothing to show, and the overlay must not keep the app alive.
+    overlay?.destroy();
+  });
+  // A new page load has not been told about push-to-talk yet, nor filled the overlay.
+  window.webContents.on("did-navigate", () => { pagePushToTalkMode = null; overlayRoster = EMPTY_ROSTER; overlaySpeaking = []; overlay?.reset(); });
   let boundsTimer: NodeJS.Timeout | null = null;
   const scheduleSave = () => {
     if (boundsTimer) clearTimeout(boundsTimer);
@@ -161,6 +171,11 @@ function createMainWindow(): BrowserWindow {
 
 function loadServer(window: BrowserWindow): void {
   webState = { connected: false, micMuted: false, soundMuted: false, streaming: false, speaking: false };
+  overlayRoster = EMPTY_ROSTER;
+  overlaySpeaking = [];
+  overlay?.reset();
+  // The overlay window goes with the main window; a new main window brings it back.
+  if (settings.value.overlay.enabled) configureOverlay();
   refreshTray();
   // First start: ask for the server once; it is remembered afterwards.
   if (!settings.value.serverUrl) { void window.loadFile(join(STATIC, "setup.html")); return; }
@@ -227,7 +242,7 @@ async function chooseDisplaySource(direct: boolean): Promise<{ source: DesktopCa
   }
   const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: true });
   // Our own window would show an endless mirror; leave it out.
-  const ownTitles = new Set(["WebSpeak", t("pickerTitle"), t("settingsTitle")]);
+  const ownTitles = new Set(["WebSpeak", "WebSpeak overlay", t("pickerTitle"), t("settingsTitle")]);
   const list = sources.filter((source) => !(source.id.startsWith("window:") && ownTitles.has(source.name)));
   return new Promise((resolve) => {
     pickerWindow?.destroy();
@@ -380,6 +395,11 @@ function refreshTray(): void {
     { label: webState.soundMuted ? t("soundOn") : t("soundOff"), enabled: connected, accelerator: menuAccelerator(settings.value.hotkeys.sound), registerAccelerator: false, click: () => void runWebAction("sound", false) },
     { label: webState.streaming ? t("streamStop") : t("streamStart"), enabled: connected, accelerator: menuAccelerator(settings.value.hotkeys.stream), registerAccelerator: false, click: () => void runWebAction("stream", false) },
     { type: "separator" },
+    { label: t("overlayTray"), type: "checkbox", checked: settings.value.overlay.enabled, click: () => {
+      const previous = settings.value;
+      applySettings(settings.update({ overlay: { ...previous.overlay, enabled: !previous.overlay.enabled } }), previous);
+      settingsWindow?.webContents.send("settings:changed", settingsSnapshot());
+    } },
     { label: t("settings"), click: () => openSettings() },
     { label: t("reload"), click: () => { if (mainWindow) loadServer(mainWindow); } },
     updateState.status === "ready"
@@ -420,6 +440,7 @@ function applySettings(next: DesktopSettings, previous: DesktopSettings): void {
   }
   hotkeyStatus = hotkeys.apply(next.hotkeys, next.pushToTalk);
   syncPushToTalkMode();
+  configureOverlay();
   if (next.serverUrl !== previous.serverUrl && mainWindow) loadServer(mainWindow);
   refreshTray();
 }
@@ -458,6 +479,16 @@ function registerIpc(): void {
     webState = parsed;
     if (onlySpeakingChanged) setTrayImage();
     else refreshTray();
+  });
+  ipcMain.on("webspeak:overlay", (event, kind: unknown, value: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || !isServerUrl(event.senderFrame?.url ?? "")) return;
+    if (kind === "roster") {
+      const roster = parseOverlayRoster(value);
+      if (roster) { overlayRoster = roster; overlay?.setRoster(roster); }
+    } else if (kind === "speaking") {
+      const ids = parseOverlaySpeaking(value);
+      if (ids) { overlaySpeaking = ids; overlay?.setSpeaking(ids); }
+    }
   });
   ipcMain.on("webspeak:open-settings", (event) => {
     if (mainWindow && event.sender === mainWindow.webContents) openSettings();
@@ -500,6 +531,20 @@ function registerIpc(): void {
     if (!mainWindow || event.sender !== mainWindow.webContents) return null;
     return { title: t("offlineTitle"), body: t("offlineBody", { url: settings.value.serverUrl }), retry: t("retry"), change: t("changeServer") };
   });
+}
+
+// ---------------------------------------------------------------- overlay
+
+/** The overlay exists only while it is turned on. */
+function configureOverlay(): void {
+  const options = settings.value.overlay;
+  if (!options.enabled) { overlay?.destroy(); return; }
+  if (!overlay) {
+    overlay = new OverlayController(STATIC, join(__dirname, "overlay-preload.js"));
+    overlay.setRoster(overlayRoster);
+    overlay.setSpeaking(overlaySpeaking);
+  }
+  overlay.configure(options);
 }
 
 // ---------------------------------------------------------------- updates
@@ -595,6 +640,7 @@ void app.whenReady().then(() => {
     app.setLoginItemSettings({ openAtLogin: settings.value.launchAtLogin, path: process.execPath, args: ["--hidden"] });
   }
   mainWindow = createMainWindow();
+  configureOverlay();
   configureUpdater();
   refreshTray();
   checkForUpdates(false);

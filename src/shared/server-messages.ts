@@ -3,6 +3,7 @@ import { normalizeScreenShareIceServers, parseScreenShareSignal, SCREEN_SHARE_LE
 
 import { normalizeVoiceStunServer } from "./voice-ice.js";
 import { parseChatSessionAccess, type ChatSessionAccess } from "./chat-storage.js";
+import { CHAT_REF_PATTERN, parseChatReactions, type ChatReaction } from "./chat-reactions.js";
 import { isSessionDescription, type SessionDescription } from "./webrtc.js";
 export type { SessionDescription } from "./webrtc.js";
 
@@ -19,7 +20,8 @@ export type ServerMessage =
   | Message<"memberLeave", { id: number }>
   | Message<"memberAvatar", { id: number; uid?: string; avatar?: string }>
   | Message<"channelList", { channels: ChannelInfo[] }>
-  | Message<"chatMessage", ChatFields & { scope?: string; senderUid?: string; targetId?: string | number }>
+  | Message<"chatMessage", ChatFields & { scope?: string; senderUid?: string; targetId?: string | number; ref?: string }>
+  | Message<"chatReactions", { ref: string; reactions: ChatReaction[] }>
   | Message<"pokeReceived", ChatFields & { invokerUid?: string }>
   | Message<"serverEvent", { event: ServerEvent }>
   | Message<"channelSwitched", Request & { channelId: string | number }>
@@ -32,7 +34,8 @@ export type ServerMessage =
   | Message<"whisperTargets", { targetIds: number[]; active: boolean }>
   | Message<"webrtcAnswer", { payload: { sdp: SessionDescription } }>
   | Message<"voiceActivity", { clientIds: number[] }>
-  | Message<"commandCompleted" | "screenShareCompleted", { requestId: string }>
+  | Message<"commandCompleted", { requestId: string; chatRef?: string }>
+  | Message<"screenShareCompleted", { requestId: string }>
   | Message<"error", Request & { error?: { code?: string; message?: string; recoverable?: boolean }; message?: string }>
   | Message<"screenShareList", { streams: ScreenShareStreamDescription[] }>
   | Message<"screenShareStarted" | "screenShareJoined", Request & { stream: ScreenShareStreamDescription; owner?: boolean; ownerPeerId?: string; mode?: "browser" | "teamspeak" }>
@@ -50,6 +53,7 @@ const boolean = (value: unknown): value is boolean => typeof value === "boolean"
 const clientId = (value: unknown): value is number => finite(value) && Number.isInteger(value) && value > 0 && value <= 65535;
 const identifier = (value: unknown): value is string => text(value) && value.length > 0 && value.length <= 128;
 const channelId = (value: unknown): value is string | number => (text(value) && /^\d{1,20}$/.test(value)) || (finite(value) && Number.isSafeInteger(value) && value >= 0);
+const chatRef = (value: unknown): boolean => text(value) && CHAT_REF_PATTERN.test(value);
 const optional = (value: unknown, check: (value: unknown) => boolean): boolean => value === undefined || check(value);
 const arrayOf = (value: unknown, check: (value: unknown) => boolean): boolean => Array.isArray(value) && value.every(check);
 const safeHttpUrl = (value: unknown): boolean => {
@@ -157,7 +161,8 @@ const valid: Record<ServerMessage["type"], (message: RecordValue) => boolean> = 
   memberAvatar: m => clientId(m.id) && optional(m.uid, text) && optional(m.avatar, text),
   channelList: m => arrayOf(m.channels, channel),
   chatMessage: m => text(m.message) && optional(m.invokerId, finite) && optional(m.invokerName, text) && optional(m.timestamp, finite)
-    && optional(m.scope, text) && optional(m.senderUid, text) && optional(m.targetId, channelId),
+    && optional(m.scope, text) && optional(m.senderUid, text) && optional(m.targetId, channelId) && optional(m.ref, chatRef),
+  chatReactions: m => chatRef(m.ref) && parseChatReactions(m.reactions) !== null,
   pokeReceived: m => text(m.message) && optional(m.invokerId, finite) && optional(m.invokerName, text) && optional(m.timestamp, finite) && optional(m.invokerUid, text),
   serverEvent: m => event(m.event),
   channelSwitched: m => channelId(m.channelId),
@@ -174,7 +179,7 @@ const valid: Record<ServerMessage["type"], (message: RecordValue) => boolean> = 
   whisperTargets: m => arrayOf(m.targetIds, clientId) && boolean(m.active),
   webrtcAnswer: m => isRecord(m.payload) && isSessionDescription(m.payload.sdp, "answer"),
   voiceActivity: m => arrayOf(m.clientIds, clientId),
-  commandCompleted: m => text(m.requestId),
+  commandCompleted: m => text(m.requestId) && optional(m.chatRef, chatRef),
   screenShareCompleted: m => text(m.requestId),
   error: m => optional(m.message, text) && optional(m.error, v => isRecord(v) && optional(v.code, text) && optional(v.message, text) && optional(v.recoverable, boolean)),
   screenShareList: m => Array.isArray(m.streams),

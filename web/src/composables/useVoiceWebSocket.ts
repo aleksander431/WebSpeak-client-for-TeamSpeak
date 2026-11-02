@@ -19,7 +19,7 @@ import { parseServerMessage } from "../../../src/shared/server-messages.js";
 import { parseChatSessionAccess, type ChatSessionAccess } from "../../../src/shared/chat-storage.js";
 import { parseWhiteboardServerMessage, type WhiteboardClientMessage, type WhiteboardServerMessage } from "../../../src/shared/whiteboard.js";
 import type { ChatMessage } from "../../../src/shared/voice-models.js";
-import type { ClientCommandPayloads, ClientCommandType } from "../../../src/shared/client-commands.js";
+import { CHAT_COMMAND_MAX_LENGTH, type ClientCommandPayloads, type ClientCommandType } from "../../../src/shared/client-commands.js";
 export type { ScreenShareStreamDescription as ScreenShareStream, ScreenShareViewerDescription as ScreenShareViewer, ScreenSharePeerSignal as ScreenShareSignal } from "../../../src/shared/screen-share.js";
 export type { ChannelMember, ChannelInfo, ChatMessage, ServerEvent, VoiceAudioBridgeStats } from "../../../src/shared/voice-models.js";
 import { reactive, ref, shallowRef } from "vue";
@@ -945,7 +945,7 @@ export function useVoiceWebSocket() {
     }
   }
 
-  function playNotification(kind: "connected" | "disconnected" | "poke" | "private" | "reconnectFailed" | "memberJoined" | "memberLeft"): void {
+  function playNotification(kind: "connected" | "disconnected" | "poke" | "private" | "mention" | "reconnectFailed" | "memberJoined" | "memberLeft"): void {
     if (notificationVolume.value <= 0 || outputMuted.value || effectiveOutputVolume() <= 0 || typeof window === "undefined") return;
     try {
       const ctx = getAudioCtx();
@@ -955,6 +955,7 @@ export function useVoiceWebSocket() {
         disconnected: [440, 330],
         poke: [740, 980],
         private: [600, 760],
+        mention: [880, 1175],
         reconnectFailed: [300, 220],
         // Someone entered or left your channel: softer and shorter than your own connection cues.
         memberJoined: [587, 784],
@@ -1242,18 +1243,18 @@ export function useVoiceWebSocket() {
         break;
       case "commandCompleted": {
         const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
-        commands.settle(requestId);
+        commands.settle(requestId, undefined, msg.chatRef ? { chatRef: msg.chatRef } : undefined);
         break;
       }
-      case "error":
-        state.errorCode = normalizedClientErrorCode(msg.error?.code, "OPERATION_FAILED");
-        state.error = protocolErrorMessage(state.errorCode, String(msg.error?.message || msg.message || "操作失败"));
-        {
-          const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
-          const error = Object.assign(new Error(state.error), { code: state.errorCode });
-          commands.settle(requestId, error);
-        }
+      case "error": {
+        const code = normalizedClientErrorCode(msg.error?.code, "OPERATION_FAILED");
+        const text = protocolErrorMessage(code, String(msg.error?.message || msg.message || "操作失败"));
+        // A reaction to a message the gateway forgot is not worth a page-wide error.
+        if (msg.error?.code !== "REACTION_UNAVAILABLE") { state.errorCode = code; state.error = text; }
+        const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
+        commands.settle(requestId, Object.assign(new Error(text), { code }));
         break;
+      }
     }
   }
 
@@ -1301,7 +1302,7 @@ export function useVoiceWebSocket() {
       throw Object.assign(new Error("TeamSpeak 会话尚未就绪"), { code: "SESSION_NOT_READY" });
     }
     const text = message.trim();
-    if (!text || text.length > 500) throw Object.assign(new Error("文字消息无效"), { code: "INVALID_TEXT_MESSAGE" });
+    if (!text || text.length > CHAT_COMMAND_MAX_LENGTH) throw Object.assign(new Error("文字消息无效"), { code: "INVALID_TEXT_MESSAGE" });
     return text;
   }
 
@@ -1310,10 +1311,17 @@ export function useVoiceWebSocket() {
   ): Promise<void> {
     const generation = chatGeneration;
     const senderId = state.tsClientId;
-    await sendCommandAndWait(type, payload);
+    const result = await commands.sendForResult(type, payload);
     if (generation !== chatGeneration || !state.connected) throw new Error("语音连接已关闭");
     // The chat shows "You" for own messages; the name only feeds the avatar initial.
-    sessionState.appendLocal({ ...local, senderId, invokerName: lastConnection?.nickname || "You", message: payload.message });
+    sessionState.appendLocal({ ...local, senderId, invokerName: lastConnection?.nickname || "You", message: payload.message,
+      ...(result.chatRef ? { ref: result.chatRef } : {}) });
+  }
+
+  /** Add or remove one's reaction; the gateway then reports the new totals to everyone. */
+  async function reactToChat(ref: string, emoji: string, active: boolean): Promise<void> {
+    if (!state.connected || ws.value?.readyState !== WebSocket.OPEN) return;
+    await sendCommandAndWait("chatReact", { ref, emoji, active });
   }
 
   async function sendTextMessage(message: string, targetId = ""): Promise<void> {
@@ -1563,6 +1571,8 @@ export function useVoiceWebSocket() {
     members,
     channels,
     chatMessages,
+    chatReactions: sessionState.chatReactions,
+    reactToChat,
     serverEvents,
     pokeNotifications,
     microphoneMuted,

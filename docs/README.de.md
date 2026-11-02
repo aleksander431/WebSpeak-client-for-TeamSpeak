@@ -193,6 +193,9 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Die Lautstärke einzelner Mitglieder bleibt zuverlässiger erhalten: Neben der UID folgt sie dem Spitznamen und übersteht so einen Beitritt aus einem anderen Browser oder dem Desktop-Client.
 - KAAK-Skin: Kanalliste und Chat lassen sich durch Ziehen am Rand verbreitern oder verschmälern. Die Breite wird gespeichert; ein Doppelklick auf den Rand stellt die Standardbreite wieder her.
 - Die Rauschunterdrückung hat eine dritte Stufe, „Maximal (KI)“: das neuronale Netz DeepFilterNet3, deutlich näher an Discord oder TeamSpeak als RNNoise. Es entfernt Rauschen und Lüfter viel besser und lässt die Stimme intakt, braucht aber mehr CPU und fügt ~30 ms Verzögerung hinzu; beim ersten Mal werden etwa 22 MB geladen. Startet es nicht, wird RNNoise verwendet; kommt der Computer nicht hinterher, zeigen es die Einstellungen an.
+- Chat: Codeblöcke mit Syntaxhervorhebung und Kopieren-Knopf (```js … ```), Inline-`Code`, **fett**, *kursiv*, ~~durchgestrichen~~ (TeamSpeaks [b]/[i] gehen auch). Umschalt+Enter macht eine neue Zeile; eine für TeamSpeak zu lange Nachricht wird als Textdatei gesendet.
+- Chat: Antworten (zitieren die beantwortete Nachricht, auch in TeamSpeak lesbar), Emoji-Reaktionen (zwischen WebSpeak-Nutzern), Suche auch im älteren Verlauf auf dem Server und @Erwähnungen mit Vorschlägen, Hervorhebung und Ton, wenn dich jemand erwähnt.
+- Desktop-Client: Overlay über Spielen, das zeigt, wer im Kanal ist und wer spricht. Standardmäßig aus; in den Einstellungen oder im Tray-Menü einschalten, Ecke, Größe, Deckkraft, Abstand und „alle“ oder „nur Sprecher“ wählen.
 
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 

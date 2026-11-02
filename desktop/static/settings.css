@@ -17,6 +17,15 @@ input[type=url], select { width: 100%; min-height: 36px; padding: 0 10px; border
 .status.taken, .status.invalid, .status.duplicate { color: var(--warning); }
 .update-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .update-row button { margin-left: auto; }
+.overlay-options { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.overlay-options:disabled { opacity: .5; }
+.field.range { grid-template-columns: minmax(0, 1fr) 46px; align-items: center; }
+.field.range > span { grid-column: 1 / -1; }
+.field.range input { width: 100%; accent-color: var(--accent); }
+.field.range output { color: var(--muted); font-size: 12px; text-align: right; }
+.offsets { display: flex; flex-wrap: wrap; gap: 12px; }
+.offsets label { display: flex; align-items: center; gap: 6px; }
+.offsets input { width: 90px; min-height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .saved { margin-right: auto; color: var(--accent); }
 @media (max-width: 520px) { .hotkey { grid-template-columns: 1fr auto; } .hotkey > span:first-child { grid-column: 1 / -1; } }

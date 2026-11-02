@@ -22,7 +22,7 @@ async function serve(t: test.TestContext) {
   let channelId = "5";
   registerChatRoutes(app, {
     storage,
-    resolveSession: token => token === "valid-token-123456" ? { entryId: "e1", targetKey: "ts:1", channelId, nickname: "Kria" } : null,
+    resolveSession: token => token === "valid-token-123456" ? { entryId: "e1", targetKey: "ts:1", channelId, nickname: "Kria", viewerKey: "uid:k" } : null,
     isSameOrigin: request => request.header("origin") === "https://webts.test",
     logger: { info() {}, warn() {} },
   });
@@ -87,4 +87,7 @@ test("history is read for the session's own channel only", async t => {
   moveTo("6");
   assert.deepEqual(await read(), ["в шестом"]);
   assert.equal((await fetch(`${base}/api/chat/history?scope=channel`, { headers: headers({ [CHAT_TOKEN_HEADER]: "stale" }) })).status, 401);
+  const search = async (q: string) => (await (await fetch(`${base}/api/chat/history?scope=channel&q=${encodeURIComponent(q)}`, { headers: headers() })).json() as { messages: { message: string }[] }).messages.map(message => message.message);
+  assert.deepEqual(await search("ШЕСТ"), ["в шестом"]);
+  assert.deepEqual(await search("пятом"), [], "search stays within the current channel");
 });

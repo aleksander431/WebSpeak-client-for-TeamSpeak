@@ -1,3 +1,8 @@
+import { CHAT_REF_PATTERN, isChatReactionEmoji } from "./chat-reactions.js";
+
+/** Longest chat message accepted, in characters (TeamSpeak's own limit is about 1 KB). */
+export const CHAT_COMMAND_MAX_LENGTH = 1000;
+
 /** Payloads stay correlated with their command names across both runtimes. */
 export interface ClientCommandPayloads {
   switchChannel: { channelId: string; password?: string };
@@ -14,6 +19,8 @@ export interface ClientCommandPayloads {
   setVoiceGate: { open: boolean };
   setAccompanimentActive: { active: boolean };
   setMemberVolume: { clientId: number; volume: number };
+  /** Add (`active`) or remove one's emoji reaction on a channel/server message the gateway referenced. */
+  chatReact: { ref: string; emoji: string; active: boolean };
   latencyProbe: { sequence: string };
   audioStatsProbe: { sequence: string };
 }
@@ -38,7 +45,7 @@ export function parseClientCommand(raw: string): ClientCommandResult {
   if (value.requestId !== undefined && (typeof value.requestId !== "string" || value.requestId.length > 64)) {
     return { error: { code: "INVALID_REQUEST_ID", message: "请求标识无效" } };
   }
-  const supportedTypes = new Set(["switchChannel", "moveClient", "sendTextMessage", "sendServerMessage", "sendPrivateMessage", "poke", "setAway", "setWhisperTargets", "setWhisperActive", "setMicrophoneMuted", "setVoiceGate", "setAccompanimentActive", "setMemberVolume", "latencyProbe", "audioStatsProbe"]);
+  const supportedTypes = new Set(["switchChannel", "moveClient", "sendTextMessage", "sendServerMessage", "sendPrivateMessage", "poke", "setAway", "setWhisperTargets", "setWhisperActive", "setMicrophoneMuted", "setVoiceGate", "setAccompanimentActive", "setMemberVolume", "chatReact", "latencyProbe", "audioStatsProbe"]);
   if (!supportedTypes.has(value.type)) {
     return { error: { code: "UNKNOWN_MESSAGE_TYPE", message: "不支持的消息类型" } };
   }
@@ -60,7 +67,7 @@ export function parseClientCommand(raw: string): ClientCommandResult {
   if (value.type === "moveClient" && value.payload.password !== undefined && (typeof value.payload.password !== "string" || value.payload.password.length > 512)) {
     return { error: { code: "INVALID_CHANNEL_PASSWORD", message: "频道密码无效" } };
   }
-  if (value.type === "sendTextMessage" && (typeof value.payload.message !== "string" || value.payload.message.length > 500)) {
+  if (value.type === "sendTextMessage" && (typeof value.payload.message !== "string" || value.payload.message.length > CHAT_COMMAND_MAX_LENGTH)) {
     return { error: { code: "INVALID_TEXT_MESSAGE", message: "文字消息无效" } };
   }
   if (value.type === "sendTextMessage" && value.payload.channelId !== undefined && (typeof value.payload.channelId !== "string" || !/^\d{1,20}$/.test(value.payload.channelId))) {
@@ -69,7 +76,7 @@ export function parseClientCommand(raw: string): ClientCommandResult {
   if (value.type === "sendPrivateMessage" && value.payload.clientUid !== undefined && (typeof value.payload.clientUid !== "string" || !value.payload.clientUid || value.payload.clientUid.length > 128)) {
     return { error: { code: "INVALID_CLIENT_ID", message: "成员标识无效" } };
   }
-  if ((value.type === "sendServerMessage" || value.type === "sendPrivateMessage") && (typeof value.payload.message !== "string" || value.payload.message.length > 500)) {
+  if ((value.type === "sendServerMessage" || value.type === "sendPrivateMessage") && (typeof value.payload.message !== "string" || value.payload.message.length > CHAT_COMMAND_MAX_LENGTH)) {
     return { error: { code: "INVALID_TEXT_MESSAGE", message: "文字消息无效" } };
   }
   if ((value.type === "sendPrivateMessage" || value.type === "poke") && (typeof value.payload.clientId !== "number" || !Number.isInteger(value.payload.clientId) || value.payload.clientId <= 0 || value.payload.clientId > 65535)) {
@@ -92,6 +99,10 @@ export function parseClientCommand(raw: string): ClientCommandResult {
   }
   if (value.type === "setMicrophoneMuted" && typeof value.payload.muted !== "boolean") {
     return { error: { code: "INVALID_MICROPHONE_STATE", message: "麦克风状态无效" } };
+  }
+  if (value.type === "chatReact" && (typeof value.payload.ref !== "string" || !CHAT_REF_PATTERN.test(value.payload.ref)
+    || !isChatReactionEmoji(value.payload.emoji) || typeof value.payload.active !== "boolean")) {
+    return { error: { code: "INVALID_REACTION", message: "Invalid reaction" } };
   }
   if (value.type === "setVoiceGate" && typeof value.payload.open !== "boolean") {
     return { error: { code: "INVALID_VOICE_GATE", message: "Invalid push-to-talk state" } };

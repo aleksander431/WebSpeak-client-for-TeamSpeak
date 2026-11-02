@@ -5,9 +5,14 @@ interface CommandOptions {
   generation(): number;
 }
 
+/** What a completed command may report back (a sent chat message's reaction reference). */
+export interface CommandResult {
+  chatRef?: string;
+}
+
 interface PendingCommand {
   isCurrent(): boolean;
-  finish(error?: unknown): void;
+  finish(error?: unknown, result?: CommandResult): void;
 }
 
 // Every outcome goes through the same finish operation, including a synchronous
@@ -22,19 +27,23 @@ export function createVoiceCommands(options: CommandOptions) {
   }
 
   function sendAndWait<K extends ClientCommandType>(type: K, payload: ClientCommandPayloads[K], timeoutMs = 8_000): Promise<void> {
+    return sendForResult(type, payload, timeoutMs).then(() => undefined);
+  }
+
+  function sendForResult<K extends ClientCommandType>(type: K, payload: ClientCommandPayloads[K], timeoutMs = 8_000): Promise<CommandResult> {
     const socket = options.socket();
     if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("语音连接尚未就绪"));
     const generation = options.generation();
     const requestId = `command-${Date.now().toString(36)}-${(sequence++).toString(36)}`;
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<CommandResult>((resolve, reject) => {
       let settled = false;
-      const finish = (error?: unknown): void => {
+      const finish = (error?: unknown, result: CommandResult = {}): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         pending.delete(requestId);
         if (error !== undefined) reject(error);
-        else resolve();
+        else resolve(result);
       };
       const timer = setTimeout(() => finish(new Error("操作超时，请稍后重试")), timeoutMs);
       pending.set(requestId, {
@@ -47,10 +56,10 @@ export function createVoiceCommands(options: CommandOptions) {
   }
 
   return {
-    send, sendAndWait,
-    settle(requestId: string, error?: Error): void {
+    send, sendAndWait, sendForResult,
+    settle(requestId: string, error?: Error, result?: CommandResult): void {
       const command = pending.get(requestId);
-      if (command) command.finish(command.isCurrent() ? error : new Error("语音连接已关闭"));
+      if (command) command.finish(command.isCurrent() ? error : new Error("语音连接已关闭"), result);
     },
     clear(error: Error): void {
       for (const command of pending.values()) command.finish(error);

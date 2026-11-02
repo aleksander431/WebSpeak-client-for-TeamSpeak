@@ -225,8 +225,39 @@
   api.onUpdateState((state) => { updateState = state; renderUpdates(); });
 
   // --- form ---------------------------------------------------------------
+  // --- overlay ------------------------------------------------------------
+  function renderOverlayValues() {
+    $("overlayScaleValue").textContent = `${$("overlayScale").value}%`;
+    $("overlayOpacityValue").textContent = `${$("overlayOpacity").value}%`;
+    $("overlayOptions").disabled = !$("overlayEnabled").checked;
+  }
+  function fillOverlay(overlay) {
+    $("overlayEnabled").checked = overlay.enabled;
+    $("overlayCorner").value = overlay.corner;
+    $("overlayMode").value = overlay.mode;
+    $("overlayScale").value = String(overlay.scale);
+    $("overlayOpacity").value = String(overlay.opacity);
+    $("overlayOffsetX").value = String(overlay.offsetX);
+    $("overlayOffsetY").value = String(overlay.offsetY);
+    $("overlayShowSelf").checked = overlay.showSelf;
+    $("overlayShowChannel").checked = overlay.showChannel;
+    renderOverlayValues();
+  }
+  function overlayDraft() {
+    const number = (id) => { const value = Number($(id).value); return Number.isFinite(value) ? value : 0; };
+    return {
+      enabled: $("overlayEnabled").checked, corner: $("overlayCorner").value, mode: $("overlayMode").value,
+      scale: number("overlayScale"), opacity: number("overlayOpacity"), offsetX: number("overlayOffsetX"), offsetY: number("overlayOffsetY"),
+      showSelf: $("overlayShowSelf").checked, showChannel: $("overlayShowChannel").checked,
+    };
+  }
+  for (const id of ["overlayEnabled", "overlayScale", "overlayOpacity"]) $(id).addEventListener("input", renderOverlayValues);
+  // The tray can turn the overlay on or off while this window is open.
+  api.onChanged?.((next) => { if (next) { snapshot = { ...next, strings }; $("overlayEnabled").checked = next.settings.overlay.enabled; renderOverlayValues(); } });
+
   function fill() {
     const settings = snapshot.settings;
+    fillOverlay(settings.overlay);
     $("serverUrl").value = settings.serverUrl;
     for (const id of ["launchAtLogin", "startHidden", "closeToTray", "hotkeySounds"]) $(id).checked = settings[id];
     $("streamHotkeySource").value = settings.streamHotkeySource;
@@ -249,6 +280,7 @@
       streamHotkeySource: $("streamHotkeySource").value,
       hotkeys: draft.hotkeys,
       pushToTalk: draft.pushToTalk,
+      overlay: overlayDraft(),
     });
     if (!result) return;
     if (result.error === "serverInvalid") { $("serverError").hidden = false; $("serverUrl").focus(); return; }

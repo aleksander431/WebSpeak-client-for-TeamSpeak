@@ -106,8 +106,50 @@
         chatTab === "events"
           ? t("eventCount", { count: serverEvents.length })
           : t("messageCount", { count: visibleChatMessages.length })
-      }}</span></div
-    >
+      }}</span
+      ><button
+        v-if="chatTab !== 'events'"
+        type="button"
+        class="chat-search-toggle"
+        data-ws-part="voice.chat.search-toggle"
+        :data-ws-state="searchOpen ? 'open' : 'closed'"
+        :aria-pressed="searchOpen"
+        :title="t('chatSearch')"
+        :aria-label="t('chatSearch')"
+        @click="toggleSearchAndFocus"
+        ><Icon
+          name="search"
+          :size="16" /></button
+    ></div>
+    <div
+      v-if="searchOpen && chatTab !== 'events'"
+      class="chat-search"
+      data-ws-part="voice.chat.search"
+      role="search"
+      ><Icon
+        name="search"
+        :size="15"
+      /><input
+        ref="searchInput"
+        v-model="searchQuery"
+        type="search"
+        maxlength="100"
+        :placeholder="t('chatSearchPlaceholder')"
+        :aria-label="t('chatSearch')"
+        @keydown.esc.prevent="toggleSearch"
+      /><span
+        class="chat-search-status"
+        role="status"
+        >{{ searching ? t("chatSearching") : searchQuery.trim() ? t("chatSearchFound", { count: visibleChatMessages.length }) : "" }}</span
+      ><button
+        type="button"
+        :title="t('close')"
+        :aria-label="t('close')"
+        @click="toggleSearch"
+        ><Icon
+          name="close"
+          :size="14" /></button
+    ></div>
     <div
       ref="chatListEl"
       class="message-list"
@@ -137,6 +179,13 @@
         >
       </div>
       <div
+        v-else-if="!visibleChatMessages.length && searchOpen && searchQuery.trim()"
+        class="chat-empty"
+        data-ws-part="voice.chat.empty"
+        data-ws-state="search-empty"
+        ><strong>{{ searching ? t("chatSearching") : t("chatSearchNothing") }}</strong></div
+      >
+      <div
         v-else-if="!visibleChatMessages.length"
         class="chat-empty"
         data-ws-part="voice.chat.empty"
@@ -152,9 +201,10 @@
       >
         <article
           v-if="chatTab !== 'events'"
-          :class="['message-row', { mine: message.isSelf }]"
+          :class="['message-row', { mine: message.isSelf, 'mentions-me': mentionsMe(message) }]"
           data-ws-part="voice.chat.message"
           :data-ws-state="message.isSelf ? 'mine' : 'other'"
+          :data-ws-mention="mentionsMe(message) ? 'self' : undefined"
         >
           <div
             class="message-avatar"
@@ -174,8 +224,68 @@
               ><ChatMessageContent
                 :message="message.message"
                 :t="t"
+                :mention-names="mentionNames"
+                :self-name="selfName"
                 @media-loaded="scrollIfFollowing"
             /></div
+            ><div
+              v-if="reactionsOf(message).length"
+              class="chat-reactions"
+              data-ws-part="voice.chat.reactions"
+              ><button
+                v-for="reaction in reactionsOf(message)"
+                :key="reaction.emoji"
+                type="button"
+                :class="['chat-reaction', { mine: reaction.mine }]"
+                data-ws-part="voice.chat.reaction"
+                :data-ws-state="reaction.mine ? 'mine' : 'other'"
+                :aria-pressed="reaction.mine"
+                :title="reaction.names.join(', ')"
+                :disabled="!canReact"
+                @click="toggleReaction(message, reaction.emoji)"
+                ><span class="chat-reaction-emoji">{{ reaction.emoji }}</span
+                ><span class="chat-reaction-count">{{ reaction.count }}</span></button
+              ></div
+            ></div
+          >
+          <div
+            v-if="canSendChat"
+            class="message-actions"
+            data-ws-part="voice.chat.message-actions"
+            ><button
+              type="button"
+              data-ws-part="voice.chat.reply"
+              :title="t('chatReply')"
+              :aria-label="t('chatReply')"
+              @click="replyAndFocus(message)"
+              ><Icon
+                name="reply"
+                :size="15" /></button
+            ><button
+              v-if="message.ref && canReact"
+              type="button"
+              data-ws-part="voice.chat.react"
+              :aria-expanded="reactionPickerFor === message.id"
+              :title="t('chatReact')"
+              :aria-label="t('chatReact')"
+              @click="reactionPickerFor = reactionPickerFor === message.id ? '' : message.id"
+              ><Icon
+                name="smile"
+                :size="15" /></button
+            ><div
+              v-if="reactionPickerFor === message.id"
+              class="chat-reaction-picker"
+              data-ws-part="voice.chat.reaction-picker"
+              role="menu"
+              ><button
+                v-for="emoji in CHAT_REACTION_EMOJI"
+                :key="emoji"
+                type="button"
+                role="menuitem"
+                :aria-label="emoji"
+                @click="toggleReaction(message, emoji); reactionPickerFor = ''"
+                >{{ emoji }}</button
+              ></div
             ></div
           >
         </article>
@@ -222,6 +332,41 @@
               :size="13" /></button
         ></li>
       </ul>
+      <div
+        v-if="replyTo"
+        class="chat-reply-preview"
+        data-ws-part="voice.chat.reply-preview"
+        ><Icon
+          name="reply"
+          :size="14"
+        /><span
+          ><strong>{{ t("chatReplyingTo", { name: replyTo.isSelf ? t("you") : replyTo.invokerName }) }}</strong
+          ><small>{{ replyExcerpt }}</small></span
+        ><button
+          type="button"
+          :title="t('close')"
+          :aria-label="t('close')"
+          @click="cancelReply"
+          ><Icon
+            name="close"
+            :size="13" /></button
+      ></div>
+      <ul
+        v-if="mentionSuggestions.length"
+        class="chat-mention-suggestions"
+        data-ws-part="voice.chat.mention-suggestions"
+        role="listbox"
+        :aria-label="t('chatMentionSuggestions')"
+        ><li
+          v-for="(name, index) in mentionSuggestions"
+          :key="name"
+          role="option"
+          :aria-selected="index === mentionIndex"
+          :class="{ active: index === mentionIndex }"
+          @mousedown.prevent="applyMention(name)"
+          >@{{ name }}</li
+        ></ul
+      >
       <button
         v-if="canAttach"
         class="attach-button"
@@ -242,18 +387,25 @@
         hidden
         @change="onFilesChosen"
       />
-      <input
+      <textarea
+        ref="draftInput"
         v-model="messageDraft"
-        maxlength="500"
+        class="message-input"
+        data-ws-part="voice.chat.input"
+        rows="1"
+        maxlength="20000"
         @paste="onPaste"
         enterkeyhint="send"
         autocomplete="off"
+        spellcheck="true"
         @compositionstart="composing = true"
         @compositionend="composing = false"
-        @keydown.enter="guardComposition"
+        @keydown="onDraftKeydown"
+        @input="onDraftInput"
+        @click="updateMentionQuery"
         :placeholder="chatPlaceholder"
         :aria-label="t('send')"
-      />
+      ></textarea>
       <button
         class="send-button"
         type="submit"
@@ -266,6 +418,13 @@
       /></button>
     </form>
     <p
+      v-if="chatTab !== 'events' && (draftTooLong || draftBytes > CHAT_MESSAGE_MAX_BYTES * 0.8)"
+      :class="['chat-length', { over: draftTooLong }]"
+      data-ws-part="voice.chat.length"
+      role="status"
+      >{{ draftTooLong ? (canAttach ? t("chatSendsAsFile") : t("chatMessageTooLong")) : t("chatBytesLeft", { count: CHAT_MESSAGE_MAX_BYTES - draftBytes }) }}</p
+    >
+    <p
       v-if="chatStatus"
       class="chat-status"
       data-ws-part="voice.chat.status"
@@ -276,10 +435,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, type CSSProperties } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from "vue";
 import Icon from "../Icon.vue";
 import ChatMessageContent from "./ChatMessageContent.vue";
 import { formatBytes } from "../../../../src/shared/chat-storage.js";
+import { CHAT_MESSAGE_MAX_BYTES, chatPlainText, parseChatMarkup } from "../../../../src/shared/chat-markup.js";
+import { CHAT_REACTION_EMOJI } from "../../../../src/shared/chat-reactions.js";
 import type { useWebClientChat } from "../../composables/useWebClientChat.js";
 import type { ChatMessage, ServerEvent } from "../../composables/useVoiceWebSocket.js";
 
@@ -289,6 +450,9 @@ type ChatPanelModel = Pick<ReturnType<typeof useWebClientChat>,
   | "listElement" | "conversations" | "visibleMessages" | "tabLabel" | "title"
   | "placeholder" | "openConversation" | "submitMessage" | "onScroll"
   | "uploads" | "canAttach" | "maxFileBytes" | "sendFiles" | "dismissUpload" | "scrollIfFollowing"
+  | "replyTo" | "startReply" | "cancelReply" | "reactionsOf" | "toggleReaction" | "canReact"
+  | "searchOpen" | "searchQuery" | "searching" | "toggleSearch"
+  | "mentionNames" | "selfName" | "draftBytes" | "draftTooLong"
 >;
 
 const props = defineProps<{
@@ -327,7 +491,95 @@ const {
   sendFiles,
   dismissUpload,
   scrollIfFollowing,
+  replyTo,
+  startReply,
+  cancelReply,
+  reactionsOf,
+  toggleReaction,
+  canReact,
+  searchOpen,
+  searchQuery,
+  searching,
+  toggleSearch,
+  mentionNames,
+  selfName,
+  draftBytes,
+  draftTooLong,
 } = props.model;
+
+const draftInput = ref<HTMLTextAreaElement | null>(null);
+const searchInput = ref<HTMLInputElement | null>(null);
+const reactionPickerFor = ref("");
+// A pointer anywhere outside the open picker closes it.
+function closePickerOutside(event: PointerEvent): void {
+  if (reactionPickerFor.value && !(event.target instanceof Element && event.target.closest(".message-actions"))) reactionPickerFor.value = "";
+}
+onMounted(() => document.addEventListener("pointerdown", closePickerOutside, true));
+onBeforeUnmount(() => document.removeEventListener("pointerdown", closePickerOutside, true));
+
+function mentionsMe(message: ChatMessage): boolean {
+  if (message.isSelf || !selfName.value || !message.message.includes("@")) return false;
+  return parseChatMarkup(message.message, { mentionNames: [selfName.value], selfName: selfName.value }).mentionsSelf;
+}
+
+const replyExcerpt = computed(() => {
+  const text = replyTo.value ? chatPlainText(replyTo.value.message).replace(/\s+/g, " ").trim() : "";
+  return text.length > 90 ? `${text.slice(0, 89)}…` : text;
+});
+
+function replyAndFocus(message: ChatMessage): void {
+  startReply(message);
+  void nextTick(() => draftInput.value?.focus());
+}
+
+function toggleSearchAndFocus(): void {
+  toggleSearch();
+  if (searchOpen.value) void nextTick(() => searchInput.value?.focus());
+}
+
+/** The message box grows with its text, up to a limit, then scrolls. */
+function resizeDraft(): void {
+  const input = draftInput.value;
+  if (!input) return;
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight, 200)}px`;
+}
+watch(messageDraft, () => void nextTick(resizeDraft));
+
+// @mention autocomplete: the word being typed right before the caret.
+const mentionQuery = ref<{ start: number; text: string } | null>(null);
+const mentionIndex = ref(0);
+const mentionSuggestions = computed(() => {
+  const query = mentionQuery.value;
+  if (!query) return [];
+  const needle = query.text.toLocaleLowerCase();
+  return mentionNames.value
+    .filter(name => name !== selfName.value && name.toLocaleLowerCase().startsWith(needle))
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, 6);
+});
+function updateMentionQuery(): void {
+  const input = draftInput.value;
+  if (!input || input.selectionStart !== input.selectionEnd) { mentionQuery.value = null; return; }
+  const before = input.value.slice(0, input.selectionStart);
+  const match = /(^|[\s(])@([^\s@]{0,32})$/.exec(before);
+  mentionQuery.value = match ? { start: before.length - match[2].length - 1, text: match[2] } : null;
+  mentionIndex.value = 0;
+}
+function onDraftInput(): void {
+  updateMentionQuery();
+}
+function applyMention(name: string): void {
+  const input = draftInput.value;
+  const query = mentionQuery.value;
+  if (!input || !query) return;
+  const end = query.start + 1 + query.text.length;
+  const value = messageDraft.value;
+  messageDraft.value = `${value.slice(0, query.start)}@${name} ${value.slice(end)}`;
+  mentionQuery.value = null;
+  const caret = query.start + name.length + 2;
+  void nextTick(() => { input.focus(); input.setSelectionRange(caret, caret); });
+}
 
 const fileInput = ref<HTMLInputElement | null>(null);
 function onFilesChosen(event: Event): void {
@@ -373,9 +625,30 @@ function onDrop(event: DragEvent): void {
 }
 
 const composing = ref(false);
-function guardComposition(event: KeyboardEvent): void {
+function onDraftKeydown(event: KeyboardEvent): void {
+  const suggestions = mentionSuggestions.value;
+  if (suggestions.length) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      mentionIndex.value = (mentionIndex.value + step + suggestions.length) % suggestions.length;
+      return;
+    }
+    if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey && !composing.value && !event.isComposing) {
+      event.preventDefault();
+      applyMention(suggestions[mentionIndex.value] ?? suggestions[0]);
+      return;
+    }
+    if (event.key === "Escape") { event.preventDefault(); mentionQuery.value = null; return; }
+  }
+  if (event.key === "Escape" && replyTo.value) { event.preventDefault(); cancelReply(); return; }
+  if (event.key !== "Enter") return;
   // Android IME and Safari can confirm a candidate with Enter; that is not Send.
-  if (composing.value || event.isComposing || event.keyCode === 229) event.preventDefault();
+  if (composing.value || event.isComposing || event.keyCode === 229) { event.preventDefault(); return; }
+  // Shift+Enter is a new line; Enter alone sends (also inside a code block).
+  if (event.shiftKey) return;
+  event.preventDefault();
+  if (canSendChat.value && messageDraft.value.trim()) void submitMessage();
 }
 
 /** Gateway events carry a translation code; older gateways only send Chinese text. */

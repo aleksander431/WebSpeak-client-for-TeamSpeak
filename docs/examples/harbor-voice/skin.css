@@ -568,7 +568,8 @@
 [data-ws-plugin-part="harbor-workspace"] .chat-heading { border-color: var(--skin-harbor-border); }
 [data-ws-plugin-part="harbor-workspace"] .message-bubble { color: var(--skin-harbor-text); background: var(--skin-harbor-panel); }
 [data-ws-plugin-part="harbor-workspace"] .message-composer { border-color: var(--skin-harbor-border); background: var(--skin-harbor-panel); }
-[data-ws-plugin-part="harbor-workspace"] .message-composer input { color: var(--skin-harbor-text); }
+[data-ws-plugin-part="harbor-workspace"] .message-composer input,
+[data-ws-plugin-part="harbor-workspace"] .message-composer textarea { color: var(--skin-harbor-text); }
 
 [data-ws-plugin-part="harbor-workspace.members-panel"] {
   grid-column: 4;

@@ -51,8 +51,11 @@ export interface SessionEventOptions {
   onKick(error: WebSpeakError): void;
   onDisconnect(error?: Error): void;
   onAvatarError(id: number, uid: string, error: unknown): void;
-  /** A channel or server message arrived (for server-side history). */
-  onChatMessage?(scope: "channel" | "server", channelId: string, senderUid: string, senderName: string, message: string): void;
+  /**
+   * A channel or server message arrived (for server-side history and
+   * reactions); the returned reference is sent to the browser with it.
+   */
+  onChatMessage?(scope: "channel" | "server", channelId: string, senderUid: string, senderName: string, message: string): string | undefined;
 }
 
 /** SDK listeners, directory projection and optional work owned by one session. */
@@ -153,12 +156,13 @@ export class SessionEventCoordinator {
       const targetId = message.targetId ?? 0n;
       // Channel notifications can omit target; bind them to the current channel.
       const effectiveTargetId = scope === "channel" && targetId === 0n ? client.getChannelId() : targetId;
+      const ref = scope === "private" ? undefined
+        : options.onChatMessage?.(scope, String(effectiveTargetId), message.invokerUid ?? "", message.invokerName ?? "", message.message);
       options.sendJson({ type: "chatMessage", scope,
         ...(effectiveTargetId !== 0n ? { targetId: String(effectiveTargetId) } : {}),
         senderUid: message.invokerUid, timestamp: Date.now(), invokerName: message.invokerName,
-        invokerId: message.invokerId, message: message.message,
+        invokerId: message.invokerId, message: message.message, ...(ref ? { ref } : {}),
       });
-      if (scope !== "private") options.onChatMessage?.(scope, String(effectiveTargetId), message.invokerUid ?? "", message.invokerName ?? "", message.message);
     });
     this.listen("poked", event => {
       options.sendJson({ type: "pokeReceived", invokerId: event.invokerID, invokerUid: event.invokerUID, invokerName: event.invokerName, message: event.message, timestamp: Date.now() });

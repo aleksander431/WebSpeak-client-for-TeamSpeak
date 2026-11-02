@@ -23,10 +23,65 @@ export interface DesktopSettings {
   hotkeySounds: boolean;
   /** Share the PC's sound with the screen (without WebSpeak's voices where Windows allows). */
   shareSystemAudio: boolean;
+  /** Who is talking, drawn over games and other programs; off until the user turns it on. */
+  overlay: OverlaySettings;
   /** Remembered window bounds. */
   window?: { x?: number; y?: number; width: number; height: number; maximized: boolean };
   /** The tray hint was shown once. */
   trayHintShown: boolean;
+}
+
+export const OVERLAY_CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
+export type OverlayCorner = typeof OVERLAY_CORNERS[number];
+
+export interface OverlaySettings {
+  enabled: boolean;
+  corner: OverlayCorner;
+  /** Distance from the screen edges, in pixels. */
+  offsetX: number;
+  offsetY: number;
+  /** Size in percent (60–200). */
+  scale: number;
+  /** Opacity in percent (20–100). */
+  opacity: number;
+  /** "channel": everyone in the channel, talkers lit; "speaking": only who is talking now. */
+  mode: "channel" | "speaking";
+  /** Include yourself. */
+  showSelf: boolean;
+  /** Show the channel name above the list. */
+  showChannel: boolean;
+}
+
+export const DEFAULT_OVERLAY: OverlaySettings = Object.freeze({
+  enabled: false,
+  corner: "top-left",
+  offsetX: 24,
+  offsetY: 24,
+  scale: 100,
+  opacity: 90,
+  mode: "channel",
+  showSelf: true,
+  showChannel: true,
+}) as OverlaySettings;
+
+export function sanitizeOverlay(value: unknown, base: OverlaySettings = DEFAULT_OVERLAY): OverlaySettings {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const bool = (key: keyof OverlaySettings) => typeof input[key] === "boolean" ? input[key] as boolean : base[key] as boolean;
+  const number = (key: "offsetX" | "offsetY" | "scale" | "opacity", min: number, max: number) => {
+    const candidate = input[key];
+    return typeof candidate === "number" && Number.isFinite(candidate) ? Math.max(min, Math.min(max, Math.round(candidate))) : base[key];
+  };
+  return {
+    enabled: bool("enabled"),
+    corner: (OVERLAY_CORNERS as readonly unknown[]).includes(input.corner) ? input.corner as OverlayCorner : base.corner,
+    offsetX: number("offsetX", 0, 2000),
+    offsetY: number("offsetY", 0, 2000),
+    scale: number("scale", 60, 200),
+    opacity: number("opacity", 20, 100),
+    mode: input.mode === "channel" || input.mode === "speaking" ? input.mode : base.mode,
+    showSelf: bool("showSelf"),
+    showChannel: bool("showChannel"),
+  };
 }
 
 export const DEFAULT_SETTINGS: DesktopSettings = Object.freeze({
@@ -39,6 +94,7 @@ export const DEFAULT_SETTINGS: DesktopSettings = Object.freeze({
   streamHotkeySource: "picker",
   hotkeySounds: true,
   shareSystemAudio: false,
+  overlay: DEFAULT_OVERLAY,
   trayHintShown: false,
 }) as DesktopSettings;
 
@@ -132,6 +188,7 @@ export function sanitizeSettings(value: unknown, base: DesktopSettings = DEFAULT
     streamHotkeySource: input.streamHotkeySource === "screen" || input.streamHotkeySource === "picker" ? input.streamHotkeySource : base.streamHotkeySource,
     hotkeySounds: bool("hotkeySounds"),
     shareSystemAudio: bool("shareSystemAudio"),
+    overlay: sanitizeOverlay(input.overlay, base.overlay ?? DEFAULT_OVERLAY),
     trayHintShown: bool("trayHintShown"),
   };
   const windowInput = input.window as Record<string, unknown> | undefined;
@@ -159,7 +216,8 @@ export class SettingsStore {
     return this.current;
   }
   update(patch: Partial<DesktopSettings>): DesktopSettings {
-    this.current = sanitizeSettings({ ...this.current, ...patch, hotkeys: { ...this.current.hotkeys, ...(patch.hotkeys ?? {}) } }, this.current);
+    this.current = sanitizeSettings({ ...this.current, ...patch, hotkeys: { ...this.current.hotkeys, ...(patch.hotkeys ?? {}) },
+      overlay: { ...this.current.overlay, ...(patch.overlay ?? {}) } }, this.current);
     try {
       writeFileSync(`${this.file}.tmp`, JSON.stringify(this.current, null, 2));
       renameSync(`${this.file}.tmp`, this.file);

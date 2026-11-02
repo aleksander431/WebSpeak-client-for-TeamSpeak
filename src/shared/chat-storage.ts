@@ -6,6 +6,8 @@
  * link and WebSpeak renders a preview.
  */
 
+import { CHAT_REF_PATTERN, parseChatReactions, type ChatReaction } from "./chat-reactions.js";
+
 export const MIB = 1024 * 1024;
 export const GIB = 1024 * MIB;
 
@@ -42,6 +44,9 @@ export interface ChatHistoryMessage {
   senderName: string;
   message: string;
   timestamp: number;
+  /** Reaction reference, while the gateway still knows the message. */
+  ref?: string;
+  reactions?: ChatReaction[];
 }
 
 /** What a connected browser needs to upload and read history. */
@@ -159,6 +164,8 @@ export function parseChatHistory(value: unknown): ChatHistoryMessage[] | null {
       id: record.id, scope: record.scope, channelId: typeof record.channelId === "string" ? record.channelId : "",
       senderUid: typeof record.senderUid === "string" ? record.senderUid : "",
       senderName: typeof record.senderName === "string" ? record.senderName : "", message: record.message, timestamp: record.timestamp,
+      ...(typeof record.ref === "string" && CHAT_REF_PATTERN.test(record.ref) ? { ref: record.ref } : {}),
+      ...(parseChatReactions(record.reactions)?.length ? { reactions: parseChatReactions(record.reactions)! } : {}),
     });
   }
   return messages;

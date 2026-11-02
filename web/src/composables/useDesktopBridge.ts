@@ -1,4 +1,4 @@
-import { onUnmounted, watch } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
 
 /*
  * Bridge to the WebSpeak desktop client (Electron). The desktop shell's
@@ -16,6 +16,15 @@ export interface DesktopHost {
   platform: string;
   reportState(state: DesktopState): void;
   openSettings(): void;
+  /** Newer shells: feed the in-game overlay. */
+  reportOverlay?(kind: "roster" | "speaking", value: unknown): void;
+}
+
+/** Who is in the current channel, for the desktop overlay. */
+export interface DesktopOverlayRoster {
+  connected: boolean;
+  channel: string;
+  members: { id: number; name: string; muted: boolean; self: boolean; avatar?: string }[];
 }
 
 export interface DesktopState {
@@ -38,6 +47,10 @@ export interface DesktopBridgeOptions {
   /** Push-to-talk: the desktop client turns the mode on and reports the key. */
   setPushToTalkMode?: (enabled: boolean) => void;
   setPushToTalkHeld?: (held: boolean) => void;
+  /** The current channel for the in-game overlay; changes rarely. */
+  overlayRoster?: () => DesktopOverlayRoster;
+  /** Ids talking now; changes many times a second. */
+  speakingIds?: () => number[];
 }
 
 /** Push-to-talk messages from the desktop shell; they never play a sound. */
@@ -127,8 +140,25 @@ export function useDesktopBridge(options: DesktopBridgeOptions, target: Window &
     try { host.reportState({ ...state }); } catch { /* the shell went away */ }
   }, { immediate: true, deep: true });
 
+  // The overlay data goes only to shells that can show it; the shell keeps it while the overlay is off.
+  // Started once the page is set up: the getters read page state defined after this call.
+  const overlayHost = typeof host.reportOverlay === "function" ? host : null;
+  let stopRoster = () => {};
+  let stopSpeaking = () => {};
+  onMounted(() => {
+    if (!overlayHost) return;
+    if (options.overlayRoster) stopRoster = watch(options.overlayRoster, (roster) => {
+      try { overlayHost.reportOverlay!("roster", roster); } catch { /* the shell went away */ }
+    }, { immediate: true, deep: true });
+    if (options.speakingIds) stopSpeaking = watch(() => [...options.speakingIds!()].sort((a, b) => a - b).join(","), (ids) => {
+      try { overlayHost.reportOverlay!("speaking", ids ? ids.split(",").map(Number) : []); } catch { /* the shell went away */ }
+    }, { immediate: true });
+  });
+
   onUnmounted(() => {
     stopWatching();
+    stopRoster();
+    stopSpeaking();
     options.setPushToTalkMode?.(false);
     if (target.__webspeakDesktopAction) delete target.__webspeakDesktopAction;
   });

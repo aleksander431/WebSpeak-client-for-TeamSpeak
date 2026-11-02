@@ -1,6 +1,7 @@
 import { reactive, ref } from "vue";
 import type { ServerMessage } from "../../../src/shared/server-messages.js";
 import type { ChannelInfo, ChannelMember, ChatMessage, ServerEvent } from "../../../src/shared/voice-models.js";
+import type { ChatReaction } from "../../../src/shared/chat-reactions.js";
 
 interface SessionStateOptions {
   selfId(): number;
@@ -13,6 +14,8 @@ export function createVoiceSessionState(options: SessionStateOptions) {
   const members = reactive<ChannelMember[]>([]);
   const channels = reactive<ChannelInfo[]>([]);
   const chatMessages = reactive<ChatMessage[]>([]);
+  /** Reactions by message reference, as the gateway last reported them. */
+  const chatReactions = reactive(new Map<string, ChatReaction[]>());
   const serverEvents = reactive<ServerEvent[]>([]);
   const pokeNotifications = reactive<{ id: string; invokerId: number; invokerUid: string; invokerName: string; message: string; timestamp: number }[]>([]);
   let sequence = 0;
@@ -138,9 +141,14 @@ export function createVoiceSessionState(options: SessionStateOptions) {
             conversationName: message.invokerName || "Unknown" } : {}),
           senderId: message.invokerId, senderUid: message.senderUid, invokerName: message.invokerName || "Unknown",
           message: message.message, timestamp: message.timestamp ?? Date.now(),
+          ...(message.ref && scope !== "private" ? { ref: message.ref } : {}),
         });
         break;
       }
+      case "chatReactions":
+        if (message.reactions.length) chatReactions.set(message.ref, message.reactions);
+        else chatReactions.delete(message.ref);
+        break;
       case "serverEvent": serverEvents.push(message.event); break;
       case "pokeReceived":
         pokeNotifications.push({ id: nextId("poke"), invokerId: message.invokerId || 0,
@@ -163,10 +171,11 @@ export function createVoiceSessionState(options: SessionStateOptions) {
     unknownSenders.clear();
     channels.length = 0;
     chatMessages.length = 0;
+    chatReactions.clear();
     serverEvents.length = 0;
     pokeNotifications.length = 0;
   }
 
-  return { epoch, members, channels, chatMessages, serverEvents, pokeNotifications, connected, receive, appendLocal, reset,
+  return { epoch, members, channels, chatMessages, chatReactions, serverEvents, pokeNotifications, connected, receive, appendLocal, reset,
     memberConversationKey: (id: number) => memberKeys.get(id) };
 }
