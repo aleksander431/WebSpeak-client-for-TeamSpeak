@@ -365,3 +365,16 @@ test("share settings submit the selected resolution and frame rate", async t => 
     assert.equal(f.ui.settingsOpen.value, false); assert.equal(f.storage.get("webspeak:screen-share-framerate"), "30");
   } finally { f.app.unmount(); }
 });
+
+test("the stream volume is remembered for the next stream and visit", async t => {
+  const first = mount(t, null, () => "", {}, {});
+  try {
+    first.ui.setVolume({ target: { value: "25" } });
+    assert.equal(first.volume.value, .25);
+    assert.equal(first.storage.get("webspeak:screen-share-volume"), "0.25");
+  } finally { first.app.unmount(); }
+  const next = mount(t, null, () => "", {}, { "webspeak:screen-share-volume": "0.25" });
+  try { assert.equal(next.volume.value, .25, "restored on the next visit"); } finally { next.app.unmount(); }
+  const broken = mount(t, null, () => "", {}, { "webspeak:screen-share-volume": "loud" });
+  try { assert.equal(broken.volume.value, .4, "a damaged value keeps the default"); } finally { broken.app.unmount(); }
+});

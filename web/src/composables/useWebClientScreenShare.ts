@@ -89,6 +89,13 @@ export function useWebClientScreenShare({
     { value: "8", bitrate: 8_000_000, label: "screenShareBitrate8M" },
     { value: "12", bitrate: 12_000_000, label: "screenShareBitrate12M" },
   ];
+  // The viewer's stream volume is remembered between streams and visits.
+  const VOLUME_KEY = "webspeak:screen-share-volume";
+  try {
+    const storedVolume = localStorage.getItem(VOLUME_KEY);
+    const volume = storedVolume === null ? Number.NaN : Number(storedVolume);
+    if (Number.isFinite(volume) && volume >= 0 && volume <= 1) remoteVolume.value = volume;
+  } catch { /* storage unavailable: keep the default */ }
   const storedResolution = localStorage.getItem("webspeak:screen-share-resolution") as ScreenShareResolutionPreset | null;
   const resolutionPreset = ref<ScreenShareResolutionPreset>(resolutionOptions.some((option) => option.value === storedResolution) ? storedResolution! : "1080p");
   const storedFrameRate = Number(localStorage.getItem("webspeak:screen-share-framerate"));
@@ -163,6 +170,7 @@ export function useWebClientScreenShare({
 
   function setVolume(event: Event): void {
     remoteVolume.value = Math.max(0, Math.min(1, Number((event.target as HTMLInputElement).value) / 100));
+    try { localStorage.setItem(VOLUME_KEY, String(remoteVolume.value)); } catch { /* not remembered this time */ }
   }
 
   function syncFullscreen(): void {
