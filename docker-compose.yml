@@ -16,8 +16,52 @@ services:
       # loopback, e.g. WEBSPEAK_TRUSTED_PROXIES=192.168.50.111 in .env.
       # Only these may tell WebSpeak the real visitor IP (X-Real-IP / X-Forwarded-For).
       WEBSPEAK_TRUSTED_PROXIES: ${WEBSPEAK_TRUSTED_PROXIES:-}
+      # Screen-share STUN/TURN servers as a JSON array; empty uses TeamSpeak's public STUN.
+      WEBSPEAK_SCREEN_SHARE_ICE_SERVERS: ${WEBSPEAK_SCREEN_SHARE_ICE_SERVERS:-}
     volumes:
       - webspeak-data:/data
+
+  # Optional TURN relay for screen sharing, for viewers whose network blocks a
+  # direct connection (black screen). Off unless COMPOSE_PROFILES=turn is in .env.
+  # Needs TURN_PASSWORD, TURN_REALM and TURN_PRIVATE_IP (this host's LAN address);
+  # forward UDP+TCP 3478 and UDP 49160-49200 on the router to this host.
+  turn:
+    image: coturn/coturn:4.6.2
+    profiles: ["turn"]
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --fingerprint
+      - --lt-cred-mech
+      - --realm=${TURN_REALM:-webspeak}
+      - --user=webspeak:${TURN_PASSWORD:-}
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      # Public address (looked up at start) mapped to this host's LAN address.
+      - --external-ip=$$(detect-external-ip)/${TURN_PRIVATE_IP:-}
+      - --relay-ip=${TURN_PRIVATE_IP:-}
+      # Never relay into private networks: the relay must not become a way into your LAN.
+      - --no-multicast-peers
+      - --denied-peer-ip=0.0.0.0-0.255.255.255
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=100.64.0.0-100.127.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+      - --denied-peer-ip=169.254.0.0-169.254.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=::1
+      - --denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      - --denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      # Limits for a small group: sessions per user and total relay bandwidth.
+      - --user-quota=12
+      - --total-quota=24
+      - --max-bps=3000000
 
 volumes:
   webspeak-data:
