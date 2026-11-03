@@ -1,9 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { HOTKEY_ACTIONS, type HotkeyAction } from "./settings.js";
-import type { HotkeySlot, HotkeyStatus, NativeHotkeyApi } from "./hotkeys.js";
+import type { HoldSlot, HotkeySlot, HotkeyStatus, NativeHotkeyApi } from "./hotkeys.js";
 
 const PUSH_TO_TALK_ID = 100;
+const WHISPER_ID = 101;
 
 /**
  * Runs native/hotkeys.cpp for hotkeys Electron cannot register (Pause and
@@ -19,11 +20,11 @@ export class NativeHotkeys implements NativeHotkeyApi {
     private readonly onResult: (action: HotkeySlot, status: HotkeyStatus) => void,
     private readonly log: (message: string) => void = () => {},
     private readonly anyPlatform = false,
-    private readonly onHold: (held: boolean) => void = () => {},
+    private readonly onHold: (held: boolean, slot: HoldSlot) => void = () => {},
   ) {}
 
-  set(bindings: { action: HotkeyAction; accelerator: string }[], pushToTalk: string | null = null): boolean {
-    if (!bindings.length && !pushToTalk) { this.stop(); return true; }
+  set(bindings: { action: HotkeyAction; accelerator: string }[], pushToTalk: string | null = null, whisper: string | null = null): boolean {
+    if (!bindings.length && !pushToTalk && !whisper) { this.stop(); return true; }
     if ((process.platform !== "win32" && !this.anyPlatform) || !existsSync(this.helperPath)) return false;
     const child = this.ensure();
     if (!child?.stdin?.writable) return false;
@@ -31,6 +32,7 @@ export class NativeHotkeys implements NativeHotkeyApi {
       .map((part) => (part === "CommandOrControl" || part === "Control" ? "Ctrl" : part === "Super" ? "Win" : part)).join("+");
     const lines = ["clear", ...bindings.map(({ action, accelerator }) => `set ${HOTKEY_ACTIONS.indexOf(action) + 1} ${spec(accelerator)}`)];
     if (pushToTalk) lines.push(`hold ${PUSH_TO_TALK_ID} ${pushToTalk}`);
+    if (whisper) lines.push(`hold ${WHISPER_ID} ${whisper}`);
     child.stdin.write(lines.join("\n") + "\n");
     return true;
   }
@@ -71,9 +73,11 @@ export class NativeHotkeys implements NativeHotkeyApi {
       this.child = null;
       // An unexpected exit leaves these hotkeys dead: report them, and never
       // leave push-to-talk stuck open.
-      this.onHold(false);
+      this.onHold(false, "ptt");
+      this.onHold(false, "whisper");
       for (const action of HOTKEY_ACTIONS) this.onResult(action, "unsupported");
       this.onResult("ptt", "unsupported");
+      this.onResult("whisper", "unsupported");
     });
     child.stdin!.on("error", () => { /* helper gone; exit handler reports it */ });
     return child;
@@ -81,11 +85,12 @@ export class NativeHotkeys implements NativeHotkeyApi {
 
   private handle(line: string): void {
     const [kind, idText] = line.split(" ");
-    if (Number(idText) === PUSH_TO_TALK_ID) {
-      if (kind === "down" || kind === "up") this.onHold(kind === "down");
-      else if (kind === "ok") this.onResult("ptt", "active");
-      else if (kind === "taken") this.onResult("ptt", "taken");
-      else if (kind === "invalid") this.onResult("ptt", "invalid");
+    const hold: HoldSlot | null = Number(idText) === PUSH_TO_TALK_ID ? "ptt" : Number(idText) === WHISPER_ID ? "whisper" : null;
+    if (hold) {
+      if (kind === "down" || kind === "up") this.onHold(kind === "down", hold);
+      else if (kind === "ok") this.onResult(hold, "active");
+      else if (kind === "taken") this.onResult(hold, "taken");
+      else if (kind === "invalid") this.onResult(hold, "invalid");
       return;
     }
     const action = HOTKEY_ACTIONS[Number(idText) - 1];

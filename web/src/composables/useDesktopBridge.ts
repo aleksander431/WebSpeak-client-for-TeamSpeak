@@ -47,6 +47,8 @@ export interface DesktopBridgeOptions {
   /** Push-to-talk: the desktop client turns the mode on and reports the key. */
   setPushToTalkMode?: (enabled: boolean) => void;
   setPushToTalkHeld?: (held: boolean) => void;
+  /** Whisper key of the desktop client held or released. */
+  setWhisperHeld?: (held: boolean) => void;
   /** The current channel for the in-game overlay; changes rarely. */
   overlayRoster?: () => DesktopOverlayRoster;
   /** Ids talking now; changes many times a second. */
@@ -133,6 +135,10 @@ export function useDesktopBridge(options: DesktopBridgeOptions, target: Window &
 
   target.__webspeakDesktopAction = (action: unknown, sound: unknown) => {
     if (action === "pttDown" || action === "pttUp" || action === "pttModeOn" || action === "pttModeOff") return runPushToTalkAction(action, options);
+    if (action === "whisperDown" || action === "whisperUp") {
+      options.setWhisperHeld?.(action === "whisperDown");
+      return action === "whisperDown" ? "whisper-down" : "whisper-up";
+    }
     if (action !== "mic" && action !== "sound" && action !== "stream") return "unknown-action";
     return runDesktopAction(action, options, playDesktopTone, sound === true);
   };

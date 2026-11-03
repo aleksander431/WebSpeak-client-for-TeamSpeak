@@ -55,7 +55,7 @@ let settingsWindow: BrowserWindow | null = null;
 let pickerWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let hotkeys: HotkeyManager;
-let hotkeyStatus: HotkeyStatusMap = { mic: "off", sound: "off", stream: "off", ptt: "off" };
+let hotkeyStatus: HotkeyStatusMap = { mic: "off", sound: "off", stream: "off", ptt: "off", whisper: "off" };
 /** Push-to-talk mode last told to the page; null until the page has been told after a load. */
 let pagePushToTalkMode: boolean | null = null;
 let webState: WebClientState = { connected: false, micMuted: false, soundMuted: false, streaming: false, speaking: false };
@@ -331,6 +331,16 @@ function runPushToTalk(held: boolean): void {
   ).catch(() => { /* the page is reloading */ });
 }
 
+/** Whisper key pressed or released: the page whispers to the chosen members only while held. */
+function runWhisper(held: boolean): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed() || !isServerUrl(window.webContents.getURL())) return;
+  window.webContents.executeJavaScript(
+    `typeof window.__webspeakDesktopAction === "function" ? window.__webspeakDesktopAction(${JSON.stringify(held ? "whisperDown" : "whisperUp")}, false) : "unavailable"`,
+    true,
+  ).catch(() => { /* the page is reloading */ });
+}
+
 /**
  * Tell the page whether push-to-talk is on. It is on only while the helper
  * has confirmed the key, so a missing helper never leaves the voice closed.
@@ -425,7 +435,7 @@ function openSettings(): void {
   window.on("closed", () => {
     if (settingsWindow === window) settingsWindow = null;
     // Hotkeys were paused while a field was capturing keys.
-    hotkeyStatus = hotkeys.apply(settings.value.hotkeys, settings.value.pushToTalk);
+    hotkeyStatus = hotkeys.apply(settings.value.hotkeys, settings.value.pushToTalk, settings.value.whisper);
   });
   void window.loadFile(join(STATIC, "settings.html"));
 }
@@ -438,7 +448,7 @@ function applySettings(next: DesktopSettings, previous: DesktopSettings): void {
   if (app.isPackaged) {
     app.setLoginItemSettings({ openAtLogin: next.launchAtLogin, path: process.execPath, args: ["--hidden"] });
   }
-  hotkeyStatus = hotkeys.apply(next.hotkeys, next.pushToTalk);
+  hotkeyStatus = hotkeys.apply(next.hotkeys, next.pushToTalk, next.whisper);
   syncPushToTalkMode();
   configureOverlay();
   if (next.serverUrl !== previous.serverUrl && mainWindow) loadServer(mainWindow);
@@ -461,7 +471,7 @@ function registerIpc(): void {
   ipcMain.on("settings:capture", (event, capturing: unknown) => {
     if (!fromSettings(event.sender)) return;
     if (capturing === true) hotkeys.clear();
-    else hotkeyStatus = hotkeys.apply(settings.value.hotkeys, settings.value.pushToTalk);
+    else hotkeyStatus = hotkeys.apply(settings.value.hotkeys, settings.value.pushToTalk, settings.value.whisper);
   });
   ipcMain.on("settings:check-updates", (event) => { if (fromSettings(event.sender)) checkForUpdates(true); });
   ipcMain.on("settings:install-update", (event) => { if (fromSettings(event.sender)) installUpdate(); });
@@ -621,15 +631,15 @@ void app.whenReady().then(() => {
     (action, status) => hotkeys.nativeResult(action, status),
     (message) => console.log(message),
     Boolean(process.env.WEBSPEAK_HOTKEY_HELPER),
-    (held) => hotkeys.nativeHold(held),
+    (held, slot) => hotkeys.nativeHold(held, slot),
   );
   app.on("will-quit", () => nativeHotkeys.stop());
   hotkeys = new HotkeyManager(globalShortcut, (action) => void runWebAction(action, true), undefined, nativeHotkeys, (status) => {
     hotkeyStatus = status;
     settingsWindow?.webContents.send("settings:hotkey-status", status);
     syncPushToTalkMode();
-  }, (held) => runPushToTalk(held));
-  hotkeyStatus = hotkeys.apply(settings.value.hotkeys, settings.value.pushToTalk);
+  }, (held) => runPushToTalk(held), (held) => runWhisper(held));
+  hotkeyStatus = hotkeys.apply(settings.value.hotkeys, settings.value.pushToTalk, settings.value.whisper);
 
   tray = new Tray(nativeImage.createFromPath(join(STATIC, "tray.png")));
   tray.on("click", () => showWindow());

@@ -63,7 +63,7 @@ test("hotkeys report taken keys, ignore auto-repeat and re-register cleanly", ()
     unregister: (accelerator) => { registered.delete(accelerator); },
   }, (action) => fired.push(action), () => now);
   const status = manager.apply({ mic: "CommandOrControl+Shift+M", sound: "Alt+F10", stream: "" });
-  assert.deepEqual(status, { mic: "active", sound: "taken", stream: "off", ptt: "off" });
+  assert.deepEqual(status, { mic: "active", sound: "taken", stream: "off", ptt: "off", whisper: "off" });
   const press = registered.get("CommandOrControl+Shift+M")!;
   press(); now += 40; press(); now += 40; press();
   assert.deepEqual(fired, ["mic"], "a held key is one press");
@@ -104,7 +104,7 @@ test("Pause and mouse buttons go to the native helper and report its answers", (
     (status) => changes.push(status),
   );
   const status = manager.apply({ mic: "Pause", sound: "CommandOrControl+Shift+D", stream: "Mouse5" });
-  assert.deepEqual(status, { mic: "active", sound: "active", stream: "active", ptt: "off" });
+  assert.deepEqual(status, { mic: "active", sound: "active", stream: "active", ptt: "off", whisper: "off" });
   assert.deepEqual(sets.at(-1), [{ action: "mic", accelerator: "Pause" }, { action: "stream", accelerator: "Mouse5" }]);
   manager.nativeResult("stream", "taken");
   assert.equal(manager.statuses().stream, "taken");
@@ -130,14 +130,14 @@ test("push-to-talk accepts one held key, modifier or mouse button", () => {
 });
 
 test("push-to-talk goes to the native helper, reports press and release, and never stays held", () => {
-  const sets: Array<{ bindings: unknown[]; ptt: string | null | undefined }> = [];
+  const sets: Array<{ bindings: unknown[]; ptt: string | null | undefined; whisper?: string | null }> = [];
   const holds: boolean[] = [];
   const changes: Array<Record<string, string>> = [];
   let helperAvailable = true;
   const manager = new HotkeyManager(
     { register: () => true, unregister: () => {} },
     () => {}, () => 0,
-    { set: (bindings, ptt) => { sets.push({ bindings, ptt }); return helperAvailable; } },
+    { set: (bindings, ptt, whisper) => { sets.push({ bindings, ptt, ...(whisper ? { whisper } : {}) }); return helperAvailable; } },
     (status) => changes.push(status),
     (held) => holds.push(held),
   );
@@ -166,4 +166,36 @@ test("push-to-talk goes to the native helper, reports press and release, and nev
   assert.equal(without.ptt, "unsupported");
   assert.equal(manager.pushToTalkActive, false, "without the helper the page keeps an open microphone");
   assert.equal(manager.apply({ mic: "", sound: "", stream: "" }, "Ctrl+V").ptt, "invalid");
+});
+
+test("whisper is a second held key with its own press, release and status", () => {
+  const sets: Array<{ ptt: string | null | undefined; whisper: string | null | undefined }> = [];
+  const talk: boolean[] = [];
+  const whisper: boolean[] = [];
+  const manager = new HotkeyManager(
+    { register: () => true, unregister: () => {} },
+    () => {}, () => 0,
+    { set: (_bindings, ptt, key) => { sets.push({ ptt, whisper: key }); return true; } },
+    () => {},
+    (held) => talk.push(held),
+    (held) => whisper.push(held),
+  );
+  const status = manager.apply({ mic: "", sound: "", stream: "" }, "V", "Mouse5");
+  assert.equal(status.whisper, "active");
+  assert.deepEqual(sets.at(-1), { ptt: "V", whisper: "Mouse5" });
+  manager.nativeHold(true, "whisper");
+  manager.nativeHold(true, "whisper");
+  manager.nativeHold(false, "whisper");
+  assert.deepEqual(whisper, [true, false]);
+  assert.deepEqual(talk, [], "whisper never opens push-to-talk");
+  manager.nativeHold(true, "whisper");
+  manager.nativeResult("whisper", "taken");
+  assert.deepEqual(whisper, [true, false, true, false], "losing the key releases a held whisper");
+  assert.equal(manager.statuses().whisper, "taken");
+  assert.equal(manager.apply({ mic: "", sound: "", stream: "" }, "", "Ctrl+V").whisper, "invalid");
+
+  assert.equal(DEFAULT_SETTINGS.whisper, "");
+  assert.equal(sanitizeSettings({ whisper: "Mouse4" }).whisper, "Mouse4");
+  assert.equal(sanitizeSettings({ pushToTalk: "Mouse4", whisper: "Mouse4" }).whisper, "", "it cannot share push-to-talk's key");
+  assert.equal(sanitizeSettings({ hotkeys: { mic: "Mouse5", sound: "", stream: "" }, whisper: "Mouse5" }).whisper, "", "nor a toggle hotkey's");
 });

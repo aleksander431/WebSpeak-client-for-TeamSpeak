@@ -199,6 +199,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Chat: angeheftete Nachrichten. Kanal- oder Servernachrichten lassen sich über ihre Aktionen anheften; eine Leiste über dem Chat zeigt die neueste und öffnet die Liste, aus der man zur Nachricht springen oder sie lösen kann. Sie werden auf dem Server gespeichert (bis zu 50 pro Chat) und sind für alle WebSpeak-Nutzer im Chat sichtbar.
 - Telefon-Browser: eine Anrufkarte in der Benachrichtigungsleiste und auf dem Sperrbildschirm (Mikrofon und Verlassen), automatischer Wiederbeitritt in denselben Kanal, wenn der Browser die Verbindung im Hintergrund getrennt hat, Neustart des Tons bei der Rückkehr und ein Schalter für den automatischen Status „Abwesend“. Beide Optionen stehen in den Audioeinstellungen unter „Telefon“.
 - KAAK-Design: ein angesehener Stream füllt jetzt die gesamte freie Höhe des Sprachbereichs, die Mitglieder stehen in einer kompakten Reihe darunter. Der Text „Verbindung zum Stream“ ist in allen Designs lesbar.
+- Desktop-Client: eine Flüstertaste. Solange du die Taste oder Maustaste hältst (Einstellungen → Flüstern), flüsterst du den gewählten Flüsterzielen, auch im Spiel. Benötigt die neue Desktop-Version.
 
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 

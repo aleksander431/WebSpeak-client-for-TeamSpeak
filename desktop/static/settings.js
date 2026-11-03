@@ -9,7 +9,13 @@
 
   const $ = (id) => document.getElementById(id);
   const actions = [["mic", "hotkeyMic"], ["sound", "hotkeySound"], ["stream", "hotkeyStream"]];
-  const draft = { hotkeys: { ...snapshot.settings.hotkeys }, pushToTalk: snapshot.settings.pushToTalk || "" };
+  const draft = { hotkeys: { ...snapshot.settings.hotkeys }, pushToTalk: snapshot.settings.pushToTalk || "", whisper: snapshot.settings.whisper || "" };
+  // Keys that act while held: push-to-talk and whisper. Field in the draft and settings, plus strings.
+  const HOLDS = {
+    ptt: { field: "pushToTalk", container: "ptt", name: "pttKey", active: "pttActive", taken: "pttTaken", unsupported: "pttUnsupported" },
+    whisper: { field: "whisper", container: "whisperHotkey", name: "whisperKey", active: "whisperActive", taken: "pttTaken", unsupported: "pttUnsupported" },
+  };
+  const isHold = (slot) => Object.prototype.hasOwnProperty.call(HOLDS, slot);
   let listening = null;
 
   // --- accelerators -------------------------------------------------------
@@ -76,13 +82,13 @@
     capture.addEventListener("click", () => startListening(action));
     clear.addEventListener("click", () => { stopListening(); draft.hotkeys[action] = ""; renderHotkeys(); });
   }
-  // Push-to-talk: one key held down. It is not taken from other programs, so
+  // Held keys: one key held down. They are not taken from other programs, so
   // any key works on its own, including letters and Ctrl/Alt/Shift.
-  {
+  for (const [slot, hold] of Object.entries(HOLDS)) {
     const row = document.createElement("div");
     row.className = "hotkey";
     const name = document.createElement("span");
-    name.textContent = t("pttKey");
+    name.textContent = t(hold.name);
     const capture = document.createElement("button");
     capture.type = "button";
     capture.className = "capture";
@@ -93,15 +99,15 @@
     const status = document.createElement("p");
     status.className = "status hint";
     row.append(name, capture, clear, status);
-    $("ptt").append(row);
-    rows.ptt = { capture, status };
-    capture.addEventListener("click", () => startListening("ptt"));
-    clear.addEventListener("click", () => { stopListening(); draft.pushToTalk = ""; renderHotkeys(); });
+    $(hold.container).append(row);
+    rows[slot] = { capture, status };
+    capture.addEventListener("click", () => startListening(slot));
+    clear.addEventListener("click", () => { stopListening(); draft[hold.field] = ""; renderHotkeys(); });
   }
   const PTT_MODIFIERS = { ControlLeft: "Ctrl", ControlRight: "Ctrl", AltLeft: "Alt", AltRight: "Alt", ShiftLeft: "Shift", ShiftRight: "Shift" };
   const PTT_UNSUPPORTED = /^(?:Media|Volume)/;
-  function setPushToTalk(value) {
-    draft.pushToTalk = value;
+  function setHoldKey(slot, value) {
+    draft[HOLDS[slot].field] = value;
     stopListening();
   }
 
@@ -122,13 +128,13 @@
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.shiftKey) { stopListening(); return; }
-    if (listening === "ptt") {
+    if (isHold(listening)) {
       const key = PTT_MODIFIERS[event.code] || keyFromCode(event.code);
-      if (key && !PTT_UNSUPPORTED.test(key)) setPushToTalk(key);
+      if (key && !PTT_UNSUPPORTED.test(key)) setHoldKey(listening, key);
       else if (!MODIFIER_CODES.test(event.code)) {
-        rows.ptt.status.className = "status hint invalid";
-        rows.ptt.status.textContent = t("hotkeyUnsupported");
-        rows.ptt.status.hidden = false;
+        rows[listening].status.className = "status hint invalid";
+        rows[listening].status.textContent = t("hotkeyUnsupported");
+        rows[listening].status.hidden = false;
       }
       return;
     }
@@ -150,10 +156,10 @@
   window.addEventListener("blur", () => stopListening());
   // Mouse side buttons (back/forward) can be hotkeys too.
   document.addEventListener("mousedown", (event) => {
-    if (listening === "ptt" && (event.button === 1 || event.button === 3 || event.button === 4)) {
+    if (isHold(listening) && (event.button === 1 || event.button === 3 || event.button === 4)) {
       event.preventDefault();
       event.stopPropagation();
-      setPushToTalk(event.button === 1 ? "Mouse3" : event.button === 3 ? "Mouse4" : "Mouse5");
+      setHoldKey(listening, event.button === 1 ? "Mouse3" : event.button === 3 ? "Mouse4" : "Mouse5");
       return;
     }
     if (!listening || (event.button !== 3 && event.button !== 4)) return;
@@ -168,10 +174,10 @@
   api.onHotkeyStatus((status) => { snapshot.hotkeyStatus = status; renderHotkeys(); });
 
   function duplicateOf(action) {
-    const value = (action === "ptt" ? draft.pushToTalk : draft.hotkeys[action]).toLowerCase();
+    const valueOf = (slot) => (isHold(slot) ? draft[HOLDS[slot].field] : draft.hotkeys[slot]).toLowerCase();
+    const value = valueOf(action);
     if (!value) return false;
-    if (action !== "ptt" && draft.pushToTalk.toLowerCase() === value) return true;
-    return actions.some(([other]) => other !== action && draft.hotkeys[other].toLowerCase() === value);
+    return [...actions.map(([other]) => other), ...Object.keys(HOLDS)].some((other) => other !== action && valueOf(other) === value);
   }
   function renderHotkeys() {
     for (const [action] of actions) {
@@ -186,20 +192,20 @@
       status.textContent = state === "taken" ? t("hotkeyTaken") : state === "invalid" ? t("hotkeyInvalid") : state === "duplicate" ? t("hotkeyDuplicate") : state === "unsupported" ? t("hotkeyUnsupported") : "";
       status.hidden = !status.textContent;
     }
-    {
-      const { capture, status } = rows.ptt;
-      const value = draft.pushToTalk;
-      capture.classList.toggle("listening", listening === "ptt");
-      capture.classList.toggle("empty", !value && listening !== "ptt");
-      capture.textContent = listening === "ptt" ? t("pttPress") : value ? label(value) : t("hotkeyNone");
-      const saved = (snapshot.settings.pushToTalk || "") === value;
-      const state = duplicateOf("ptt") ? "duplicate" : saved && value ? snapshot.hotkeyStatus.ptt : "";
+    for (const [slot, hold] of Object.entries(HOLDS)) {
+      const { capture, status } = rows[slot];
+      const value = draft[hold.field];
+      capture.classList.toggle("listening", listening === slot);
+      capture.classList.toggle("empty", !value && listening !== slot);
+      capture.textContent = listening === slot ? t("pttPress") : value ? label(value) : t("hotkeyNone");
+      const saved = (snapshot.settings[hold.field] || "") === value;
+      const state = duplicateOf(slot) ? "duplicate" : saved && value ? snapshot.hotkeyStatus[slot] : "";
       status.className = `status hint ${state}`;
-      status.textContent = state === "taken" ? t("pttTaken") : state === "invalid" ? t("hotkeyInvalid") : state === "duplicate" ? t("hotkeyDuplicate")
-        : state === "unsupported" ? t("pttUnsupported") : state === "active" ? t("pttActive") : "";
+      status.textContent = state === "taken" ? t(hold.taken) : state === "invalid" ? t("hotkeyInvalid") : state === "duplicate" ? t("hotkeyDuplicate")
+        : state === "unsupported" ? t(hold.unsupported) : state === "active" ? t(hold.active) : "";
       status.hidden = !status.textContent;
     }
-    $("save").disabled = actions.some(([action]) => !isValid(draft.hotkeys[action]) || duplicateOf(action)) || duplicateOf("ptt");
+    $("save").disabled = actions.some(([action]) => !isValid(draft.hotkeys[action]) || duplicateOf(action)) || Object.keys(HOLDS).some((slot) => duplicateOf(slot));
   }
 
   // --- updates ------------------------------------------------------------
@@ -280,6 +286,7 @@
       streamHotkeySource: $("streamHotkeySource").value,
       hotkeys: draft.hotkeys,
       pushToTalk: draft.pushToTalk,
+      whisper: draft.whisper,
       overlay: overlayDraft(),
     });
     if (!result) return;
@@ -287,6 +294,7 @@
     snapshot = { ...result, strings };
     Object.assign(draft.hotkeys, snapshot.settings.hotkeys);
     draft.pushToTalk = snapshot.settings.pushToTalk || "";
+    draft.whisper = snapshot.settings.whisper || "";
     fill();
     const note = $("savedNote");
     note.hidden = false;

@@ -5,7 +5,7 @@
 // reports presses on stdout:
 //
 //   stdin:  set <id> <spec>    spec: [Ctrl+][Alt+][Shift+][Win+]Pause|Mouse4|Mouse5
-//           hold <id> <key>    push-to-talk: one key, Ctrl/Alt/Shift, Mouse3/4/5
+//           hold <id> <key>    held keys (push-to-talk, whisper): one key, Ctrl/Alt/Shift, Mouse3/4/5
 //           clear
 //   stdout: ok <id> | taken <id> | invalid <id> | fire <id> | down <id> | up <id>
 //
@@ -44,14 +44,14 @@ std::vector<Binding> g_bindings;
 HHOOK g_mouseHook = nullptr;
 HHOOK g_keyboardHook = nullptr;
 
-// Push-to-talk: at most one binding, reported as down/up.
+// Held keys (push-to-talk, whisper), one per id, reported as down/up.
 struct HoldBinding {
   int id = 0;
   UINT keys[2] = {0, 0};  // virtual keys (left/right variants for modifiers)
   int mouseButton = 0;    // 3 middle, 4 back, 5 forward
   bool held = false;
 };
-HoldBinding g_hold;
+std::vector<HoldBinding> g_holds;
 CRITICAL_SECTION g_outputLock;
 
 void Emit(const char* kind, int id) {
@@ -70,32 +70,38 @@ UINT CurrentModifiers() {
   return flags;
 }
 
-void SetHeld(bool held) {
-  if (!g_hold.id || g_hold.held == held) return;
-  g_hold.held = held;
-  Emit(held ? "down" : "up", g_hold.id);
+void SetHeld(HoldBinding& hold, bool held) {
+  if (!hold.id || hold.held == held) return;
+  hold.held = held;
+  Emit(held ? "down" : "up", hold.id);
 }
 
 LRESULT CALLBACK KeyboardHook(int code, WPARAM wParam, LPARAM lParam) {
-  if (code == HC_ACTION && g_hold.id && !g_hold.mouseButton) {
+  if (code == HC_ACTION) {
     const KBDLLHOOKSTRUCT* info = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
-    if (info->vkCode == g_hold.keys[0] || (g_hold.keys[1] && info->vkCode == g_hold.keys[1])) {
-      // Auto-repeat sends more key-downs while held; SetHeld ignores them.
-      if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) SetHeld(true);
-      else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) SetHeld(false);
+    for (HoldBinding& hold : g_holds) {
+      if (hold.mouseButton) continue;
+      if (info->vkCode == hold.keys[0] || (hold.keys[1] && info->vkCode == hold.keys[1])) {
+        // Auto-repeat sends more key-downs while held; SetHeld ignores them.
+        if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) SetHeld(hold, true);
+        else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) SetHeld(hold, false);
+      }
     }
   }
   return CallNextHookEx(g_keyboardHook, code, wParam, lParam);
 }
 
 LRESULT CALLBACK MouseHook(int code, WPARAM wParam, LPARAM lParam) {
-  if (code == HC_ACTION && g_hold.mouseButton) {
+  if (code == HC_ACTION) {
     const MSLLHOOKSTRUCT* info = reinterpret_cast<const MSLLHOOKSTRUCT*>(lParam);
     const int xbutton = HIWORD(info->mouseData) == XBUTTON1 ? 4 : HIWORD(info->mouseData) == XBUTTON2 ? 5 : 0;
-    if (g_hold.mouseButton == 3 && wParam == WM_MBUTTONDOWN) SetHeld(true);
-    else if (g_hold.mouseButton == 3 && wParam == WM_MBUTTONUP) SetHeld(false);
-    else if (wParam == WM_XBUTTONDOWN && xbutton == g_hold.mouseButton) SetHeld(true);
-    else if (wParam == WM_XBUTTONUP && xbutton == g_hold.mouseButton) SetHeld(false);
+    for (HoldBinding& hold : g_holds) {
+      if (!hold.mouseButton) continue;
+      if (hold.mouseButton == 3 && wParam == WM_MBUTTONDOWN) SetHeld(hold, true);
+      else if (hold.mouseButton == 3 && wParam == WM_MBUTTONUP) SetHeld(hold, false);
+      else if (wParam == WM_XBUTTONDOWN && xbutton == hold.mouseButton) SetHeld(hold, true);
+      else if (wParam == WM_XBUTTONUP && xbutton == hold.mouseButton) SetHeld(hold, false);
+    }
   }
   if (code == HC_ACTION && wParam == WM_XBUTTONDOWN) {
     const MSLLHOOKSTRUCT* info = reinterpret_cast<const MSLLHOOKSTRUCT*>(lParam);
@@ -111,14 +117,16 @@ LRESULT CALLBACK MouseHook(int code, WPARAM wParam, LPARAM lParam) {
 }
 
 void UpdateMouseHook() {
-  bool needed = g_hold.mouseButton != 0;
+  bool needed = false;
+  for (const HoldBinding& hold : g_holds) needed = needed || hold.mouseButton != 0;
   for (const Binding& binding : g_bindings) needed = needed || binding.mouseButton != 0;
   if (needed && !g_mouseHook) g_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHook, GetModuleHandleW(nullptr), 0);
   if (!needed && g_mouseHook) { UnhookWindowsHookEx(g_mouseHook); g_mouseHook = nullptr; }
 }
 
 void UpdateKeyboardHook() {
-  const bool needed = g_hold.id && !g_hold.mouseButton;
+  bool needed = false;
+  for (const HoldBinding& hold : g_holds) needed = needed || (hold.id && !hold.mouseButton);
   if (needed && !g_keyboardHook) g_keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, KeyboardHook, GetModuleHandleW(nullptr), 0);
   if (!needed && g_keyboardHook) { UnhookWindowsHookEx(g_keyboardHook); g_keyboardHook = nullptr; }
 }
@@ -126,8 +134,8 @@ void UpdateKeyboardHook() {
 void ClearBindings() {
   for (const Binding& binding : g_bindings) if (binding.registered) UnregisterHotKey(nullptr, binding.id);
   g_bindings.clear();
-  SetHeld(false);
-  g_hold = HoldBinding();
+  for (HoldBinding& hold : g_holds) SetHeld(hold, false);
+  g_holds.clear();
   UpdateMouseHook();
   UpdateKeyboardHook();
 }
@@ -195,15 +203,26 @@ void HandleCommand(char* line) {
   char spec[128] = {0};
   if (sscanf(line, "hold %d %127s", &id, spec) == 2) {
     if (id <= 0 || id > 0xBFFF) return;
-    SetHeld(false);
+    // A new key for this id replaces its old one; other held keys stay.
+    for (size_t index = 0; index < g_holds.size(); ++index) {
+      if (g_holds[index].id != id) continue;
+      SetHeld(g_holds[index], false);
+      g_holds.erase(g_holds.begin() + index);
+      break;
+    }
     HoldBinding hold;
     hold.id = id;
-    if (!ParseHoldKey(spec, &hold)) { g_hold = HoldBinding(); UpdateMouseHook(); UpdateKeyboardHook(); Emit("invalid", id); return; }
-    g_hold = hold;
+    const auto drop = [id]() {
+      for (size_t index = 0; index < g_holds.size(); ++index) if (g_holds[index].id == id) { g_holds.erase(g_holds.begin() + index); break; }
+      UpdateMouseHook();
+      UpdateKeyboardHook();
+    };
+    if (!ParseHoldKey(spec, &hold)) { UpdateMouseHook(); UpdateKeyboardHook(); Emit("invalid", id); return; }
+    g_holds.push_back(hold);
     UpdateMouseHook();
     UpdateKeyboardHook();
     const bool hooked = hold.mouseButton ? g_mouseHook != nullptr : g_keyboardHook != nullptr;
-    if (!hooked) { g_hold = HoldBinding(); Emit("taken", id); return; }
+    if (!hooked) { drop(); Emit("taken", id); return; }
     Emit("ok", id);
     return;
   }

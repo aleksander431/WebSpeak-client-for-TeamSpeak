@@ -74,6 +74,8 @@ export function useWebClientAudioControls({
   let settingsRequest = 0;
   let whisperPointer: { id: number; target: HTMLElement } | null = null;
   let whisperKey: string | null = null;
+  /** Marks a whisper started by the desktop hotkey, so only its release ends it. */
+  const WHISPER_HOTKEY = "desktop-hotkey";
 
   function beginSettingsRequest(): () => boolean {
     settingsError.value = "";
@@ -229,6 +231,19 @@ export function useWebClientAudioControls({
     stopWhisperTalk();
   }
 
+  /** The desktop client's whisper key: whisper while it is held, like the button. */
+  function setWhisperHotkeyHeld(held: boolean): void {
+    if (held) {
+      if (whisperPttActive.value) return;
+      if (!whisperTargetIds.size) { showToast(t("whisperHotkeyNoTargets")); return; }
+      whisperKey = WHISPER_HOTKEY;
+      whisperPttActive.value = true;
+      setWhisperActive(true);
+      return;
+    }
+    if (whisperKey === WHISPER_HOTKEY) stopWhisperTalk();
+  }
+
   function stopWhisperTalk(): void {
     const pointer = whisperPointer;
     whisperPointer = null;
@@ -281,6 +296,7 @@ export function useWebClientAudioControls({
     onWhisperPttUp,
     onWhisperPttKeyDown,
     onWhisperPttKeyUp,
+    setWhisperHotkeyHeld,
     stopWhisperTalk,
   };
 }

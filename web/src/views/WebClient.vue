@@ -1493,6 +1493,7 @@ useDesktopBridge({
   streamStarting: () => screenShareStarting.value,
   setPushToTalkMode,
   setPushToTalkHeld,
+  setWhisperHeld: (held: boolean) => audioControls.setWhisperHotkeyHeld(held),
   overlayRoster: () => ({
     connected: voiceState.connected,
     channel: voiceState.connected ? currentChannelName.value : "",

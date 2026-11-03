@@ -17,6 +17,8 @@ export interface DesktopSettings {
   hotkeys: Record<HotkeyAction, string>;
   /** Push-to-talk: while this key or mouse button is held you are heard; empty is off. */
   pushToTalk: string;
+  /** While this key or mouse button is held, you whisper to the chosen members; empty is off. */
+  whisper: string;
   /** What the stream hotkey shares: ask with the picker or take the main screen at once. */
   streamHotkeySource: "picker" | "screen";
   /** Short sounds when a hotkey mutes or unmutes. */
@@ -91,6 +93,7 @@ export const DEFAULT_SETTINGS: DesktopSettings = Object.freeze({
   closeToTray: true,
   hotkeys: Object.freeze({ mic: "CommandOrControl+Shift+M", sound: "CommandOrControl+Shift+D", stream: "CommandOrControl+Shift+L" }) as Record<HotkeyAction, string>,
   pushToTalk: "",
+  whisper: "",
   streamHotkeySource: "picker",
   hotkeySounds: true,
   shareSystemAudio: false,
@@ -178,6 +181,10 @@ export function sanitizeSettings(value: unknown, base: DesktopSettings = DEFAULT
   // Push-to-talk cannot share a key with a toggle hotkey.
   let pushToTalk = typeof input.pushToTalk === "string" && isValidPushToTalk(input.pushToTalk) ? input.pushToTalk : base.pushToTalk;
   if (pushToTalk && seen.has(pushToTalk.toLowerCase())) pushToTalk = "";
+  if (pushToTalk) seen.add(pushToTalk.toLowerCase());
+  // Whisper is a second hold key: it cannot share a key with anything above.
+  let whisper = typeof input.whisper === "string" && isValidPushToTalk(input.whisper) ? input.whisper : base.whisper ?? "";
+  if (whisper && seen.has(whisper.toLowerCase())) whisper = "";
   const settings: DesktopSettings = {
     serverUrl: input.serverUrl === "" ? "" : normalizeServerUrl(input.serverUrl) ?? base.serverUrl,
     launchAtLogin: bool("launchAtLogin"),
@@ -185,6 +192,7 @@ export function sanitizeSettings(value: unknown, base: DesktopSettings = DEFAULT
     closeToTray: bool("closeToTray"),
     hotkeys,
     pushToTalk,
+    whisper,
     streamHotkeySource: input.streamHotkeySource === "screen" || input.streamHotkeySource === "picker" ? input.streamHotkeySource : base.streamHotkeySource,
     hotkeySounds: bool("hotkeySounds"),
     shareSystemAudio: bool("shareSystemAudio"),
