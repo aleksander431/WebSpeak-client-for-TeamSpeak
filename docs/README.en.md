@@ -195,6 +195,15 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
+### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
+
+#### New features
+
+- Chat: pinned messages. Pin a channel or server message from its actions; a bar above the chat shows the latest pin and opens the list, where you can jump to a message or unpin it. Pins are saved on the server (up to 50 per chat) and seen by every WebSpeak user in that chat.
+- Phone browsers: a call card in the notification shade and on the lock screen (microphone and leave buttons), automatic rejoin to the same channel after the browser dropped the connection in the background, sound restarted when you come back, and a switch for the automatic “Away” status. Both options are in audio settings under “Phone”.
+- KAAK theme: a stream you watch now fills all the free height of the voice area, with the members in a compact row underneath. The “connecting to the stream” text is readable on every theme.
+- Desktop client: a whisper key. Hold a key or mouse button (Settings → Whisper) to whisper to the members you set as whisper targets, also inside games. Needs the new desktop release.
+
 ### [v0.4.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.2) · 2026-11-02
 
 #### New features
@@ -206,10 +215,6 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Chat: code blocks with syntax highlighting and a Copy button (```js … ```), inline `code`, **bold**, *italic*, ~~strike~~ (TeamSpeak’s [b]/[i] work too). Shift+Enter starts a new line; a message too long for TeamSpeak is sent as a text file.
 - Chat: replies (quote the message you answer; TeamSpeak clients see it as a quote too), emoji reactions (between WebSpeak users; saved with the chat history, so they survive a server restart), search including older history on the server, and @mentions with suggestions, a highlight and a sound when someone mentions you.
 - Desktop client: in-game overlay showing who is in the channel and who is talking, drawn over games. Off by default; turn it on in Settings or the tray menu, and choose its corner, size, opacity, offset and whether to show everyone or only who is talking.
-- Chat: pinned messages. Pin a channel or server message from its actions; a bar above the chat shows the latest pin and opens the list, where you can jump to a message or unpin it. Pins are saved on the server (up to 50 per chat) and seen by every WebSpeak user in that chat.
-- Phone browsers: a call card in the notification shade and on the lock screen (microphone and leave buttons), automatic rejoin to the same channel after the browser dropped the connection in the background, sound restarted when you come back, and a switch for the automatic “Away” status. Both options are in audio settings under “Phone”.
-- KAAK theme: a stream you watch now fills all the free height of the voice area, with the members in a compact row underneath. The “connecting to the stream” text is readable on every theme.
-- Desktop client: a whisper key. Hold a key or mouse button (Settings → Whisper) to whisper to the members you set as whisper targets, also inside games. Needs the new desktop release.
 
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 
