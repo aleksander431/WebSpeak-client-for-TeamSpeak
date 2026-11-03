@@ -6,7 +6,7 @@ import type { AdminCredential } from "../security/admin-password.js";
 import type { TeamSpeakProtocol } from "../server/teamspeak-adapter.js";
 import { DEFAULT_WEBRTC_UDP_PORT_RANGE } from "../server/webrtc-config.js";
 
-export const DATABASE_SCHEMA_VERSION = 17;
+export const DATABASE_SCHEMA_VERSION = 18;
 export type AccessMode = "fixed" | "open";
 
 export interface PersistedSettings {
@@ -61,6 +61,18 @@ export interface ChatHistoryRow {
   createdAt: number;
   /** Reaction reference the gateway gave the message ("" for rows from before schema 17). */
   ref: string;
+}
+
+export interface ChatPinRow {
+  targetKey: string;
+  scope: string;
+  channelId: string;
+  ref: string;
+  senderName: string;
+  message: string;
+  createdAt: number;
+  pinnedBy: string;
+  pinnedAt: number;
 }
 
 export interface ChatReactionRow {
@@ -817,6 +829,27 @@ export class WebSpeakDatabase {
     }
   }
 
+  /** Pins of one conversation, oldest pin first. */
+  listChatPins(targetKey: string, scope: string, channelId: string): ChatPinRow[] {
+    return (this.database.prepare(
+      `SELECT * FROM chat_pins WHERE target_key = ? AND scope = ? AND channel_id = ? ORDER BY pinned_at, rowid`,
+    ).all(targetKey, scope, channelId) as {
+      target_key: string; scope: string; channel_id: string; ref: string; sender_name: string; message: string; created_at: number; pinned_by: string; pinned_at: number;
+    }[]).map(row => ({ targetKey: row.target_key, scope: row.scope, channelId: row.channel_id, ref: row.ref, senderName: row.sender_name,
+      message: row.message, createdAt: Number(row.created_at), pinnedBy: row.pinned_by, pinnedAt: Number(row.pinned_at) }));
+  }
+
+  addChatPin(pin: ChatPinRow): void {
+    this.database.prepare(
+      `INSERT INTO chat_pins (target_key, scope, channel_id, ref, sender_name, message, created_at, pinned_by, pinned_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(target_key, scope, channel_id, ref) DO NOTHING`,
+    ).run(pin.targetKey, pin.scope, pin.channelId, pin.ref, pin.senderName, pin.message, pin.createdAt, pin.pinnedBy, pin.pinnedAt);
+  }
+
+  removeChatPin(targetKey: string, scope: string, channelId: string, ref: string): void {
+    this.database.prepare("DELETE FROM chat_pins WHERE target_key = ? AND scope = ? AND channel_id = ? AND ref = ?").run(targetKey, scope, channelId, ref);
+  }
+
   /** Reactions whose message is no longer stored. */
   deleteOrphanChatReactions(): void {
     this.database.exec("DELETE FROM chat_reactions WHERE ref NOT IN (SELECT ref FROM chat_history WHERE ref <> '')");
@@ -830,7 +863,7 @@ export class WebSpeakDatabase {
 
   clearChatStorage(): void {
     this.transaction(() => {
-      this.database.exec("DELETE FROM chat_files; DELETE FROM chat_history; DELETE FROM chat_reactions;");
+      this.database.exec("DELETE FROM chat_files; DELETE FROM chat_history; DELETE FROM chat_reactions; DELETE FROM chat_pins;");
     });
   }
 
@@ -1229,6 +1262,28 @@ export class WebSpeakDatabase {
             PRIMARY KEY (ref, emoji, user_key)
           );
           PRAGMA user_version = 17;
+        `);
+      });
+      version = 17;
+    }
+    if (version === 17) {
+      this.transaction(() => {
+        // Pinned chat messages keep their own copy of the text, so a pin
+        // outlives history rotation and works with history turned off.
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS chat_pins (
+            target_key TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            ref TEXT NOT NULL,
+            sender_name TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            pinned_by TEXT NOT NULL,
+            pinned_at INTEGER NOT NULL,
+            PRIMARY KEY (target_key, scope, channel_id, ref)
+          );
+          PRAGMA user_version = 18;
         `);
       });
     }

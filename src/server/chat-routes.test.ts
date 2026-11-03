@@ -23,6 +23,7 @@ async function serve(t: test.TestContext) {
   registerChatRoutes(app, {
     storage,
     resolveSession: token => token === "valid-token-123456" ? { entryId: "e1", targetKey: "ts:1", channelId, nickname: "Kria", viewerKey: "uid:k" } : null,
+    pins: (scope, kind) => [{ ref: "0123456789abcdef", senderName: "Kria", message: `${kind} ${scope.channelId}`, timestamp: 1, pinnedBy: "Alex", pinnedAt: 2 }],
     isSameOrigin: request => request.header("origin") === "https://webts.test",
     logger: { info() {}, warn() {} },
   });
@@ -90,4 +91,7 @@ test("history is read for the session's own channel only", async t => {
   const search = async (q: string) => (await (await fetch(`${base}/api/chat/history?scope=channel&q=${encodeURIComponent(q)}`, { headers: headers() })).json() as { messages: { message: string }[] }).messages.map(message => message.message);
   assert.deepEqual(await search("ШЕСТ"), ["в шестом"]);
   assert.deepEqual(await search("пятом"), [], "search stays within the current channel");
+  const pins = await (await fetch(`${base}/api/chat/pins?scope=channel`, { headers: headers() })).json() as { scope: string; channelId: string; pins: { message: string }[] };
+  assert.deepEqual([pins.scope, pins.channelId, pins.pins[0]?.message], ["channel", "6", "channel 6"], "pins name the session's current channel");
+  assert.equal((await fetch(`${base}/api/chat/pins?scope=server`, { headers: headers({ [CHAT_TOKEN_HEADER]: "stale" }) })).status, 401);
 });

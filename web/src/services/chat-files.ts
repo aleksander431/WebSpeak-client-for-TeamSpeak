@@ -2,6 +2,7 @@ import {
   CHAT_TOKEN_HEADER, parseChatFileInfo, parseChatHistory,
   type ChatFileInfo, type ChatHistoryMessage, type ChatSessionAccess,
 } from "../../../src/shared/chat-storage.js";
+import { parseChatPins, type ChatPin } from "../../../src/shared/chat-pins.js";
 
 export class ChatFileError extends Error {
   constructor(readonly code: string, readonly maxFileBytes?: number) {
@@ -56,6 +57,17 @@ export async function fetchChatHistory(access: ChatSessionAccess, scope: "channe
   const response = await fetch(`/api/chat/history?scope=${scope}${query ? `&q=${encodeURIComponent(query.slice(0, 100))}` : ""}`, { headers: { [CHAT_TOKEN_HEADER]: access.token }, cache: "no-store", ...(signal ? { signal } : {}) });
   if (!response.ok) return [];
   return parseChatHistory(await response.json().catch(() => null)) ?? [];
+}
+
+/** Pins of the session's server chat or current channel, with the channel they belong to. */
+export async function fetchChatPins(access: ChatSessionAccess, scope: "channel" | "server", signal?: AbortSignal): Promise<{ key: string; pins: ChatPin[] } | null> {
+  const response = await fetch(`/api/chat/pins?scope=${scope}`, { headers: { [CHAT_TOKEN_HEADER]: access.token }, cache: "no-store", ...(signal ? { signal } : {}) });
+  if (!response.ok) return null;
+  const body = await response.json().catch(() => null) as { channelId?: unknown; pins?: unknown } | null;
+  const pins = parseChatPins(body?.pins);
+  if (!pins) return null;
+  const channelId = typeof body?.channelId === "string" && /^\d{0,20}$/.test(body.channelId) ? body.channelId : "";
+  return { key: scope === "server" ? "server:" : `channel:${channelId}`, pins };
 }
 
 /** A name for a pasted image, which arrives without one. */

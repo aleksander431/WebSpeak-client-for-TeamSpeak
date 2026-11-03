@@ -383,6 +383,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
       storage: chatStorage,
       resolveSession: token => voiceBridge.resolveChatSession(token),
       decorateHistory: (scope, messages) => voiceBridge.decorateChatHistory(scope, messages),
+      pins: (scope, kind) => voiceBridge.listChatPins(scope, kind),
       isSameOrigin,
       logger,
     });

@@ -4899,3 +4899,16 @@
   [data-ws-plugin-part="kaak-workspace.member-cards"] .screen-share-card-actions { position: absolute; top: auto; right: auto; bottom: 8px; left: 50%; width: auto; transform: translateX(-50%); }
   [data-ws-plugin-part="kaak-workspace.member-cards"] .screen-share-card-actions .screen-share-card-button { width: 34px; height: 30px; min-height: 30px; padding: 0; gap: 0; justify-content: center; border-radius: 10px; font-size: 0; }
 }
+
+/* Pinned messages in KAAK colours. */
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-pinned-bar { color: #9be031; border-color: #6cbf0040; border-left-color: var(--skin-kaak-accent); background: #6cbf0012; }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-pinned-copy small { color: var(--skin-kaak-text); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-pinned-list { border-color: var(--skin-kaak-border); background: var(--skin-kaak-raised); box-shadow: 0 10px 28px rgba(0, 0, 0, .45); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-pinned-jump { color: var(--skin-kaak-text); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-pinned-jump:hover { background: var(--skin-kaak-hover); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-pinned-jump time,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-pinned-jump small,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-pinned-unpin,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .chat-pinned-chevron { color: var(--skin-kaak-muted); }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-pin-marker,
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-actions > button[aria-pressed="true"] { color: #9be031; }

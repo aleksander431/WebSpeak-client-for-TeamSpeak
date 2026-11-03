@@ -50,7 +50,7 @@ export class ChatStorage {
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(
-    private readonly database: WebSpeakDatabase,
+    readonly database: WebSpeakDatabase,
     readonly directory: string,
     private readonly now: () => number = () => Date.now(),
   ) {}

@@ -492,10 +492,16 @@ test("reactions reach the session, are saved with the message and survive a gate
   f.socket.send(JSON.stringify({ type: "chatReact", requestId: "r2", payload: { ref: "ffffffffffffffff", emoji: "🔥", active: true } }));
   assert.equal((await failed).error.code, "REACTION_UNAVAILABLE");
 
+  const pins = waitForMessage<{ scope: string; channelId: string; pins: { ref: string; message: string; pinnedBy: string }[] }>(f.socket, "chatPins");
+  f.socket.send(JSON.stringify({ type: "chatPin", requestId: "p1", payload: { ref, active: true } }));
+  const pinned = await pins;
+  assert.deepEqual([pinned.scope, pinned.channelId, pinned.pins.map(pin => [pin.ref, pin.message])], ["channel", "1", [[ref, "gg"]]]);
+
   // A new gateway process over the same database: history brings the reaction back.
   const scope = f.bridge.resolveChatSession(connected.chat.token)!;
   const restarted = new VoiceBridge({ joinTickets: new JoinTicketStore(), chatStorage: storage } as never, pino({ enabled: false }));
   const history = restarted.decorateChatHistory(scope, storage.history(scope.targetKey, "channel", "1"));
   assert.deepEqual(history.map(message => [message.message, message.ref, message.reactions?.map(reaction => [reaction.emoji, reaction.count, reaction.mine])]),
     [["gg", ref, [["🔥", 1, true]]]]);
+  assert.deepEqual(restarted.listChatPins(scope, "channel").map(pin => pin.message), ["gg"], "pins survive a restart");
 });

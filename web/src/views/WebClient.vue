@@ -1102,6 +1102,8 @@ const {
   chatMessages,
   chatReactions,
   reactToChat,
+  chatPins,
+  pinChat,
   chatAccess,
   serverEvents,
   pokeNotifications,
@@ -1539,6 +1541,8 @@ const chat = useWebClientChat({
   notifyMention: () => playNotification("mention"),
   reactions: chatReactions,
   reactToChat,
+  pins: chatPins,
+  pinChat,
   t,
   chatAccess,
   self: computed(() => {

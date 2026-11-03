@@ -26,6 +26,8 @@ export interface VoiceCommandContext extends AudioStatsSource {
   onChatSent?(scope: "channel" | "server", channelId: string, message: string): string | undefined;
   /** Add or remove this session's reaction; false when the message is not visible to it. */
   onChatReact?(ref: string, emoji: string, active: boolean): boolean;
+  /** Pin or unpin; "unavailable" when the message is not visible to this session. */
+  onChatPin?(ref: string, active: boolean): "pinned" | "unpinned" | "limit" | "unavailable";
 }
 
 export async function handleCommand(
@@ -177,6 +179,12 @@ export async function handleCommand(
       if (peer) {
         await entry.tsClient.setAccompanimentActive(command.payload.active);
         if (entry.webrtc === peer) peer.setAccompanimentActive(command.payload.active);
+      }
+    } else if (command.type === "chatPin") {
+      const result = entry.onChatPin?.(command.payload.ref, command.payload.active) ?? "unavailable";
+      if (result === "unavailable" || result === "limit") {
+        sendJson({ type: "error", requestId: command.requestId, error: { code: result === "limit" ? "PIN_LIMIT" : "PIN_UNAVAILABLE", message: result === "limit" ? "Too many pinned messages" : "This message can no longer be pinned", recoverable: false } });
+        return;
       }
     } else if (command.type === "chatReact") {
       if (!entry.onChatReact?.(command.payload.ref, command.payload.emoji, command.payload.active)) {

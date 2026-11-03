@@ -32,6 +32,8 @@ import { normalizeScreenShareIceServers, parseScreenShareMessage, type ScreenSha
 import { OpusEncoder } from "./opus-codec.js";
 import { avatarDataUrl } from "./directory-view.js";
 import { ChatReactionHub } from "./chat-reactions.js";
+import { ChatPinStore } from "./chat-pins.js";
+import type { ChatPin } from "../shared/chat-pins.js";
 import type { ChatHistoryMessage } from "../shared/chat-storage.js";
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -133,6 +135,7 @@ interface WebClientEntry extends SessionDirectoryState {
   voiceGateOpen: boolean;
   onChatSent?(scope: "channel" | "server", channelId: string, message: string): string | undefined;
   onChatReact?(ref: string, emoji: string, active: boolean): boolean;
+  onChatPin?(ref: string, active: boolean): "pinned" | "unpinned" | "limit" | "unavailable";
 }
 
 export class VoiceBridge {
@@ -140,6 +143,7 @@ export class VoiceBridge {
   private readonly entries = new Map<string, WebClientEntry>();
   private readonly chatTokens = new Map<string, WebClientEntry>();
   private readonly chatReactions: ChatReactionHub;
+  private readonly chatPins: ChatPinStore;
   private readonly screenShares: ScreenShareCoordinator;
   private readonly whiteboards: WhiteboardCoordinator;
   private readonly identityLeases = new IdentityLeaseStore();
@@ -162,6 +166,7 @@ export class VoiceBridge {
       load: ref => chatStorage.reactions(ref),
       save: (ref, emoji, userKey, userName, active) => chatStorage.saveReaction(ref, emoji, userKey, userName, active),
     } : undefined);
+    this.chatPins = new ChatPinStore(chatStorage?.database);
     this.trustedProxies = createTrustedProxies(options.trustedProxies);
     this.screenShares = new ScreenShareCoordinator(this.entries, (entryId, message) => {
       const entry = this.entries.get(entryId);
@@ -322,6 +327,7 @@ export class VoiceBridge {
         return ref;
       };
       entry.onChatReact = (ref, emoji, active) => this.reactToChat(entry!, ref, emoji, active);
+      entry.onChatPin = (ref, active) => this.pinChat(entry!, ref, active);
       let tsReady = false;
       const sendJson = (message: ServerMessage) => {
         if (this.entries.get(entryId) === entry && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -830,6 +836,30 @@ export class VoiceBridge {
       const reactions = this.chatReactions.summary(ref, scope.viewerKey);
       return { ...message, ref, ...(reactions.length ? { reactions } : {}) };
     });
+  }
+
+  /** Pinned messages of the session's server chat or current channel. */
+  listChatPins(scope: ChatSessionScope, kind: "channel" | "server"): ChatPin[] {
+    return this.chatPins.list({ targetKey: scope.targetKey, scope: kind, channelId: kind === "channel" ? scope.channelId : "" });
+  }
+
+  /** Anyone who sees a channel/server message may pin or unpin it; everyone who sees it gets the new list. */
+  private pinChat(entry: WebClientEntry, ref: string, active: boolean): "pinned" | "unpinned" | "limit" | "unavailable" {
+    const message = this.chatReactions.get(ref);
+    const targetKey = teamSpeakTargetKey(entry.target);
+    const sees = (candidate: WebClientEntry) => candidate.session.state === "connected" && teamSpeakTargetKey(candidate.target) === targetKey
+      && (message?.scope === "server" || String(candidate.tsClient.getChannelId()) === message?.channelId);
+    if (!message || message.targetKey !== targetKey || !sees(entry)) return "unavailable";
+    const scope = { targetKey, scope: message.scope, channelId: message.scope === "channel" ? message.channelId : "" };
+    const result = active
+      ? this.chatPins.pin(scope, { ref, senderName: message.senderName, message: message.message, timestamp: message.seenAt }, this.ownNickname(entry))
+      : this.chatPins.unpin(scope, ref);
+    if (result === "limit") return result;
+    const update: ServerMessage = { type: "chatPins", scope: scope.scope, channelId: scope.channelId, pins: this.chatPins.list(scope) };
+    for (const candidate of this.entries.values()) {
+      if (sees(candidate) && candidate.ws.readyState === WebSocket.OPEN) candidate.ws.send(JSON.stringify(update));
+    }
+    return result;
   }
 
   private ownNickname(entry: WebClientEntry): string {

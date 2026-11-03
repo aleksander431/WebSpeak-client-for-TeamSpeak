@@ -151,6 +151,57 @@
           :size="14" /></button
     ></div>
     <div
+      v-if="(chatTab === 'channel' || chatTab === 'server') && currentPins.length"
+      class="chat-pinned"
+      data-ws-part="voice.chat.pinned"
+      ><button
+        type="button"
+        class="chat-pinned-bar"
+        data-ws-part="voice.chat.pinned-bar"
+        :aria-expanded="pinsOpen"
+        @click="pinsOpen = !pinsOpen"
+        ><Icon
+          name="pin"
+          :size="16"
+        /><span class="chat-pinned-copy"
+          ><strong>{{ t("chatPinned") }} · {{ currentPins.length }}</strong
+          ><small>{{ latestPin ? `${latestPin.senderName}: ${pinExcerpt(latestPin.message)}` : "" }}</small></span
+        ><Icon
+          name="chevron-down"
+          :size="15"
+          :class="['chat-pinned-chevron', { open: pinsOpen }]"
+      /></button
+      ><ul
+        v-if="pinsOpen"
+        class="chat-pinned-list"
+        data-ws-part="voice.chat.pinned-list"
+        ><li
+          v-for="pin in pinsNewestFirst"
+          :key="pin.ref"
+          data-ws-part="voice.chat.pinned-item"
+          ><button
+            type="button"
+            class="chat-pinned-jump"
+            :title="t('chatPinnedJump')"
+            @click="jumpTo(pin.ref)"
+            ><strong>{{ pin.senderName }} <time>{{ formatTime(pin.timestamp) }}</time></strong
+            ><span>{{ pinExcerpt(pin.message) }}</span
+            ><small>{{ t("chatPinnedBy", { name: pin.pinnedBy }) }}</small></button
+          ><button
+            v-if="canPin"
+            type="button"
+            class="chat-pinned-unpin"
+            data-ws-part="voice.chat.pinned-unpin"
+            :title="t('chatUnpin')"
+            :aria-label="t('chatUnpin')"
+            @click="unpin(pin.ref)"
+            ><Icon
+              name="close"
+              :size="14" /></button
+        ></li
+      ></ul
+    ></div>
+    <div
       ref="chatListEl"
       class="message-list"
       data-ws-part="voice.chat.messages"
@@ -205,6 +256,7 @@
           data-ws-part="voice.chat.message"
           :data-ws-state="message.isSelf ? 'mine' : 'other'"
           :data-ws-mention="mentionsMe(message) ? 'self' : undefined"
+          :data-ws-ref="message.ref"
         >
           <div
             class="message-avatar"
@@ -217,7 +269,15 @@
             data-ws-part="voice.chat.message-body"
             ><div class="message-meta"
               ><strong>{{ message.isSelf ? t("you") : message.invokerName }}</strong
-              ><time>{{ formatTime(message.timestamp) }}</time></div
+              ><time>{{ formatTime(message.timestamp) }}</time
+              ><Icon
+                v-if="isPinned(message)"
+                name="pin"
+                :size="12"
+                class="message-pin-marker"
+                data-ws-part="voice.chat.message-pin"
+                :aria-label="t('chatPinned')"
+            /></div
             ><div
               class="message-bubble"
               data-ws-part="voice.chat.message-bubble"
@@ -260,6 +320,17 @@
               @click="replyAndFocus(message)"
               ><Icon
                 name="reply"
+                :size="15" /></button
+            ><button
+              v-if="message.ref && canPin"
+              type="button"
+              data-ws-part="voice.chat.pin"
+              :aria-pressed="isPinned(message)"
+              :title="isPinned(message) ? t('chatUnpin') : t('chatPin')"
+              :aria-label="isPinned(message) ? t('chatUnpin') : t('chatPin')"
+              @click="togglePin(message)"
+              ><Icon
+                name="pin"
                 :size="15" /></button
             ><button
               v-if="message.ref && canReact"
@@ -453,6 +524,7 @@ type ChatPanelModel = Pick<ReturnType<typeof useWebClientChat>,
   | "replyTo" | "startReply" | "cancelReply" | "reactionsOf" | "toggleReaction" | "canReact"
   | "searchOpen" | "searchQuery" | "searching" | "toggleSearch"
   | "mentionNames" | "selfName" | "draftBytes" | "draftTooLong"
+  | "currentPins" | "canPin" | "pinsOpen" | "isPinned" | "togglePin" | "unpin"
 >;
 
 const props = defineProps<{
@@ -505,7 +577,31 @@ const {
   selfName,
   draftBytes,
   draftTooLong,
+  currentPins,
+  canPin,
+  pinsOpen,
+  isPinned,
+  togglePin,
+  unpin,
 } = props.model;
+
+const latestPin = computed(() => currentPins.value.at(-1) ?? null);
+const pinsNewestFirst = computed(() => [...currentPins.value].reverse());
+function pinExcerpt(message: string): string {
+  const text = chatPlainText(message).replace(/\s+/g, " ").trim();
+  return text.length > 120 ? `${text.slice(0, 119)}…` : text;
+}
+/** Scroll to a pinned message if it is loaded, and briefly highlight it. */
+function jumpTo(ref: string): void {
+  const row = chatListEl.value?.querySelector<HTMLElement>(`[data-ws-ref="${CSS.escape(ref)}"]`);
+  if (!row) return;
+  pinsOpen.value = false;
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  row.classList.remove("flash");
+  void row.offsetWidth;
+  row.classList.add("flash");
+  setTimeout(() => row.classList.remove("flash"), 1600);
+}
 
 const draftInput = ref<HTMLTextAreaElement | null>(null);
 const searchInput = ref<HTMLInputElement | null>(null);

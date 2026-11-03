@@ -2,6 +2,7 @@ import { reactive, ref } from "vue";
 import type { ServerMessage } from "../../../src/shared/server-messages.js";
 import type { ChannelInfo, ChannelMember, ChatMessage, ServerEvent } from "../../../src/shared/voice-models.js";
 import type { ChatReaction } from "../../../src/shared/chat-reactions.js";
+import type { ChatPin } from "../../../src/shared/chat-pins.js";
 
 interface SessionStateOptions {
   selfId(): number;
@@ -16,6 +17,8 @@ export function createVoiceSessionState(options: SessionStateOptions) {
   const chatMessages = reactive<ChatMessage[]>([]);
   /** Reactions by message reference, as the gateway last reported them. */
   const chatReactions = reactive(new Map<string, ChatReaction[]>());
+  /** Pinned messages by conversation: "channel:<id>" or "server:". */
+  const chatPins = reactive(new Map<string, ChatPin[]>());
   const serverEvents = reactive<ServerEvent[]>([]);
   const pokeNotifications = reactive<{ id: string; invokerId: number; invokerUid: string; invokerName: string; message: string; timestamp: number }[]>([]);
   let sequence = 0;
@@ -145,6 +148,9 @@ export function createVoiceSessionState(options: SessionStateOptions) {
         });
         break;
       }
+      case "chatPins":
+        chatPins.set(`${message.scope}:${message.scope === "channel" ? message.channelId : ""}`, message.pins);
+        break;
       case "chatReactions":
         if (message.reactions.length) chatReactions.set(message.ref, message.reactions);
         else chatReactions.delete(message.ref);
@@ -172,10 +178,11 @@ export function createVoiceSessionState(options: SessionStateOptions) {
     channels.length = 0;
     chatMessages.length = 0;
     chatReactions.clear();
+    chatPins.clear();
     serverEvents.length = 0;
     pokeNotifications.length = 0;
   }
 
-  return { epoch, members, channels, chatMessages, chatReactions, serverEvents, pokeNotifications, connected, receive, appendLocal, reset,
+  return { epoch, members, channels, chatMessages, chatReactions, chatPins, serverEvents, pokeNotifications, connected, receive, appendLocal, reset,
     memberConversationKey: (id: number) => memberKeys.get(id) };
 }

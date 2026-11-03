@@ -80,7 +80,7 @@ export class ChatReactionHub {
     return this.find(identity, at)?.ref ?? null;
   }
 
-  get(ref: string): Readonly<ChatMessageIdentity> | null {
+  get(ref: string): Readonly<ChatMessageIdentity & { seenAt: number }> | null {
     return this.entry(ref);
   }
 

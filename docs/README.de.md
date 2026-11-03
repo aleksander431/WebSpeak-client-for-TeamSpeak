@@ -196,6 +196,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Chat: Codeblöcke mit Syntaxhervorhebung und Kopieren-Knopf (```js … ```), Inline-`Code`, **fett**, *kursiv*, ~~durchgestrichen~~ (TeamSpeaks [b]/[i] gehen auch). Umschalt+Enter macht eine neue Zeile; eine für TeamSpeak zu lange Nachricht wird als Textdatei gesendet.
 - Chat: Antworten (zitieren die beantwortete Nachricht, auch in TeamSpeak lesbar), Emoji-Reaktionen (zwischen WebSpeak-Nutzern; mit dem Chatverlauf gespeichert, sie überstehen einen Serverneustart), Suche auch im älteren Verlauf auf dem Server und @Erwähnungen mit Vorschlägen, Hervorhebung und Ton, wenn dich jemand erwähnt.
 - Desktop-Client: Overlay über Spielen, das zeigt, wer im Kanal ist und wer spricht. Standardmäßig aus; in den Einstellungen oder im Tray-Menü einschalten, Ecke, Größe, Deckkraft, Abstand und „alle“ oder „nur Sprecher“ wählen.
+- Chat: angeheftete Nachrichten. Kanal- oder Servernachrichten lassen sich über ihre Aktionen anheften; eine Leiste über dem Chat zeigt die neueste und öffnet die Liste, aus der man zur Nachricht springen oder sie lösen kann. Sie werden auf dem Server gespeichert (bis zu 50 pro Chat) und sind für alle WebSpeak-Nutzer im Chat sichtbar.
 
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 

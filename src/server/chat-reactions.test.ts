@@ -67,3 +67,21 @@ test("reactions of stored messages come back after a restart", () => {
   assert.deepEqual(after.lookup(message, 5_000), ref);
   assert.equal(new ChatReactionHub(Date.now, store).get("ffffffffffffffff"), null);
 });
+
+test("pins are kept per conversation, once each, up to the limit, with their own text", async () => {
+  const { ChatPinStore } = await import("./chat-pins.js");
+  const { CHAT_PIN_LIMIT } = await import("../shared/chat-pins.js");
+  let clock = 100;
+  const store = new ChatPinStore(undefined, () => clock++);
+  const lobby = { targetKey: "ts:1", scope: "channel" as const, channelId: "5" };
+  const pin = (ref: string) => store.pin(lobby, { ref, senderName: "Kria", message: `m-${ref}`, timestamp: 1 }, "Alex");
+  assert.equal(pin("0000000000000001"), "pinned");
+  assert.equal(pin("0000000000000001"), "pinned", "pinning twice keeps one pin");
+  assert.deepEqual(store.list(lobby), [{ ref: "0000000000000001", senderName: "Kria", message: "m-0000000000000001", timestamp: 1, pinnedBy: "Alex", pinnedAt: 100 }]);
+  assert.deepEqual(store.list({ ...lobby, channelId: "6" }), []);
+  for (let index = 2; index <= CHAT_PIN_LIMIT; index++) pin(index.toString(16).padStart(16, "0"));
+  assert.equal(store.list(lobby).length, CHAT_PIN_LIMIT);
+  assert.equal(pin("ffffffffffffffff"), "limit");
+  store.unpin(lobby, "0000000000000001");
+  assert.equal(store.list(lobby).some(entry => entry.ref === "0000000000000001"), false);
+});

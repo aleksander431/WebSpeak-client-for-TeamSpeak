@@ -206,6 +206,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Chat: code blocks with syntax highlighting and a Copy button (```js … ```), inline `code`, **bold**, *italic*, ~~strike~~ (TeamSpeak’s [b]/[i] work too). Shift+Enter starts a new line; a message too long for TeamSpeak is sent as a text file.
 - Chat: replies (quote the message you answer; TeamSpeak clients see it as a quote too), emoji reactions (between WebSpeak users; saved with the chat history, so they survive a server restart), search including older history on the server, and @mentions with suggestions, a highlight and a sound when someone mentions you.
 - Desktop client: in-game overlay showing who is in the channel and who is talking, drawn over games. Off by default; turn it on in Settings or the tray menu, and choose its corner, size, opacity, offset and whether to show everyone or only who is talking.
+- Chat: pinned messages. Pin a channel or server message from its actions; a bar above the chat shows the latest pin and opens the list, where you can jump to a message or unpin it. Pins are saved on the server (up to 50 per chat) and seen by every WebSpeak user in that chat.
 
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 

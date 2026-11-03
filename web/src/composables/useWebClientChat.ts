@@ -1,7 +1,8 @@
 import { computed, nextTick, onScopeDispose, reactive, ref, watch, type Ref } from "vue";
 import type { ChannelInfo, ChannelMember, ChatMessage } from "./useVoiceWebSocket.js";
 import { loadChatHistory, normalizeChatHistoryServerKey, saveChatHistoryMessage } from "../services/local-persistence.js";
-import { ChatFileError, fetchChatHistory, pastedFileName, uploadChatFile } from "../services/chat-files.js";
+import { ChatFileError, fetchChatHistory, fetchChatPins, pastedFileName, uploadChatFile } from "../services/chat-files.js";
+import type { ChatPin } from "../../../src/shared/chat-pins.js";
 import { chatAttachmentMessage, formatBytes, type ChatHistoryMessage, type ChatSessionAccess } from "../../../src/shared/chat-storage.js";
 import { CHAT_MESSAGE_MAX_BYTES, chatMessageBytes, chatPlainText, chatReplyPrefix, parseChatMarkup } from "../../../src/shared/chat-markup.js";
 import type { ChatReaction } from "../../../src/shared/chat-reactions.js";
@@ -52,6 +53,9 @@ interface UseWebClientChatOptions {
   reactToChat?: (ref: string, emoji: string, active: boolean) => Promise<void>;
   /** Someone wrote @our-nickname in a channel or server message. */
   notifyMention?: () => void;
+  /** Pinned messages by conversation ("channel:<id>", "server:"); live updates arrive from the gateway. */
+  pins?: Map<string, ChatPin[]>;
+  pinChat?: (ref: string, active: boolean) => Promise<void>;
 }
 
 export function useWebClientChat({
@@ -77,6 +81,8 @@ export function useWebClientChat({
   reactions,
   reactToChat,
   notifyMention,
+  pins,
+  pinChat,
 }: UseWebClientChatOptions) {
   const tab = ref<WebClientChatTab>("channel");
   const panelOpen = ref(!isMobileViewport.value);
@@ -185,6 +191,45 @@ export function useWebClientChat({
     const mine = reactionsOf(message).some(reaction => reaction.emoji === emoji && reaction.mine);
     void reactToChat(message.ref, emoji, !mine).catch(() => undefined);
   }
+
+  // ---- Pinned messages ----
+  const pinsKey = computed(() => tab.value === "server" ? "server:" : tab.value === "channel" ? `channel:${currentChannel.value?.id ?? selectedChannelId.value}` : "");
+  const currentPins = computed<ChatPin[]>(() => (pinsKey.value && pins?.get(pinsKey.value)) || []);
+  const canPin = computed(() => Boolean(pinChat) && connected.value && (tab.value === "channel" || tab.value === "server"));
+  const pinsOpen = ref(false);
+  function isPinned(message: ChatMessage): boolean {
+    return Boolean(message.ref) && currentPins.value.some(pin => pin.ref === message.ref);
+  }
+  async function togglePin(message: ChatMessage): Promise<void> {
+    if (!message.ref || !pinChat || !canPin.value) return;
+    try {
+      await pinChat(message.ref, !isPinned(message));
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      sendError.value = code === "PIN_LIMIT" ? "chatPinLimit" : "chatPinFailed";
+    }
+  }
+  async function unpin(ref: string): Promise<void> {
+    if (!pinChat) return;
+    try { await pinChat(ref, false); } catch { sendError.value = "chatPinFailed"; }
+  }
+  let pinsController: AbortController | null = null;
+  async function loadPins(): Promise<void> {
+    const access = chatAccess?.value;
+    if (!access || !pins || !connected.value) return;
+    pinsController?.abort();
+    const controller = new AbortController();
+    pinsController = controller;
+    try {
+      const results = await Promise.all([fetchChatPins(access, "channel", controller.signal), fetchChatPins(access, "server", controller.signal)]);
+      if (disposed || pinsController !== controller || chatAccess?.value?.token !== access.token) return;
+      for (const result of results) if (result) pins.set(result.key, result.pins);
+    } catch { /* pins are optional */ }
+  }
+  watch(() => chatAccess?.value?.token, token => { if (token) void loadPins(); });
+  watch(() => currentChannel.value?.id, (id, previous) => { if (id && previous !== undefined && id !== previous) void loadPins(); });
+  watch(pinsKey, () => { pinsOpen.value = false; });
+  onScopeDispose(() => pinsController?.abort());
 
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let searchController: AbortController | null = null;
@@ -535,6 +580,7 @@ export function useWebClientChat({
     replyTo, startReply, cancelReply,
     reactionsOf, toggleReaction, canReact: computed(() => Boolean(reactToChat) && connected.value),
     searchOpen, searchQuery, searching, toggleSearch,
+    currentPins, canPin, pinsOpen, isPinned, togglePin, unpin,
     mentionNames, selfName, draftBytes, draftTooLong,
   };
 }

@@ -66,6 +66,7 @@
       <circle cx="12" cy="12" r="9" />
       <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
     </template>
+    <path v-else-if="name === 'pin'" d="M9 3.5h6l-1 5.5 3.2 3V14H6.8v-2L10 9zM12 14v6.5" />
     <path v-else-if="name === 'reply'" d="M10 7 4 12l6 5M4 12h10a6 6 0 0 1 6 6v1" />
     <path v-else-if="name === 'paperclip'" d="m20 11-7.5 7.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-7.5 7.5a2 2 0 0 1-3-3L14 7" />
     <path v-else-if="name === 'share'" d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4m4-4v13" />

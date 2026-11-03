@@ -1250,7 +1250,7 @@ export function useVoiceWebSocket() {
         const code = normalizedClientErrorCode(msg.error?.code, "OPERATION_FAILED");
         const text = protocolErrorMessage(code, String(msg.error?.message || msg.message || "操作失败"));
         // A reaction to a message the gateway forgot is not worth a page-wide error.
-        if (msg.error?.code !== "REACTION_UNAVAILABLE") { state.errorCode = code; state.error = text; }
+        if (!["REACTION_UNAVAILABLE", "PIN_UNAVAILABLE", "PIN_LIMIT"].includes(msg.error?.code ?? "")) { state.errorCode = code; state.error = text; }
         const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
         commands.settle(requestId, Object.assign(new Error(text), { code }));
         break;
@@ -1322,6 +1322,12 @@ export function useVoiceWebSocket() {
   async function reactToChat(ref: string, emoji: string, active: boolean): Promise<void> {
     if (!state.connected || ws.value?.readyState !== WebSocket.OPEN) return;
     await sendCommandAndWait("chatReact", { ref, emoji, active });
+  }
+
+  /** Pin or unpin; the gateway sends the new list to everyone in the conversation. */
+  async function pinChat(ref: string, active: boolean): Promise<void> {
+    if (!state.connected || ws.value?.readyState !== WebSocket.OPEN) throw Object.assign(new Error("not connected"), { code: "SESSION_NOT_READY" });
+    await sendCommandAndWait("chatPin", { ref, active });
   }
 
   async function sendTextMessage(message: string, targetId = ""): Promise<void> {
@@ -1572,7 +1578,9 @@ export function useVoiceWebSocket() {
     channels,
     chatMessages,
     chatReactions: sessionState.chatReactions,
+    chatPins: sessionState.chatPins,
     reactToChat,
+    pinChat,
     serverEvents,
     pokeNotifications,
     microphoneMuted,

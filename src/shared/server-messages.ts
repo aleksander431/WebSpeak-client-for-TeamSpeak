@@ -4,6 +4,7 @@ import { normalizeScreenShareIceServers, parseScreenShareSignal, SCREEN_SHARE_LE
 import { normalizeVoiceStunServer } from "./voice-ice.js";
 import { parseChatSessionAccess, type ChatSessionAccess } from "./chat-storage.js";
 import { CHAT_REF_PATTERN, parseChatReactions, type ChatReaction } from "./chat-reactions.js";
+import { parseChatPins, type ChatPin } from "./chat-pins.js";
 import { isSessionDescription, type SessionDescription } from "./webrtc.js";
 export type { SessionDescription } from "./webrtc.js";
 
@@ -22,6 +23,7 @@ export type ServerMessage =
   | Message<"channelList", { channels: ChannelInfo[] }>
   | Message<"chatMessage", ChatFields & { scope?: string; senderUid?: string; targetId?: string | number; ref?: string }>
   | Message<"chatReactions", { ref: string; reactions: ChatReaction[] }>
+  | Message<"chatPins", { scope: "channel" | "server"; channelId: string; pins: ChatPin[] }>
   | Message<"pokeReceived", ChatFields & { invokerUid?: string }>
   | Message<"serverEvent", { event: ServerEvent }>
   | Message<"channelSwitched", Request & { channelId: string | number }>
@@ -163,6 +165,7 @@ const valid: Record<ServerMessage["type"], (message: RecordValue) => boolean> = 
   chatMessage: m => text(m.message) && optional(m.invokerId, finite) && optional(m.invokerName, text) && optional(m.timestamp, finite)
     && optional(m.scope, text) && optional(m.senderUid, text) && optional(m.targetId, channelId) && optional(m.ref, chatRef),
   chatReactions: m => chatRef(m.ref) && parseChatReactions(m.reactions) !== null,
+  chatPins: m => (m.scope === "channel" || m.scope === "server") && text(m.channelId) && m.channelId.length <= 20 && parseChatPins(m.pins) !== null,
   pokeReceived: m => text(m.message) && optional(m.invokerId, finite) && optional(m.invokerName, text) && optional(m.timestamp, finite) && optional(m.invokerUid, text),
   serverEvent: m => event(m.event),
   channelSwitched: m => channelId(m.channelId),

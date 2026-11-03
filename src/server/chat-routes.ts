@@ -4,12 +4,15 @@ import { ChatStorage, ChatStorageError } from "./chat-storage.js";
 import { JoinRateLimiter } from "./join-rate-limit.js";
 import type { ChatSessionScope } from "./voice-bridge.js";
 import { CHAT_TOKEN_HEADER, isChatImageMime, type ChatHistoryMessage } from "../shared/chat-storage.js";
+import type { ChatPin } from "../shared/chat-pins.js";
 
 export interface ChatRouteOptions {
   storage: ChatStorage;
   resolveSession(token: string | undefined): ChatSessionScope | null;
   /** Adds reaction references to history as the reading session sees them. */
   decorateHistory?(scope: ChatSessionScope, messages: ChatHistoryMessage[]): ChatHistoryMessage[];
+  /** Pinned messages of the session's server chat or current channel. */
+  pins?(scope: ChatSessionScope, kind: "channel" | "server"): ChatPin[];
   isSameOrigin(request: express.Request): boolean;
   logger: Pick<Logger, "info" | "warn">;
 }
@@ -68,6 +71,15 @@ export function registerChatRoutes(app: express.Express, options: ChatRouteOptio
     response.sendFile(file.path, { dotfiles: "deny", cacheControl: false, lastModified: false }, (error) => {
       if (error && !response.headersSent) response.status(404).end();
     });
+  });
+
+  app.get("/api/chat/pins", (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    const scope = chatSession(request);
+    if (!scope) { response.status(401).json({ ok: false, code: "CHAT_SESSION_REQUIRED" }); return; }
+    const kind = request.query.scope === "server" ? "server" : "channel";
+    // The channel is the session's current one; say which, so the browser files the list correctly.
+    response.json({ scope: kind, channelId: kind === "channel" ? scope.channelId : "", pins: options.pins?.(scope, kind) ?? [] });
   });
 
   app.get("/api/chat/history", (request, response) => {
