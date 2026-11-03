@@ -294,6 +294,37 @@
                 :size="16"
               /><span>{{ t("audioPrivacy") }}</span></div
             ></section
+            ><section
+              v-if="phone"
+              class="settings-section"
+              data-ws-part="voice.audio-settings.phone"
+              ><h3
+                ><Icon
+                  name="bell"
+                  :size="20"
+                />
+                {{ t("phoneSettings") }}</h3
+              ><label
+                class="noise-suppression-toggle settings-form-row"
+                ><span
+                  ><strong>{{ t("callCard") }}</strong
+                  ><small>{{ t("callCardHint") }}</small></span
+                ><input
+                  type="checkbox"
+                  :checked="phone.callCard"
+                  :aria-label="t('callCard')"
+                  @change="emit('phone-option', 'callCard', ($event.target as HTMLInputElement).checked)" /></label
+              ><label
+                class="noise-suppression-toggle settings-form-row"
+                ><span
+                  ><strong>{{ t("awayWhenHidden") }}</strong
+                  ><small>{{ t("awayWhenHiddenHint") }}</small></span
+                ><input
+                  type="checkbox"
+                  :checked="phone.awayWhenHidden"
+                  :aria-label="t('awayWhenHidden')"
+                  @change="emit('phone-option', 'awayWhenHidden', ($event.target as HTMLInputElement).checked)" /></label
+            ></section
           ></div
         ></div
         ><footer class="settings-footer"
@@ -362,8 +393,10 @@ const props = defineProps<{
   t: (key: string, variables?: Record<string, string | number>) => string;
   localizedMessage: (message: string) => string;
   rangeStyle: (value: number, max: number) => CSSProperties;
+  /** Phone-browser options; absent on desktop. */
+  phone?: { awayWhenHidden: boolean; callCard: boolean } | null;
 }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; "phone-option": [option: "awayWhenHidden" | "callCard", value: boolean] }>();
 const dialog = ref<HTMLElement | null>(null);
 const { onDialogKeydown } = useDialogFocus(dialog, () => emit("close"));
 

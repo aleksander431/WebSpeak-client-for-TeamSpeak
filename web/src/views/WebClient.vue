@@ -1002,6 +1002,8 @@
       :t="t"
       :localized-message="localizedMessage"
       :range-style="rangeStyle"
+      :phone="isPhoneBrowser ? phoneOptions : null"
+      @phone-option="setPhoneOption"
       @close="settingsOpen = false"
     />
 
@@ -1085,6 +1087,9 @@ import { BUILTIN_DARK_SKIN, BUILTIN_LIGHT_SKIN } from "../services/skin-runtime.
 import { applyTheme, getStoredTheme, type ThemeMode } from "../services/theme.js";
 import { createScreenWakeLockController, getScreenWakeLockApi, type ScreenWakeLockController, type ScreenWakeLockSnapshot } from "../services/screen-wake-lock.js";
 import { createMobileAwayController, type MobileAwayController } from "../services/mobile-away.js";
+import { createBackgroundRecovery, type BackgroundRecoveryController } from "../services/background-recovery.js";
+import { createCallMediaSession, type CallMediaSessionController } from "../services/call-media-session.js";
+import { desktopHost } from "../composables/useDesktopBridge.js";
 import { createSkinPluginQuickServerProjection, safeSkinServerDisplayName } from "../services/skin-plugin-context.js";
 import { resolveSkinMessages } from "../services/skin-content.js";
 import { loadSkinPluginAuthoringDocument } from "../services/skin-plugin-authoring.js";
@@ -1154,6 +1159,8 @@ const {
   playNotification,
   connect,
   reconnectNow,
+  wakeAudio,
+  canReconnect,
   disconnect,
   switchChannel,
   moveClient,
@@ -1246,6 +1253,22 @@ const identityReady = ref(!localPersistenceAvailable);
 const mobileSection = ref<"channels" | "chat" | "voice" | "more">("channels");
 const isMobileViewport = ref(window.matchMedia("(max-width: 740px)").matches);
 let mobileAwayController: MobileAwayController | undefined;
+let backgroundRecovery: BackgroundRecoveryController | undefined;
+let callMediaSession: CallMediaSessionController | undefined;
+/** A phone's own browser: not a narrow desktop window and not the desktop client. */
+const isPhoneBrowser = computed(() => isMobileViewport.value && !desktopHost()
+  && (typeof window.matchMedia !== "function" || window.matchMedia("(pointer: coarse)").matches));
+function readPhoneOption(key: string): boolean {
+  try { return localStorage.getItem(key) !== "0"; } catch { return true; }
+}
+const phoneOptions = reactive({
+  awayWhenHidden: readPhoneOption("webspeak:away-when-hidden"),
+  callCard: readPhoneOption("webspeak:call-card"),
+});
+function setPhoneOption(option: "awayWhenHidden" | "callCard", value: boolean): void {
+  phoneOptions[option] = value;
+  try { localStorage.setItem(option === "awayWhenHidden" ? "webspeak:away-when-hidden" : "webspeak:call-card", value ? "1" : "0"); } catch { /* per-device convenience */ }
+}
 const shouldKeepScreenAwake = computed(() => isMobileViewport.value && (voiceState.connected || voiceState.connecting || voiceState.reconnecting));
 const screenWakeLockState = ref<ScreenWakeLockSnapshot>({ supported: false, enabled: false, active: false, requesting: false, unavailable: false });
 let screenWakeLockController: ScreenWakeLockController | undefined;
@@ -1704,6 +1727,8 @@ function cancelFavoriteServerPassword(): void {
 }
 
 function leaveVoiceWorkspace(): void {
+  recoveryRejoining = false;
+  backgroundRecovery?.cancel();
   favoriteSwitchPending.value = false;
   favoriteSwitchFailed.value = false;
   favoriteSwitchError.value = "";
@@ -2314,7 +2339,53 @@ watch(shouldKeepScreenAwake, (keepAwake) => {
   if (keepAwake) screenWakeLockController.enable();
   else screenWakeLockController.disable();
 });
-watch([() => voiceState.connected, isMobileViewport], () => mobileAwayController?.sync());
+watch([() => voiceState.connected, isMobileViewport, () => phoneOptions.awayWhenHidden], () => mobileAwayController?.sync());
+
+// Phone background: rejoin a session the browser dropped, then return to its channel.
+let recoveryRejoining = false;
+let recoveryChannelId = "";
+watch(() => voiceState.connected ? currentChannel.value?.id ?? "" : "", (id) => { if (id) recoveryChannelId = id; });
+watch(() => voiceState.connected, (connected) => {
+  if (!connected) return;
+  backgroundRecovery?.connected();
+  if (!recoveryRejoining) return;
+  recoveryRejoining = false;
+  const channelId = recoveryChannelId;
+  if (!channelId) return;
+  const stop = watch(channelTree, (tree) => {
+    if (!voiceState.connected) { stop(); return; }
+    const own = tree.find((item) => item.members.some((member) => member.id === voiceState.tsClientId));
+    if (!own) return;
+    stop();
+    window.clearTimeout(giveUp);
+    if (own.id === channelId) return;
+    const target = tree.find((item) => item.id === channelId);
+    if (target) selectChannel(target);
+  }, { immediate: true });
+  const giveUp = window.setTimeout(stop, 10_000);
+});
+const RECOVERABLE_DROPS = new Set(["GATEWAY_NETWORK_LOST"]);
+const RECOVERABLE_RETRIES = new Set(["GATEWAY_NETWORK_LOST", "REQUEST_FAILED", "REQUEST_TIMEOUT", "VOICE_GATEWAY_UNAVAILABLE"]);
+watch(() => voiceState.connecting, (connecting) => {
+  // The user started a connection of their own: it replaces any pending rejoin.
+  if (connecting && !recoveryRejoining) backgroundRecovery?.cancel();
+});
+watch(() => voiceState.errorCode, (code) => {
+  if (!code || voiceState.connected || voiceState.connecting) return;
+  if (RECOVERABLE_DROPS.has(code) || (recoveryRejoining && RECOVERABLE_RETRIES.has(code))) backgroundRecovery?.dropped();
+  else { recoveryRejoining = false; backgroundRecovery?.cancel(); }
+});
+function rejoinAfterBackground(): void {
+  recoveryRejoining = true;
+  showToast(t("backgroundRejoining"));
+  enableScreenWakeLockForSession();
+  reconnectNow();
+}
+
+// Phone background: a "call in progress" card in the notification shade.
+watch(() => isPhoneBrowser.value && phoneOptions.callCard && voiceState.connected
+  ? { channel: currentChannelName.value, server: currentServerDisplayName.value, microphoneMuted: microphoneMuted.value }
+  : null, (state) => callMediaSession?.update(state), { deep: true });
 watch(screenWakeLockState, (state, previous) => {
   if (!state.unavailable || previous.unavailable || !shouldKeepScreenAwake.value) return;
   showToast(t(state.supported ? "screenWakeLockUnavailable" : "screenWakeLockUnsupported"));
@@ -2326,12 +2397,24 @@ let viewportChangeHandler: (() => void) | undefined;
 
 onMounted(() => {
   mobileAwayController = createMobileAwayController(document, window, {
-    isMobileClient: () => isMobileViewport.value,
+    isMobileClient: () => isMobileViewport.value && phoneOptions.awayWhenHidden,
     isConnected: () => voiceState.connected,
     isAway: () => away.value,
     setAway: setAutomaticAway,
   });
   mobileAwayController.sync();
+  backgroundRecovery = createBackgroundRecovery(document, window, {
+    enabled: () => isPhoneBrowser.value,
+    canResume: () => canReconnect() && !voiceState.connected && !voiceState.connecting && !voiceState.reconnecting,
+    resume: rejoinAfterBackground,
+    wakeAudio,
+  });
+  callMediaSession = createCallMediaSession({
+    toggleMicrophone: () => toggleMicrophone(),
+    hangUp: () => leaveVoiceWorkspace(),
+    labels: () => ({ microphoneOn: t("callCardMicOn"), microphoneOff: t("callCardMicOff") }),
+    artwork: new URL("/webspeak-icon.png", window.location.href).href,
+  });
   screenWakeLockController = createScreenWakeLockController(getScreenWakeLockApi(), document, state => { screenWakeLockState.value = state; });
   if (shouldKeepScreenAwake.value) screenWakeLockController.enable();
   stopViewportObservation = observeMobileViewport(window, value => Object.assign(mobileViewport, value));
@@ -2372,6 +2455,8 @@ onMounted(() => {
 });
 onUnmounted(() => {
   mobileAwayController?.dispose();
+  backgroundRecovery?.dispose();
+  callMediaSession?.dispose();
   screenWakeLockController?.dispose();
   stopViewportObservation?.();
   disconnect();

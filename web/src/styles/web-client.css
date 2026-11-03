@@ -2318,6 +2318,10 @@
   margin: 0 auto;
 }
 
+:deep(.settings-section[data-ws-part="voice.audio-settings.phone"]) {
+  margin-top: 32px;
+}
+
 :deep(.settings-section h3) {
   display: flex;
   align-items: center;

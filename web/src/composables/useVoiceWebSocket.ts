@@ -1383,6 +1383,22 @@ export function useVoiceWebSocket() {
     whisperActive.value = active === true && whisperTargetIds.size > 0;
   }
 
+  /**
+   * The page came back from the background: restart what the browser paused.
+   * Running audio and a live microphone are left untouched.
+   */
+  function wakeAudio(): void {
+    const ctx = audioCtx;
+    if (ctx && ctx.state !== "running" && ctx.state !== "closed") void ctx.resume().catch(() => undefined);
+    // iOS ends the capture track while Safari is in the background.
+    if (state.connected && micStream && micStream.getAudioTracks().some(track => track.readyState === "ended")) void reconfigureMicrophone().catch(() => undefined);
+  }
+
+  /** A session the user has not left: the last connection can be repeated. */
+  function canReconnect(): boolean {
+    return lastConnection !== null;
+  }
+
   function reconnectNow(): void {
     if (!lastConnection || state.connecting) return;
     connect(lastConnection.target, lastConnection.channel, lastConnection.nickname, lastConnection.serverPassword, lastConnection.rememberIdentity ? identityMaterial.value || lastConnection.identity : "", lastConnection.rememberIdentity, "", lastConnection.accelerated, lastConnection.accelerationRelayId);
@@ -1636,6 +1652,8 @@ export function useVoiceWebSocket() {
     playNotification,
     connect,
     reconnectNow,
+    wakeAudio,
+    canReconnect,
     disconnect,
     switchChannel,
     moveClient,
