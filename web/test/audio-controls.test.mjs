@@ -148,3 +148,19 @@ test("scope disposal releases an active whisper and its capture", t => {
   assert.deepEqual(sent, [true, false]);
   assert.equal(captures.size, 0);
 });
+
+test("the desktop whisper key shows as pressed and survives focus loss until released", t => {
+  const { controls, sent, pointer } = whisperFixture(t);
+  controls.setWhisperHotkeyHeld(true);
+  assert.equal(controls.whisperPttActive.value, true, "the button shows the held state");
+  controls.stopLocalWhisperTalk();
+  assert.equal(controls.whisperPttActive.value, true, "switching to a game does not end it");
+  controls.onWhisperPttUp(pointer());
+  controls.setWhisperHotkeyHeld(false);
+  assert.equal(controls.whisperPttActive.value, false);
+  controls.onWhisperPttDown(pointer());
+  controls.setWhisperHotkeyHeld(false);
+  assert.equal(controls.whisperPttActive.value, true, "releasing the key does not end a button whisper");
+  controls.stopLocalWhisperTalk();
+  assert.deepEqual(sent, [true, false, true, false]);
+});

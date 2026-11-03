@@ -29,7 +29,7 @@
       @lostpointercapture="onWhisperPttUp"
       @keydown="onWhisperPttKeyDown"
       @keyup="onWhisperPttKeyUp"
-      @blur="stopWhisperTalk"
+      @blur="stopLocalWhisperTalk"
       ><Icon
         name="mic"
         :size="18"
@@ -48,20 +48,20 @@ const props = defineProps<{
   targets: ReadonlyArray<{ nickname: string }>;
   active: boolean;
   enabled: boolean;
-  controls: Pick<ReturnType<typeof useWebClientAudioControls>, "whisperPttActive" | "onWhisperPttDown" | "onWhisperPttUp" | "onWhisperPttKeyDown" | "onWhisperPttKeyUp" | "stopWhisperTalk">;
+  controls: Pick<ReturnType<typeof useWebClientAudioControls>, "whisperPttActive" | "onWhisperPttDown" | "onWhisperPttUp" | "onWhisperPttKeyDown" | "onWhisperPttKeyUp" | "stopWhisperTalk" | "stopLocalWhisperTalk">;
   t: (key: string) => string;
 }>();
-const { whisperPttActive, onWhisperPttDown, onWhisperPttUp, onWhisperPttKeyDown, onWhisperPttKeyUp, stopWhisperTalk } = props.controls;
+const { whisperPttActive, onWhisperPttDown, onWhisperPttUp, onWhisperPttKeyDown, onWhisperPttKeyUp, stopWhisperTalk, stopLocalWhisperTalk } = props.controls;
 const emit = defineEmits<{ clear: [] }>();
-function onVisibilityChange() { if (document.hidden) stopWhisperTalk(); }
-watch(() => props.enabled, enabled => { if (!enabled) stopWhisperTalk(); }, { flush: "sync" });
+function onVisibilityChange() { if (document.hidden) stopLocalWhisperTalk(); }
+watch(() => props.enabled, enabled => { if (!enabled) stopLocalWhisperTalk(); }, { flush: "sync" });
 onMounted(() => {
-  window.addEventListener("blur", stopWhisperTalk);
+  window.addEventListener("blur", stopLocalWhisperTalk);
   document.addEventListener("visibilitychange", onVisibilityChange);
 });
 onBeforeUnmount(() => {
   stopWhisperTalk();
-  window.removeEventListener("blur", stopWhisperTalk);
+  window.removeEventListener("blur", stopLocalWhisperTalk);
   document.removeEventListener("visibilitychange", onVisibilityChange);
 });
 </script>

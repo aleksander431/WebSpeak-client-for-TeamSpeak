@@ -4917,6 +4917,7 @@
 
 :deep(.whisper-strip) {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-top: 18px;
@@ -4932,7 +4933,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1;
+  flex: 1 1 160px;
 }
 
 :deep(.whisper-strip-copy strong) {

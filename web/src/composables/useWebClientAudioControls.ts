@@ -244,6 +244,16 @@ export function useWebClientAudioControls({
     if (whisperKey === WHISPER_HOTKEY) stopWhisperTalk();
   }
 
+  /**
+   * The page lost focus or was hidden: end a whisper held with the button or
+   * the keyboard. The desktop hotkey keeps working in other programs, so its
+   * whisper ends only when the key is released.
+   */
+  function stopLocalWhisperTalk(): void {
+    if (whisperKey === WHISPER_HOTKEY) return;
+    stopWhisperTalk();
+  }
+
   function stopWhisperTalk(): void {
     const pointer = whisperPointer;
     whisperPointer = null;
@@ -297,6 +307,7 @@ export function useWebClientAudioControls({
     onWhisperPttKeyDown,
     onWhisperPttKeyUp,
     setWhisperHotkeyHeld,
+    stopLocalWhisperTalk,
     stopWhisperTalk,
   };
 }
