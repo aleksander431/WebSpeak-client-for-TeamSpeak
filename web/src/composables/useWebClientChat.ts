@@ -1,6 +1,7 @@
 import { computed, nextTick, onScopeDispose, reactive, ref, watch, type Ref } from "vue";
 import type { ChannelInfo, ChannelMember, ChatMessage } from "./useVoiceWebSocket.js";
 import { loadChatHistory, normalizeChatHistoryServerKey, saveChatHistoryMessage } from "../services/local-persistence.js";
+import { sameChatMessage } from "../services/chat-dedupe.js";
 import { ChatFileError, fetchChatHistory, fetchChatPins, pastedFileName, uploadChatFile } from "../services/chat-files.js";
 import type { ChatPin } from "../../../src/shared/chat-pins.js";
 import { chatAttachmentMessage, formatBytes, type ChatHistoryMessage, type ChatSessionAccess } from "../../../src/shared/chat-storage.js";
@@ -14,8 +15,6 @@ export interface ChatUpload {
   error: string;
 }
 
-/** Same message from local and server history (or the live session) within this window is one message. */
-const HISTORY_MATCH_WINDOW_MS = 120_000;
 
 export type WebClientChatTab = "channel" | "server" | "private" | "events";
 
@@ -476,11 +475,7 @@ export function useWebClientChat({
 
   /** Is this history entry already shown (live, or from browser-local history)? */
   function alreadyShown(candidate: ChatMessage): boolean {
-    return messages.some(message => message.scope === candidate.scope
-      && (candidate.scope !== "channel" || (message.targetId ?? "") === (candidate.targetId ?? ""))
-      && message.message === candidate.message
-      && (message.isSelf ? candidate.isSelf : message.invokerName === candidate.invokerName)
-      && Math.abs(message.timestamp - candidate.timestamp) < HISTORY_MATCH_WINDOW_MS);
+    return messages.some(message => sameChatMessage(message, candidate));
   }
 
   function mergeServerHistory(entries: readonly ChatHistoryMessage[]): void {
@@ -498,8 +493,8 @@ export function useWebClientChat({
       if (entry.ref && entry.reactions?.length && reactions && !reactions.has(entry.ref)) reactions.set(entry.ref, entry.reactions);
       if (entry.ref) {
         // A live message the gateway referenced later than our copy: adopt its reference.
-        const shown = messages.find(message => !message.ref && message.scope === candidate.scope && message.message === candidate.message
-          && Math.abs(message.timestamp - candidate.timestamp) < HISTORY_MATCH_WINDOW_MS && (message.isSelf ? isSelf : message.invokerName === candidate.invokerName));
+        const { ref: _ref, ...unreferenced } = candidate;
+        const shown = messages.find(message => !message.ref && sameChatMessage(message, unreferenced));
         if (shown) shown.ref = entry.ref;
       }
       if (messages.some(message => message.id === candidate.id) || alreadyShown(candidate)) continue;
