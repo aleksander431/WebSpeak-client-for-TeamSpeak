@@ -33,7 +33,7 @@ export const BUILTIN_SKIN_CATALOG: SkinCatalogEntry[] = [
   {
     id: BUILTIN_ILLUSIA_SKIN_ID,
     name: "ILLUSIA风",
-    version: "2.0.3",
+    version: "2.0.4",
     author: "WebSpeak Project",
     license: "All rights reserved",
     description: "A bright original-character art skin with a safe declarative live-channel badge.",
@@ -46,7 +46,7 @@ export const BUILTIN_SKIN_CATALOG: SkinCatalogEntry[] = [
   {
     id: BUILTIN_KAAK_SKIN_ID,
     name: "KAAK",
-    version: "3.1.137",
+    version: "3.1.138",
     author: "WebSpeak Project",
     license: "AGPL-3.0-only",
     description: "A KOOK-inspired WebSpeak skin with a split-screen connection home, searchable server header, TeamSpeak banner, nested channel members, unified chat with local history, and a compact audio dock.",

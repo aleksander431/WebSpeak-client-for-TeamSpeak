@@ -208,6 +208,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Desktop client: in-game overlay showing who is in the channel and who is talking, drawn over games. Off by default; turn it on in Settings or the tray menu, and choose its corner, size, opacity, offset and whether to show everyone or only who is talking.
 - Chat: pinned messages. Pin a channel or server message from its actions; a bar above the chat shows the latest pin and opens the list, where you can jump to a message or unpin it. Pins are saved on the server (up to 50 per chat) and seen by every WebSpeak user in that chat.
 - Phone browsers: a call card in the notification shade and on the lock screen (microphone and leave buttons), automatic rejoin to the same channel after the browser dropped the connection in the background, sound restarted when you come back, and a switch for the automatic “Away” status. Both options are in audio settings under “Phone”.
+- KAAK theme: a stream you watch now fills all the free height of the voice area, with the members in a compact row underneath. The “connecting to the stream” text is readable on every theme.
 
 ### [v0.4.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.1) · 2026-11-02
 

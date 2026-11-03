@@ -899,12 +899,13 @@
   background: #000;
 }
 
+/* The player stage is black, so its text stays light. */
 [data-ws-part="voice.screen-player.placeholder"] {
-  color: var(--skin-illusia-muted);
+  color: #ffffff99;
 }
 
 [data-ws-part="voice.screen-player.placeholder"] strong {
-  color: var(--skin-illusia-ink);
+  color: #f4fbfa;
 }
 
 [data-ws-part="voice.screen-player.exit"],
