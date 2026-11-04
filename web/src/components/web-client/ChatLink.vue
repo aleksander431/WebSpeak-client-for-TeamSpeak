@@ -7,6 +7,7 @@
     target="_blank"
     rel="noopener noreferrer"
     :title="text"
+    @click="openViewer"
     ><img
       :src="href"
       :alt="text"
@@ -56,6 +57,7 @@
 import { computed, ref } from "vue";
 import Icon from "../Icon.vue";
 import { looksLikeImageName, parseChatAttachmentUrl } from "../../../../src/shared/chat-storage.js";
+import { chatImagesAround, openImageViewer } from "../../services/image-viewer.js";
 
 const props = defineProps<{ href: string; text: string; t: (key: string) => string }>();
 const emit = defineEmits<{ mediaLoaded: [] }>();
@@ -64,4 +66,12 @@ const attachment = computed(() => Boolean(origin && parseChatAttachmentUrl(props
 const image = computed(() => attachment.value && looksLikeImageName(props.text));
 /** The attachment no longer loads (rotated out to free space). */
 const failed = ref(false);
+
+/** Open the picture in the page's viewer; Ctrl/Cmd/Shift-click still opens a new tab. */
+function openViewer(event: MouseEvent): void {
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  const link = event.currentTarget as HTMLAnchorElement;
+  openImageViewer({ src: link.href, name: props.text }, chatImagesAround(link));
+}
 </script>

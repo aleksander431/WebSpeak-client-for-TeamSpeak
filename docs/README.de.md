@@ -185,6 +185,13 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v0.4.4](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.4) · 2026-11-04
+
+#### Neue Funktionen
+
+- Chat: Bilder öffnen sich in einem eingebauten Betrachter statt in einem neuen Tab. Zoomen per Mausrad, Schaltflächen oder zwei Fingern (bis 800 %), Ziehen zum Verschieben, Doppelklick oder Doppeltippen zum Vergrößern und zurück, Pfeile oder Wischen zum Blättern durch die Bilder des Chats. Strg-Klick öffnet das Original weiterhin im Tab.
+- Flüstern: Die Schaltfläche leuchtet, solange du die Flüstertaste des Desktop-Clients hältst, und der Wechsel ins Spiel beendet ein per Taste gehaltenes Flüstern nicht mehr.
+
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 
 #### Neue Funktionen

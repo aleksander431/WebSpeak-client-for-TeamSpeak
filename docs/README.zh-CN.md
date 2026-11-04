@@ -199,6 +199,13 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
+### [v0.4.4](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.4) · 2026-11-04
+
+#### 新功能
+
+- 聊天：图片在内置查看器中打开，而不是新标签页。可用滚轮、按钮或双指缩放（最高 800%），拖动查看，双击或双指轻点放大/还原，用方向键或滑动浏览本聊天的图片。Ctrl+点击仍在标签页中打开原图。
+- 悄悄话：按住桌面客户端的悄悄话按键时按钮会高亮；切换到游戏后不会再中断按键保持的悄悄话。
+
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 
 #### 新功能

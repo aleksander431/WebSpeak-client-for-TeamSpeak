@@ -994,6 +994,8 @@
     />
 
     <!-- Audio settings modal -->
+    <ChatImageViewer :t="t" />
+
     <AudioSettingsDialog
       v-if="settingsOpen"
       :model="audioSettingsState"
@@ -1056,6 +1058,7 @@ import ChannelMemberPanel from "../components/web-client/ChannelMemberPanel.vue"
 import MemberActionsMenu from "../components/web-client/MemberActionsMenu.vue";
 import JoinForm from "../components/web-client/JoinForm.vue";
 import ChatPanel from "../components/web-client/ChatPanel.vue";
+import ChatImageViewer from "../components/web-client/ChatImageViewer.vue";
 import WebClientHeader from "../components/web-client/WebClientHeader.vue";
 import IdentityImportDialog from "../components/web-client/IdentityImportDialog.vue";
 import FavoriteServerDialog, { type FavoriteServerDraft } from "../components/web-client/FavoriteServerDialog.vue";

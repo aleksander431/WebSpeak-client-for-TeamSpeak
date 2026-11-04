@@ -159,6 +159,13 @@ npm start
 
 <a id="latest-release-notes"></a>
 
+### [v0.4.4](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.4) · 2026-11-04
+
+#### 新機能
+
+- チャット：画像を新しいタブではなく内蔵ビューアーで開けるようになりました。ホイール・ボタン・ピンチで拡大（最大 800%）、ドラッグで移動、ダブルクリック／ダブルタップで拡大と元に戻す、矢印やスワイプでチャット内の画像を切り替えられます。Ctrl+クリックでは従来どおり元画像をタブで開きます。
+- ささやき：デスクトップのささやきキーを押している間ボタンが点灯し、ゲームに切り替えてもキーで続けているささやきが途切れなくなりました。
+
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 
 #### 新機能
