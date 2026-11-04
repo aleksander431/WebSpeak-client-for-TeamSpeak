@@ -201,6 +201,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 - Chat: pictures open in a built-in viewer instead of a new browser tab. Zoom with the wheel, buttons or a pinch (up to 800%), drag to look around, double-click or double-tap to zoom in and back, and step through the chat’s pictures with the arrows or a swipe. Ctrl-click still opens the original in a tab.
 - Whisper: the button lights up while you hold the desktop whisper key, and switching to a game no longer ends a whisper you are holding with the key.
+- KAAK theme: whoever is talking gets a green ring round their avatar and a green microphone in the channel list on the left.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

@@ -63,6 +63,7 @@
           :aria-level="depth + 2"
           :aria-label="`${member.nickname}${member.isSelf ? `, ${t('you')}` : ''}${member.inputMuted ? `, ${t('inputMuted')}` : ''}`"
           :data-self="member.isSelf ? 'true' : 'false'"
+          :data-speaking="isSpeaking(member) ? 'true' : 'false'"
           :draggable="memberDragDrop && !member.isSelf"
           :data-dragging="memberDragDrop && draggedMemberId === member.id ? 'true' : undefined"
           @dragstart="handleMemberDragStart(member, $event)"
@@ -72,6 +73,7 @@
           <span
             class="ws-voice-channel-member-avatar"
             data-ws-part="voice.channel-tree.avatar"
+            :class="{ 'is-speaking': isSpeaking(member) }"
             :style="avatarStyle(member.nickname, member.isSelf, member.avatar)"
             aria-hidden="true"
           >{{ member.avatar ? '' : avatarInitial(member.nickname) }}</span>
@@ -88,6 +90,7 @@
           <Icon
             v-else
             class="ws-voice-channel-member-mic"
+            :class="{ 'is-speaking': isSpeaking(member) }"
             name="mic"
             :size="13"
             :title="t('microphoneActive')"

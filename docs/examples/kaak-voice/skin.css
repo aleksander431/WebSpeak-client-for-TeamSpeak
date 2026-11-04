@@ -4981,3 +4981,9 @@
 
 [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-player-placeholder strong { color: var(--skin-kaak-text); }
 [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-player-placeholder > span:last-child { color: var(--skin-kaak-muted); }
+
+/* Who is talking, in the server sidebar too: a green ring round the avatar and a green microphone. */
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-voice-channel-tree[data-layout="server-sidebar"] .ws-voice-channel-member-avatar { transition: box-shadow .12s ease; }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-voice-channel-tree[data-layout="server-sidebar"] .ws-voice-channel-member-avatar.is-speaking { box-shadow: 0 0 0 2px #1e1f22, 0 0 0 4px #6cbf00, 0 0 10px 3px #6cbf0066; }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-voice-channel-tree[data-layout="server-sidebar"] .ws-voice-channel-member[data-speaking="true"] { color: #eff0f3; }
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-voice-channel-tree[data-layout="server-sidebar"] .ws-voice-channel-member-mic.is-speaking { color: #8ed600; }
