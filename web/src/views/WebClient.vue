@@ -926,14 +926,24 @@
       @file="readIdentityFile"
     />
 
-    <WhiteboardPanel
-      v-if="whiteboardOpen"
-      :client="whiteboardClient"
-      :channel-name="currentChannelName"
-      :connected="voiceState.connected"
-      :t="t"
-      @close="closeWhiteboard"
-    />
+    <Teleport
+      :to="whiteboardWindow?.document.body ?? 'body'"
+      :disabled="!whiteboardWindow"
+    >
+      <WhiteboardPanel
+        v-if="whiteboardOpen"
+        :key="whiteboardWindow ? 'window' : 'page'"
+        :client="whiteboardClient"
+        :channel-name="currentChannelName"
+        :connected="voiceState.connected"
+        :detached="Boolean(whiteboardWindow)"
+        :can-detach="canDetachWhiteboard"
+        :t="t"
+        @close="closeWhiteboard"
+        @popout="popOutWhiteboard"
+        @popin="popInWhiteboard"
+      />
+    </Teleport>
 
     <ScreenShareSettingsDialog
       v-if="screenShareSettingsOpen"
@@ -1030,7 +1040,8 @@
 
 <script setup lang="ts">
 import { observeMobileViewport } from "../services/mobile-viewport.js";
-import { computed, h, onMounted, onUnmounted, provide, reactive, ref, shallowRef, watch } from "vue";
+import { computed, h, nextTick, onMounted, onUnmounted, provide, reactive, ref, shallowRef, watch } from "vue";
+import { openDetachedWindow } from "../services/detached-window.js";
 import Icon from "../components/Icon.vue";
 import VoiceConnectionStatus from "../components/web-client/VoiceConnectionStatus.vue";
 import { useVoiceWorkspace } from "../composables/useVoiceWorkspace.js";
@@ -1226,9 +1237,56 @@ function openWhiteboard() {
   whiteboardClient.open();
 }
 function closeWhiteboard() {
+  closeWhiteboardWindow();
   whiteboardOpen.value = false;
   whiteboardClient.close();
 }
+
+// The board can move into its own window and back; it keeps the page's
+// connection and state, so the page must stay open (closing it closes the window).
+const whiteboardWindow = shallowRef<Window | null>(null);
+/** Phones have no separate windows. */
+const canDetachWhiteboard = computed(() => !isMobileViewport.value);
+let whiteboardWindowWatch: ReturnType<typeof setInterval> | null = null;
+function closeWhiteboardWindow(): void {
+  const popup = whiteboardWindow.value;
+  whiteboardWindow.value = null;
+  if (whiteboardWindowWatch) { clearInterval(whiteboardWindowWatch); whiteboardWindowWatch = null; }
+  if (popup && !popup.closed) {
+    // Let the board move back first, then close the empty window.
+    void nextTick(() => { try { popup.close(); } catch { /* already closed */ } });
+  }
+}
+function popOutWhiteboard(): void {
+  const popup = openDetachedWindow({
+    name: "webspeak-whiteboard",
+    title: `${t("whiteboard")} — ${currentChannelName.value}`,
+    width: Math.min(1400, Math.max(900, window.outerWidth - 120)),
+    height: Math.min(950, Math.max(640, window.outerHeight - 120)),
+    themeSource: document.querySelector(".web-client") ?? document.body,
+    variables: ["--surface-1", "--surface-2", "--surface-3", "--border", "--text-primary", "--text-secondary", "--text-muted", "--accent", "--danger"],
+  });
+  if (!popup) { showToast(t(desktopHost() ? "whiteboardPopOutDesktopUpdate" : "whiteboardPopOutBlocked")); return; }
+  whiteboardWindow.value = popup;
+  // Closing the window with its own close button closes the board.
+  const closedByUser = () => {
+    if (whiteboardWindow.value !== popup) return;
+    whiteboardWindow.value = null;
+    closeWhiteboard();
+  };
+  popup.addEventListener("pagehide", closedByUser);
+  // pagehide is not guaranteed for every way a window disappears.
+  if (whiteboardWindowWatch) clearInterval(whiteboardWindowWatch);
+  whiteboardWindowWatch = setInterval(() => { if (popup.closed) closedByUser(); }, 1000);
+}
+function popInWhiteboard(): void {
+  closeWhiteboardWindow();
+}
+window.addEventListener("pagehide", closeWhiteboardWindow);
+onUnmounted(() => {
+  window.removeEventListener("pagehide", closeWhiteboardWindow);
+  closeWhiteboardWindow();
+});
 onUnmounted(stopWhiteboardMessages);
 const { panelOpen: performancePanelOpen } = performance;
 

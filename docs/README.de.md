@@ -194,6 +194,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - KAAK-Design: wer spricht, bekommt in der Kanalliste links einen grünen Ring um den Avatar und ein grünes Mikrofon.
 - Bildschirmfreigabe: bis zu vier Streams gleichzeitig ansehen. Weitere über „Ansehen“ bei den Mitgliedern öffnen; ein Schalter über dem Player wählt zwischen einem großen Stream mit Kacheln (Kachel anklicken macht sie groß) und einem gleichmäßigen Raster. Kleine Streams sind stumm, bis man sie einschaltet.
 - Bildschirmfreigabe: ein Stream lässt sich in ein eigenes, immer obenliegendes Fenster lösen (Schaltfläche neben Vollbild oder auf einer Kachel) und zurückholen; jeweils ein Stream.
+- Whiteboard: das Board lässt sich in ein eigenes Fenster lösen (Schaltfläche neben Schließen) — praktisch auf einem zweiten Monitor; gezeichnet wird über dieselbe Verbindung, die Schaltfläche dort holt es zurück. In der Desktop-App ist dafür die neue Desktop-Version nötig.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

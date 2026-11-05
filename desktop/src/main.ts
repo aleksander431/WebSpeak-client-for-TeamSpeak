@@ -144,9 +144,32 @@ function createMainWindow(): BrowserWindow {
 
   const contents = window.webContents;
   // Other sites open in the normal browser; the window stays on the server.
-  contents.setWindowOpenHandler(({ url }) => {
+  contents.setWindowOpenHandler(({ url, frameName }) => {
+    // The page's own detached whiteboard: an empty window the page fills itself.
+    if (frameName === "webspeak-whiteboard" && (url === "" || url === "about:blank")) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          title: "WebSpeak",
+          minWidth: 360,
+          minHeight: 260,
+          autoHideMenuBar: true,
+          backgroundColor: "#101614",
+          icon: join(STATIC, "icon.png"),
+          webPreferences: { partition: PARTITION, contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
+        },
+      };
+    }
     if (/^https?:/i.test(url)) void shell.openExternal(url);
     return { action: "deny" };
+  });
+  contents.on("did-create-window", (child) => {
+    // The board window never goes anywhere on its own and opens nothing further.
+    child.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/i.test(url)) void shell.openExternal(url);
+      return { action: "deny" };
+    });
+    child.webContents.on("will-navigate", (event) => event.preventDefault());
   });
   contents.on("will-navigate", (event, url) => {
     if (isServerUrl(url) || url.startsWith("file:")) return;

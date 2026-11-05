@@ -47,6 +47,19 @@
         <button type="button" class="wb-icon-button danger" :disabled="!elementCount" :title="t('whiteboardClear')" :aria-label="t('whiteboardClear')" @click="confirm = { kind: 'clear' }">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
         </button>
+        <button
+          v-if="canDetach || detached"
+          type="button"
+          class="wb-icon-button"
+          data-ws-part="voice.whiteboard.popout"
+          :title="detached ? t('whiteboardPopIn') : t('whiteboardPopOut')"
+          :aria-label="detached ? t('whiteboardPopIn') : t('whiteboardPopOut')"
+          :aria-pressed="detached === true"
+          @click="detached ? emit('popin') : emit('popout')"
+        >
+          <svg v-if="detached" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 20H4v-6M4 20l8-8M13 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5" /></svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-8 8M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5" /></svg>
+        </button>
         <button type="button" class="wb-icon-button" :title="t('close')" :aria-label="t('close')" data-ws-part="voice.whiteboard.close" @click="emit('close')">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
         </button>
@@ -246,8 +259,21 @@ const props = defineProps<{
   channelName: string;
   connected: boolean;
   t: (key: string, variables?: Record<string, string | number>) => string;
+  /** Shown in its own window instead of over the page. */
+  detached?: boolean;
+  /** Whether a separate window can be offered at all. */
+  canDetach?: boolean;
 }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; popout: []; popin: [] }>();
+
+/**
+ * The window the board lives in: the page, or its own window when detached.
+ * Keyboard, clipboard, resize and animation frames must come from that window,
+ * or they stop working (and drawing pauses while the page is minimised).
+ */
+function hostWindow(): Window & typeof globalThis {
+  return (panel.value?.ownerDocument.defaultView ?? window) as Window & typeof globalThis;
+}
 const t = props.t;
 
 type Tool = "select" | "pen" | "line" | "arrow" | "rect" | "ellipse" | "text" | "eraser" | "hand";
@@ -297,11 +323,13 @@ function detectPageTheme() {
   const element = panel.value;
   if (!element) return;
   // Skins declare color-scheme (KAAK and the built-in dark skin say "dark").
-  const scheme = getComputedStyle(document.documentElement).colorScheme || "";
+  const host = hostWindow();
+  const scheme = host.getComputedStyle(host.document.documentElement).colorScheme || "";
   if (/\bdark\b/.test(scheme) && !/\blight\b/.test(scheme)) { pageIsDark.value = true; return; }
   if (/\blight\b/.test(scheme) && !/\bdark\b/.test(scheme)) { pageIsDark.value = false; return; }
-  const match = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(element.parentElement ?? document.body).backgroundColor);
-  if (match && !/rgba\([^)]*,\s*0\)/.test(getComputedStyle(element.parentElement ?? document.body).backgroundColor)) {
+  const background = host.getComputedStyle(element.parentElement ?? host.document.body).backgroundColor;
+  const match = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(background);
+  if (match && !/rgba\([^)]*,\s*0\)/.test(background)) {
     pageIsDark.value = (0.299 * Number(match[1]) + 0.587 * Number(match[2]) + 0.114 * Number(match[3])) / 255 < 0.45;
   } else pageIsDark.value = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
 }
@@ -1011,9 +1039,12 @@ function commitRename() {
 // ---------------------------------------------------------------- drawing
 
 let frame = 0;
+let frameHost: (Window & typeof globalThis) | null = null;
 function requestDraw() {
-  if (frame || typeof requestAnimationFrame === "undefined") return;
-  frame = requestAnimationFrame(() => { frame = 0; draw(); });
+  const host = hostWindow();
+  if (frame || typeof host.requestAnimationFrame === "undefined") return;
+  frameHost = host;
+  frame = host.requestAnimationFrame(() => { frame = 0; draw(); });
 }
 
 function drawList(): WhiteboardElement[] {
@@ -1038,7 +1069,7 @@ function draw() {
   // Include the page's CSS zoom so a zoomed board stays sharp instead of stretched.
   const hostRect = host.getBoundingClientRect();
   const pageZoom = width > 0 && hostRect.width > 0 ? hostRect.width / width : 1;
-  const dpr = Math.min(4, (window.devicePixelRatio || 1) * pageZoom);
+  const dpr = Math.min(4, (hostWindow().devicePixelRatio || 1) * pageZoom);
   if (element.width !== Math.round(width * dpr) || element.height !== Math.round(height * dpr)) {
     element.width = Math.round(width * dpr);
     element.height = Math.round(height * dpr);
@@ -1164,6 +1195,8 @@ function exportPng() {
 // -------------------------------------------------------------- lifecycle
 
 let resizeObserver: ResizeObserver | null = null;
+/** The window listeners were added to (see hostWindow). */
+let listenerHost: (Window & typeof globalThis) | null = null;
 let ticker: ReturnType<typeof setInterval> | null = null;
 let centered = false;
 watch(ready, (value) => {
@@ -1171,13 +1204,14 @@ watch(ready, (value) => {
 });
 onMounted(() => {
   detectPageTheme();
-  window.addEventListener("keydown", onKeydown);
-  window.addEventListener("keyup", onKeyup);
-  document.addEventListener("paste", onPaste);
-  document.addEventListener("copy", onCopy);
-  document.addEventListener("cut", onCut);
-  if (typeof ResizeObserver !== "undefined" && stage.value) {
-    resizeObserver = new ResizeObserver(() => requestDraw());
+  const host = listenerHost = hostWindow();
+  host.addEventListener("keydown", onKeydown);
+  host.addEventListener("keyup", onKeyup);
+  host.document.addEventListener("paste", onPaste);
+  host.document.addEventListener("copy", onCopy);
+  host.document.addEventListener("cut", onCut);
+  if (typeof host.ResizeObserver !== "undefined" && stage.value) {
+    resizeObserver = new host.ResizeObserver(() => requestDraw());
     resizeObserver.observe(stage.value);
   }
   // Stale cursors and previews fade out even when nothing else changes.
@@ -1190,14 +1224,20 @@ onBeforeUnmount(() => {
   cancelInteraction();
   props.client.sendCursor(null, null);
   unsubscribe();
-  window.removeEventListener("keydown", onKeydown);
-  window.removeEventListener("keyup", onKeyup);
-  document.removeEventListener("paste", onPaste);
-  document.removeEventListener("copy", onCopy);
-  document.removeEventListener("cut", onCut);
+  const host = listenerHost;
+  listenerHost = null;
+  if (host) {
+    try {
+      host.removeEventListener("keydown", onKeydown);
+      host.removeEventListener("keyup", onKeyup);
+      host.document.removeEventListener("paste", onPaste);
+      host.document.removeEventListener("copy", onCopy);
+      host.document.removeEventListener("cut", onCut);
+    } catch { /* the board's window is already closed */ }
+  }
   resizeObserver?.disconnect();
   if (ticker) clearInterval(ticker);
-  if (frame) cancelAnimationFrame(frame);
+  if (frame) { try { (frameHost ?? window).cancelAnimationFrame(frame); } catch { /* window gone */ } frame = 0; }
   if (hintTimer) clearTimeout(hintTimer);
 });
 watch(() => [view.x, view.y, view.zoom, textEditor.value?.value, textEditor.value?.color, textEditor.value?.fontSize], () => requestDraw());
