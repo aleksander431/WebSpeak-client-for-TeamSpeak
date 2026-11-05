@@ -4987,3 +4987,40 @@
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-voice-channel-tree[data-layout="server-sidebar"] .ws-voice-channel-member-avatar.is-speaking { box-shadow: 0 0 0 2px #1e1f22, 0 0 0 4px #6cbf00, 0 0 10px 3px #6cbf0066; }
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-voice-channel-tree[data-layout="server-sidebar"] .ws-voice-channel-member[data-speaking="true"] { color: #eff0f3; }
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .ws-voice-channel-tree[data-layout="server-sidebar"] .ws-voice-channel-member-mic.is-speaking { color: #8ed600; }
+
+/* Several streams on desktop: the gallery takes the free height; in the main
+   layout the big player grows and the tiles stay one row, in the grid every
+   stream gets an equal share of it. */
+@media (min-width: 821px) {
+  [data-ws-plugin-part="kaak-workspace.voice-stage"]:has(.screen-share-player) [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-gallery {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: 0;
+  }
+  [data-ws-plugin-part="kaak-workspace.voice-stage"]:has(.screen-share-player) [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-gallery-items {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  [data-ws-plugin-part="kaak-workspace.voice-stage"]:has(.screen-share-player) [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-tiles { flex: 0 0 auto; }
+  [data-ws-plugin-part="kaak-workspace.voice-stage"]:has(.screen-share-player) [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-gallery[data-layout="grid"] .screen-share-gallery-items {
+    grid-auto-rows: minmax(0, 1fr);
+  }
+  [data-ws-plugin-part="kaak-workspace.voice-stage"]:has(.screen-share-player) [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-gallery[data-layout="grid"] .screen-share-player-stage {
+    height: 100%;
+    min-height: 0;
+    aspect-ratio: auto !important;
+  }
+  [data-ws-plugin-part="kaak-workspace.voice-stage"]:has(.screen-share-player) [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-gallery[data-layout="grid"] .screen-share-tile {
+    aspect-ratio: auto;
+    min-height: 0;
+  }
+}
+[data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-gallery-layouts { border-color: #34363b; background: #1e1f22; }
+[data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-gallery-layouts button { color: #a5aab4; }
+[data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-gallery-layouts button.active { color: #111216; background: var(--skin-kaak-accent); }
+[data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-gallery-title { color: #a5aab4; }
+[data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-tile { border-color: #34363b; }
+[data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-tile:hover,
+[data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-tile:focus-visible { border-color: var(--skin-kaak-accent); }

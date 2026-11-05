@@ -691,13 +691,17 @@
                   :size="15"
                 /> <span>{{ screenShareErrorText }}</span></div
               >
-              <ScreenSharePlayer
+              <ScreenShareGallery
                 v-if="screenShareViewing"
                 :model="screenShareControls"
-                :screen-share-remote-stream="screenShareRemoteStream"
-                :screen-share-remote-volume="screenShareRemoteVolume"
-                :screen-share-error="screenShareError"
-                :leave-screen-share="leaveScreenShare"
+                :views="screenShareViews"
+                :focused-stream-id="screenShareViewingStreamId"
+                :streams="screenShareStreams"
+                :remote-stream="screenShareRemoteStream"
+                :remote-volume="screenShareRemoteVolume"
+                :error="screenShareError"
+                :leave="leaveScreenShare"
+                :focus="focusScreenShare"
                 :avatar-initial="avatarInitial"
                 :t="t"
               />
@@ -1048,7 +1052,7 @@ import { WhiteboardClient } from "../whiteboard/whiteboard-client.js";
 import { useDesktopBridge } from "../composables/useDesktopBridge.js";
 import { WEB_CLIENT_T, pageLanguage } from "../composables/useWebClientT.js";
 import { createMemberPresenceTracker } from "../services/channel-presence-sound.js";
-import ScreenSharePlayer from "../components/web-client/ScreenSharePlayer.vue";
+import ScreenShareGallery from "../components/web-client/ScreenShareGallery.vue";
 import AudioDock from "../components/web-client/AudioDock.vue";
 import WhisperControls from "../components/web-client/WhisperControls.vue";
 import AudioSettingsDialog from "../components/web-client/AudioSettingsDialog.vue";
@@ -1196,6 +1200,10 @@ const {
   screenShareHdrActive,
   joinScreenShare,
   leaveScreenShare,
+  screenShareViews,
+  screenShareViewedStreamIds,
+  focusScreenShare,
+  leaveAllScreenShares,
   checkSupport,
   clearError,
   measureVoiceAudioStatus,
@@ -1473,13 +1481,14 @@ const screenShareControls = useWebClientScreenShare({
   sharing: screenShareActive,
   joinScreenShare,
   leaveScreenShare,
+  viewedStreamIds: screenShareViewedStreamIds,
   nickname,
   avatarStyle,
   memberAvatar: memberAvatarById,
   t,
 });
 const { settingsOpen: screenShareSettingsOpen, errorText: screenShareErrorText } = screenShareControls;
-const memberSharingState = { screenShareActive, screenShareStarting, screenShareViewingStreamId, settingsOpen: screenShareSettingsOpen };
+const memberSharingState = { screenShareActive, screenShareStarting, screenShareViewingStreamId, screenShareViewedStreamIds, settingsOpen: screenShareSettingsOpen };
 // Desktop client: global hotkeys and tray actions, and state for the tray icon.
 useDesktopBridge({
   state: () => ({
@@ -1991,7 +2000,7 @@ const skinPluginActions = {
     if (!voiceState.connected || typeof args.streamId !== "string") return;
     if (screenShareStreams.some((stream) => stream.streamId === args.streamId)) joinScreenShare(args.streamId);
   },
-  "voice.leaveScreenShare": () => { if (screenShareViewing.value) leaveScreenShare(); },
+  "voice.leaveScreenShare": () => { if (screenShareViewing.value) leaveAllScreenShares(); },
 };
 
 const homeConnectionStatus = computed(() => {
@@ -2216,12 +2225,16 @@ const skinPluginWidgets = {
       onSettings: () => { settingsOpen.value = true; },
       onOutputMute: toggleOutputMute,
     }),
-  "voice.screen-share-player": () => screenShareViewing.value ? h(ScreenSharePlayer, {
+  "voice.screen-share-player": () => screenShareViewing.value ? h(ScreenShareGallery, {
     model: screenShareControls,
-    screenShareRemoteStream: screenShareRemoteStream.value,
-    screenShareRemoteVolume: screenShareRemoteVolume.value,
-    screenShareError: screenShareError.value,
-    leaveScreenShare,
+    views: screenShareViews,
+    focusedStreamId: screenShareViewingStreamId.value,
+    streams: screenShareStreams,
+    remoteStream: screenShareRemoteStream.value,
+    remoteVolume: screenShareRemoteVolume.value,
+    error: screenShareError.value,
+    leave: leaveScreenShare,
+    focus: focusScreenShare,
     avatarInitial,
     t,
   }) : null,

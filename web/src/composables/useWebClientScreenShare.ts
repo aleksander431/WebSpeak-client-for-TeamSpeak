@@ -43,7 +43,10 @@ interface UseWebClientScreenShareOptions {
   /** Replaceable for tests; must open synchronously inside the click handler. */
   openCalibrationDisplay?: (texts: CalibrationOverlayTexts) => CalibrationOverlay;
   joinScreenShare: (streamId: string) => void;
-  leaveScreenShare: () => void;
+  /** Stops watching one stream (the focused one without an id). */
+  leaveScreenShare: (streamId?: string) => void;
+  /** Every stream being watched; without it only the focused one counts. */
+  viewedStreamIds?: Readonly<Ref<readonly string[]>>;
   nickname: Ref<string>;
   avatarStyle: (name: string, isSelf?: boolean, avatar?: string) => Record<string, string>;
   /** Resolves a member's avatar from the local directory by TeamSpeak client id. */
@@ -66,6 +69,7 @@ export function useWebClientScreenShare({
   openCalibrationDisplay = openCalibrationOverlay,
   joinScreenShare,
   leaveScreenShare,
+  viewedStreamIds,
   nickname,
   avatarStyle,
   memberAvatar,
@@ -157,10 +161,15 @@ export function useWebClientScreenShare({
     }) ?? null;
   }
 
+  function isWatching(streamId: string): boolean {
+    return viewedStreamIds ? viewedStreamIds.value.includes(streamId) : viewingStreamId.value === streamId;
+  }
+
+  /** Watch the member's stream next to the others, or stop watching it. */
   function toggleForMember(member: ChannelMember): void {
     const stream = streamForMember(member);
     if (!stream) return;
-    if (viewingStreamId.value === stream.streamId) leaveScreenShare();
+    if (isWatching(stream.streamId)) leaveScreenShare(stream.streamId);
     else joinScreenShare(stream.streamId);
   }
 
@@ -323,6 +332,7 @@ export function useWebClientScreenShare({
     setPlayerElement,
     streamForMember,
     toggleForMember,
+    isWatching,
     viewerStyle,
     setVolume,
     syncFullscreen,

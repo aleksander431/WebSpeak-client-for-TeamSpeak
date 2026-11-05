@@ -136,24 +136,16 @@
           :class="[
             'screen-share-card-button',
             {
-              viewing: screenShareViewingStreamId === screenShareStreamForMember(member)?.streamId,
+              viewing: isWatchingMember(member),
             },
           ]"
-          :data-ws-state="
-            screenShareViewingStreamId === screenShareStreamForMember(member)?.streamId
-              ? 'viewing'
-              : 'idle'
-          "
+          :data-ws-state="isWatchingMember(member) ? 'viewing' : 'idle'"
           @click.stop="toggleScreenShareForMember(member)"
           ><Icon
             name="monitor"
             :size="13"
           />
-          {{
-            screenShareViewingStreamId === screenShareStreamForMember(member)?.streamId
-              ? t("watching")
-              : t("watchScreenShare")
-          }}</button
+          {{ isWatchingMember(member) ? t("watching") : t("watchScreenShare") }}</button
         >
       </div>
     </article>
@@ -179,7 +171,7 @@ import type { useWebClientScreenShare } from "../../composables/useWebClientScre
 const props = withDefaults(defineProps<{
   currentMembers: ChannelMember[]; isMobileViewport: boolean; showMemberActions?: boolean;
   showScreenShare?: boolean;
-  sharing?: Pick<ReturnType<typeof useVoiceWebSocket>, "screenShareActive" | "screenShareStarting" | "screenShareViewingStreamId"> & Pick<ReturnType<typeof useWebClientScreenShare>, "settingsOpen">;
+  sharing?: Pick<ReturnType<typeof useVoiceWebSocket>, "screenShareActive" | "screenShareStarting" | "screenShareViewingStreamId"> & Partial<Pick<ReturnType<typeof useVoiceWebSocket>, "screenShareViewedStreamIds">> & Pick<ReturnType<typeof useWebClientScreenShare>, "settingsOpen">;
   controls?: Pick<ReturnType<typeof useWebClientScreenShare>, "streamForMember" | "toggleForMember" | "startWithSettings">;
   isSpeaking: (member: ChannelMember) => boolean;
   avatarStyle: (name: string, isSelf?: boolean, avatar?: string) => Record<string, string>;
@@ -191,6 +183,13 @@ const screenShareActive = computed(() => screenShareStatusEnabled.value && Boole
 const screenShareStarting = computed(() => screenShareStatusEnabled.value && Boolean(props.sharing?.screenShareStarting.value));
 const screenShareViewingStreamId = computed(() => screenShareStatusEnabled.value ? props.sharing?.screenShareViewingStreamId.value ?? null : null);
 const screenShareSettingsOpen = computed(() => screenShareStatusEnabled.value && Boolean(props.sharing?.settingsOpen.value));
+/** Is this member's stream one of those being watched (not only the big one)? */
+const isWatchingMember = (member: ChannelMember): boolean => {
+  const streamId = screenShareStreamForMember(member)?.streamId;
+  if (!streamId || !screenShareStatusEnabled.value) return false;
+  const watched = props.sharing?.screenShareViewedStreamIds?.value;
+  return watched ? watched.includes(streamId) : screenShareViewingStreamId.value === streamId;
+};
 const screenShareStreamForMember = (member: ChannelMember) => screenShareControlsEnabled.value ? props.controls?.streamForMember(member) ?? null : null;
 const toggleScreenShareForMember = (member: ChannelMember) => { if (screenShareControlsEnabled.value) props.controls?.toggleForMember(member); };
 const startScreenShareWithSettings = () => { if (screenShareStatusEnabled.value) void props.controls?.startWithSettings(); };

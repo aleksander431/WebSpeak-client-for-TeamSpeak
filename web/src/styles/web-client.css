@@ -7593,6 +7593,203 @@
   background: #000;
 }
 
+/* Several streams at once: a bar with the layout switch, the big player and
+   the other streams as tiles (main layout) or all of them in a grid. */
+:deep(.screen-share-gallery) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 17px;
+}
+
+:deep(.screen-share-gallery .screen-share-player) {
+  margin-top: 0;
+}
+
+:deep(.screen-share-gallery-bar) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+:deep(.screen-share-gallery-title) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+:deep(.screen-share-gallery-layouts) {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-1);
+}
+
+:deep(.screen-share-gallery-layouts button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+:deep(.screen-share-gallery-layouts button.active) {
+  color: var(--text-primary);
+  background: var(--surface-3, color-mix(in srgb, var(--text-primary) 10%, transparent));
+}
+
+:deep(.screen-share-gallery-layouts svg) {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+:deep(.screen-share-gallery-items) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+:deep(.screen-share-tiles) {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+:deep(.screen-share-tile) {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 200px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #000;
+  cursor: pointer;
+}
+
+:deep(.screen-share-tile:hover),
+:deep(.screen-share-tile:focus-visible) {
+  border-color: var(--accent, #4b8bf5);
+  outline: none;
+}
+
+:deep(.screen-share-tile-video) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+:deep(.screen-share-tile-placeholder) {
+  color: #ffffff80;
+}
+
+:deep(.screen-share-tile-name) {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  max-width: calc(100% - 70px);
+  overflow: hidden;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: #f2f4f5;
+  background: #000000a8;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:deep(.screen-share-tile-actions) {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  display: flex;
+  gap: 4px;
+}
+
+:deep(.screen-share-tile-actions button) {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: #f2f4f5;
+  background: #000000a8;
+  cursor: pointer;
+}
+
+:deep(.screen-share-tile-actions button:hover) {
+  background: #000000d9;
+}
+
+/* Grid: the big player and the tiles become equal cells. */
+:deep(.screen-share-gallery[data-layout="grid"] .screen-share-gallery-items) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+:deep(.screen-share-gallery[data-layout="grid"] .screen-share-tiles) {
+  display: contents;
+}
+
+:deep(.screen-share-gallery[data-layout="grid"] .screen-share-tile) {
+  width: auto;
+  border-radius: 14px;
+}
+
+:deep(.screen-share-gallery[data-layout="grid"] .screen-share-player-stage) {
+  height: auto;
+  min-height: 0;
+  /* The player sets an inline aspect ratio for its own layout. */
+  aspect-ratio: 16 / 9 !important;
+}
+
+@media (max-width: 720px) {
+  :deep(.screen-share-gallery[data-layout="grid"] .screen-share-gallery-items) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :deep(.screen-share-tile) {
+    width: 150px;
+  }
+
+  :deep(.screen-share-gallery-layouts button span) {
+    display: none;
+  }
+}
+
 :deep(.screen-share-player:fullscreen .screen-share-player-stage) {
   width: 100%;
   height: 100%;

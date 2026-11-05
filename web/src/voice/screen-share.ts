@@ -69,15 +69,35 @@ interface ScreenShareTransport {
 }
 
 /** Owns one session's capture tracks, peers, signaling and diagnostics. */
+/** How many streams one browser may watch at the same time. */
+export const SCREEN_SHARE_MAX_VIEWS = 4;
+
+export interface ScreenShareView {
+  streamId: string;
+  /** The owner's peer id, which keys this stream's viewer connection. */
+  peerId: string;
+  media: MediaStream | null;
+}
+
 export function createScreenShareController(transport: ScreenShareTransport) {
   let screenShareIceServers: RTCIceServer[] = normalizeScreenShareIceServers();
   const screenShareStreams = reactive<ScreenShareStream[]>([]);
   const screenShareActive = ref(false);
   const screenShareStarting = ref(false);
   const screenShareActiveStreamId = ref("");
+  /**
+   * Streams being watched, in the order they were opened (at most
+   * SCREEN_SHARE_MAX_VIEWS). One of them is the focused stream: the big player
+   * and the single-stream API below (`screenShareViewingStreamId`,
+   * `screenShareRemoteStream`) describe that one.
+   */
+  const screenShareViews = reactive<ScreenShareView[]>([]);
   const screenShareViewingStreamId = ref("");
   const screenShareViewing = computed(() => Boolean(screenShareViewingStreamId.value));
   const screenShareRemoteStream = ref<MediaStream | null>(null);
+  const screenShareViewedStreamIds = computed(() => screenShareViews.map(view => view.streamId));
+  /** Join requests still waiting for an answer, so an error closes only that stream. */
+  const screenShareJoinRequests = new Map<string, string>();
   const screenShareError = ref("");
   const screenShareErrorCode = ref("");
   const screenShareRemoteVolume = ref(1);
@@ -309,6 +329,31 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     stopScreenShareStatsPolling();
   }
 
+  /** Close only the peers this browser uses to send its own share. */
+  function closeOwnerScreenSharePeers(): void {
+    for (const [peerId, role] of [...screenSharePeerRoles]) if (role === "owner") closeScreenSharePeer(peerId);
+  }
+
+  /** Keep the focused stream valid and the single-stream refs pointing at it. */
+  function syncFocusedView(preferred = screenShareViewingStreamId.value): void {
+    const focused = screenShareViews.find(view => view.streamId === preferred) ?? screenShareViews[screenShareViews.length - 1] ?? null;
+    screenShareViewingStreamId.value = focused?.streamId ?? "";
+    screenShareRemoteStream.value = focused?.media ?? null;
+  }
+
+  /** Forget one watched stream locally: its viewer peer and its place in the gallery. */
+  function dropView(streamId: string): void {
+    const index = screenShareViews.findIndex(view => view.streamId === streamId);
+    if (index < 0) return;
+    const [view] = screenShareViews.splice(index, 1);
+    if (screenSharePeerRoles.get(view.peerId) === "viewer") closeScreenSharePeer(view.peerId);
+    syncFocusedView();
+  }
+
+  function dropAllViews(): void {
+    for (const view of [...screenShareViews]) dropView(view.streamId);
+  }
+
   function isCurrentPeer(peerId: string, peer: RTCPeerConnection): boolean {
     return transport.isOpen() && screenSharePeers.get(peerId) === peer;
   }
@@ -319,18 +364,16 @@ export function createScreenShareController(transport: ScreenShareTransport) {
   }
 
   function failScreenSharePeer(peerId: string, message?: string): void {
-    const viewingStream = screenShareStreams.find((stream) => stream.streamId === screenShareViewingStreamId.value && stream.ownerPeerId === peerId);
-    if (viewingStream) sendScreenShareMessage({ type: "screenShareLeave", streamId: viewingStream.streamId });
+    const view = screenSharePeerRoles.get(peerId) === "viewer" ? screenShareViews.find(candidate => candidate.peerId === peerId) : undefined;
+    const viewingStream = view ? screenShareStreams.find((stream) => stream.streamId === view.streamId) : undefined;
+    if (view) sendScreenShareMessage({ type: "screenShareLeave", streamId: view.streamId });
     traceScreenShare("peer-failed", {
       peerId,
       streamId: viewingStream?.streamId ?? screenShareStreams.find((stream) => stream.streamId === screenShareActiveStreamId.value)?.streamId ?? null,
       message: message ?? null,
     });
     closeScreenSharePeer(peerId);
-    if (viewingStream) {
-      screenShareViewingStreamId.value = "";
-      screenShareRemoteStream.value = null;
-    }
+    if (view) dropView(view.streamId);
     setScreenShareP2PError(message);
   }
 
@@ -401,7 +444,9 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       const remote = event.streams[0] ?? screenSharePeerStreams.get(peerId) ?? new MediaStream();
       if (!event.streams[0]) remote.addTrack(event.track);
       screenSharePeerStreams.set(peerId, remote);
-      screenShareRemoteStream.value = remote;
+      const view = screenShareViews.find(candidate => candidate.streamId === streamId && candidate.peerId === peerId);
+      if (view) view.media = remote;
+      syncFocusedView();
     };
     peer.onconnectionstatechange = () => {
       if (!isCurrentPeer(peerId, peer)) return;
@@ -506,9 +551,12 @@ export function createScreenShareController(transport: ScreenShareTransport) {
   }
 
   async function startScreenShareViewer(stream: ScreenShareStream): Promise<void> {
-    closeAllScreenSharePeers();
-    screenShareRemoteStream.value = null;
-    screenShareViewingStreamId.value = stream.streamId;
+    // Replace only this stream's viewer peer; other watched streams and our own
+    // share keep their connections.
+    dropView(stream.streamId);
+    if (screenSharePeerRoles.get(stream.ownerPeerId) === "viewer") closeScreenSharePeer(stream.ownerPeerId);
+    screenShareViews.push({ streamId: stream.streamId, peerId: stream.ownerPeerId, media: null });
+    syncFocusedView(stream.streamId);
     screenShareErrorCode.value = "";
     screenShareError.value = "";
     const peer = createScreenSharePeer(stream.streamId, stream.ownerPeerId, "viewer");
@@ -577,10 +625,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     }
     if (signal.kind === "close") {
       closeScreenSharePeer(fromPeerId);
-      if (screenShareViewingStreamId.value === streamId) {
-        screenShareViewingStreamId.value = "";
-        screenShareRemoteStream.value = null;
-      }
+      if (screenShareViews.some(view => view.streamId === streamId && view.peerId === fromPeerId)) dropView(streamId);
       return;
     }
     if (signal.kind === "iceCandidate") {
@@ -599,7 +644,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       return;
     }
 
-    if (stream.source === "teamspeak" && screenShareViewingStreamId.value === streamId && fromPeerId === stream.ownerPeerId && signal.kind === "offer") {
+    if (stream.source === "teamspeak" && screenShareViews.some(view => view.streamId === streamId) && fromPeerId === stream.ownerPeerId && signal.kind === "offer") {
       const peer = screenSharePeers.get(fromPeerId) ?? createScreenSharePeer(streamId, fromPeerId, "viewer");
       if (!signal.sdp) return;
       armScreenSharePeerTimer(fromPeerId);
@@ -846,7 +891,8 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     screenShareStartGeneration += 1;
     if (screenShareStarting.value) screenShareStartCancelled = true;
     if (screenShareActive.value && screenShareActiveStreamId.value) sendScreenShareMessage({ type: "screenShareStop", streamId: screenShareActiveStreamId.value });
-    closeAllScreenSharePeers();
+    // Stopping our share must not stop the streams we are watching.
+    closeOwnerScreenSharePeers();
     releaseScreenShareCapture();
     screenShareOutputSettings = null;
     screenShareStarting.value = false;
@@ -856,19 +902,39 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     screenShareActiveStreamId.value = "";
   }
 
+  /**
+   * Watch a stream next to the ones already open. Watching one more than the
+   * limit closes the oldest stream that is not in focus.
+   */
   function joinScreenShare(streamId: string): void {
     screenShareErrorCode.value = "";
     screenShareError.value = "";
-    if (screenShareViewingStreamId.value && screenShareViewingStreamId.value !== streamId) leaveScreenShare();
+    if (screenShareViews.some(view => view.streamId === streamId)) { focusScreenShare(streamId); return; }
+    while (screenShareViews.length >= SCREEN_SHARE_MAX_VIEWS) {
+      const oldest = screenShareViews.find(view => view.streamId !== screenShareViewingStreamId.value) ?? screenShareViews[0];
+      leaveScreenShare(oldest.streamId);
+    }
     screenShareRequestSequence = (screenShareRequestSequence + 1) % 1_000_000;
-    sendScreenShareMessage({ type: "screenShareJoin", streamId, requestId: `screen-join-${screenShareRequestSequence}` });
+    const requestId = `screen-join-${screenShareRequestSequence}`;
+    screenShareJoinRequests.set(requestId, streamId);
+    if (screenShareJoinRequests.size > 32) screenShareJoinRequests.delete(screenShareJoinRequests.keys().next().value!);
+    sendScreenShareMessage({ type: "screenShareJoin", streamId, requestId });
   }
 
-  function leaveScreenShare(): void {
-    if (screenShareViewingStreamId.value) sendScreenShareMessage({ type: "screenShareLeave", streamId: screenShareViewingStreamId.value });
-    closeAllScreenSharePeers();
-    screenShareViewingStreamId.value = "";
-    screenShareRemoteStream.value = null;
+  /** Stop watching one stream; without an id, the focused one. */
+  function leaveScreenShare(streamId: string = screenShareViewingStreamId.value): void {
+    if (!streamId) return;
+    if (screenShareViews.some(view => view.streamId === streamId)) sendScreenShareMessage({ type: "screenShareLeave", streamId });
+    dropView(streamId);
+  }
+
+  function leaveAllScreenShares(): void {
+    for (const view of [...screenShareViews]) leaveScreenShare(view.streamId);
+  }
+
+  /** Put a watched stream in the big player. */
+  function focusScreenShare(streamId: string): void {
+    if (screenShareViews.some(view => view.streamId === streamId)) syncFocusedView(streamId);
   }
 
   function stopScreenShareTransport(sendStop: boolean): void {
@@ -883,8 +949,9 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     screenShareStartCancelled = false;
     screenShareActive.value = false;
     screenShareActiveStreamId.value = "";
-    screenShareViewingStreamId.value = "";
-    screenShareRemoteStream.value = null;
+    screenShareViews.splice(0);
+    screenShareJoinRequests.clear();
+    syncFocusedView();
     screenShareStreams.length = 0;
   }
 
@@ -935,7 +1002,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
         const index = screenShareStreams.findIndex((candidate) => candidate.streamId === streamId);
         if (index >= 0) screenShareStreams.splice(index, 1);
         if (screenShareActiveStreamId.value === streamId) {
-          closeAllScreenSharePeers();
+          closeOwnerScreenSharePeers();
           screenShareStarting.value = false;
           screenSharePendingStartId = "";
           screenShareStartCancelled = false;
@@ -944,11 +1011,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
           releaseScreenShareCapture();
           screenShareOutputSettings = null;
         }
-        if (screenShareViewingStreamId.value === streamId) {
-          closeAllScreenSharePeers();
-          screenShareViewingStreamId.value = "";
-          screenShareRemoteStream.value = null;
-        }
+        dropView(streamId);
         break;
       }
       case "screenShareJoined": {
@@ -983,7 +1046,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
         if (typeof msg.viewerPeerId === "string") closeScreenSharePeer(msg.viewerPeerId);
         break;
       case "screenShareLeft":
-        if (screenShareViewingStreamId.value === String(msg.streamId || "")) leaveScreenShare();
+        dropView(String(msg.streamId || ""));
         break;
       case "screenShareError":
         screenShareErrorCode.value = typeof msg.code === "string" ? msg.code : "";
@@ -995,11 +1058,15 @@ export function createScreenShareController(transport: ScreenShareTransport) {
           releaseScreenShareCapture();
           screenShareOutputSettings = null;
         }
-        if (screenShareViewing.value) {
-          if (screenShareViewingStreamId.value) sendScreenShareMessage({ type: "screenShareLeave", streamId: screenShareViewingStreamId.value });
-          closeAllScreenSharePeers();
-          screenShareViewingStreamId.value = "";
-          screenShareRemoteStream.value = null;
+        {
+          // Close only the stream whose join failed (a native stream can fail
+          // after it was already shown); other streams keep playing.
+          const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
+          const failedStreamId = screenShareJoinRequests.get(requestId);
+          if (failedStreamId) {
+            screenShareJoinRequests.delete(requestId);
+            if (screenShareViews.some(view => view.streamId === failedStreamId)) leaveScreenShare(failedStreamId);
+          }
         }
         break;
       default: return false;
@@ -1016,6 +1083,10 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       screenShareViewing,
       screenShareViewingStreamId,
       screenShareRemoteStream,
+      screenShareViews,
+      screenShareViewedStreamIds,
+      focusScreenShare,
+      leaveAllScreenShares,
       screenShareError,
       screenShareErrorCode,
       screenShareRemoteVolume,

@@ -254,6 +254,14 @@ const PUBLIC_PART_IDS = new Set<string>([
   "voice.chat.image-viewer.previous",
   "voice.chat.image-viewer.next",
   "voice.chat.image-viewer.caption",
+  "voice.screen-gallery",
+  "voice.screen-gallery.bar",
+  "voice.screen-gallery.layout-focus",
+  "voice.screen-gallery.layout-grid",
+  "voice.screen-gallery.tiles",
+  "voice.screen-gallery.tile",
+  "voice.screen-gallery.tile-audio",
+  "voice.screen-gallery.tile-close",
   "voice.chat.attachment-file",
   "voice.chat.attachment-missing",
   "voice.chat.code-block",
@@ -429,7 +437,7 @@ const ACTION_PART_IDS = new Set([
   "voice.channel-group", "voice.member-row", "voice.server-switcher.trigger", "voice.server-switcher.item",
   "voice.channel-tree.expander", "voice.channel-tree.row", "demo.skin-switcher", "demo.language-switcher",
   "voice.whiteboard-open", "voice.whiteboard.close", "voice.whiteboard.theme", "voice.chat.attach", "voice.chat.attachment-image", "voice.chat.attachment-file",
-  "voice.chat.code-copy", "voice.chat.reaction", "voice.chat.reply", "voice.chat.react", "voice.chat.search-toggle", "voice.chat.pinned-bar", "voice.chat.pinned-unpin", "voice.chat.pin", "voice.chat.image-viewer.previous", "voice.chat.image-viewer.next",
+  "voice.chat.code-copy", "voice.chat.reaction", "voice.chat.reply", "voice.chat.react", "voice.chat.search-toggle", "voice.chat.pinned-bar", "voice.chat.pinned-unpin", "voice.chat.pin", "voice.chat.image-viewer.previous", "voice.chat.image-viewer.next", "voice.screen-gallery.layout-focus", "voice.screen-gallery.layout-grid", "voice.screen-gallery.tile", "voice.screen-gallery.tile-audio", "voice.screen-gallery.tile-close",
 ]);
 const INTERACTIVE_PART_IDS = new Set([
   "voice.connection-status.nickname.input", "voice.connection-status.reconnect",
@@ -449,7 +457,7 @@ const INTERACTIVE_PART_IDS = new Set([
   "voice.screen-player.exit", "voice.screen-player.fullscreen", "demo.voice-card",
   "home.identity-import.drop-zone", "voice.channel-group", "voice.member-row", "demo.skin-switcher",
   "demo.language-switcher", "voice.whiteboard-open", "voice.whiteboard.close", "voice.whiteboard.theme", "voice.chat.attach", "voice.chat.attachment-image", "voice.chat.attachment-file",
-  "voice.chat.code-copy", "voice.chat.reaction", "voice.chat.reply", "voice.chat.react", "voice.chat.search-toggle", "voice.chat.pinned-bar", "voice.chat.pinned-unpin", "voice.chat.pin", "voice.chat.image-viewer.previous", "voice.chat.image-viewer.next",
+  "voice.chat.code-copy", "voice.chat.reaction", "voice.chat.reply", "voice.chat.react", "voice.chat.search-toggle", "voice.chat.pinned-bar", "voice.chat.pinned-unpin", "voice.chat.pin", "voice.chat.image-viewer.previous", "voice.chat.image-viewer.next", "voice.screen-gallery.layout-focus", "voice.screen-gallery.layout-grid", "voice.screen-gallery.tile", "voice.screen-gallery.tile-audio", "voice.screen-gallery.tile-close",
 ]);
 const IDENTITY_PART_IDS = new Set([
   "home.identity", "home.identity-actions", "home.identity-export.button", "home.identity-import-dialog",

@@ -311,3 +311,59 @@ test("system audio is requested without the page's own playback", async () => {
   assert.deepEqual((requests[0] as { audio: unknown }).audio, { restrictOwnAudio: true });
   assert.equal((requests[1] as { audio: unknown }).audio, false);
 });
+
+test("several streams play at once, the newest in focus, up to the limit", async () => {
+  const streamOf = (index: number) => ({ ...remote, streamId: `remote-${index}`, ownerPeerId: `owner-${index}`, ownerNickname: `Owner ${index}` });
+  for (let index = 1; index <= 3; index++) controller.handleMessage({ type: "screenShareJoined", stream: streamOf(index) });
+  await nextTurn();
+  assert.deepEqual(controller.api.screenShareViewedStreamIds.value, ["remote-1", "remote-2", "remote-3"]);
+  assert.equal(controller.api.screenShareViewingStreamId.value, "remote-3");
+  assert.equal(Peer.instances.filter(peer => !peer.closed).length, 3, "one viewer connection per stream");
+
+  controller.api.focusScreenShare("remote-1");
+  assert.equal(controller.api.screenShareViewingStreamId.value, "remote-1");
+
+  // A fourth stream fits; a newly opened stream takes the focus.
+  controller.api.joinScreenShare("remote-4");
+  controller.handleMessage({ type: "screenShareJoined", stream: streamOf(4) });
+  assert.equal(controller.api.screenShareViewingStreamId.value, "remote-4");
+  // A fifth: the oldest stream not in focus makes room.
+  controller.api.focusScreenShare("remote-1");
+  controller.api.joinScreenShare("remote-5");
+  controller.handleMessage({ type: "screenShareJoined", stream: streamOf(5) });
+  await nextTurn();
+  assert.deepEqual(controller.api.screenShareViewedStreamIds.value, ["remote-1", "remote-3", "remote-4", "remote-5"]);
+  assert.ok(sent.some(message => message.type === "screenShareLeave" && (message as { streamId?: string }).streamId === "remote-2"));
+
+  controller.api.focusScreenShare("remote-1");
+  controller.api.leaveScreenShare("remote-4");
+  assert.deepEqual(controller.api.screenShareViewedStreamIds.value, ["remote-1", "remote-3", "remote-5"]);
+  controller.handleMessage({ type: "screenShareStopped", streamId: "remote-5" });
+  assert.deepEqual(controller.api.screenShareViewedStreamIds.value, ["remote-1", "remote-3"]);
+  assert.equal(controller.api.screenShareViewingStreamId.value, "remote-1", "the focused stream stays in focus");
+  controller.api.leaveScreenShare();
+  assert.equal(controller.api.screenShareViewingStreamId.value, "remote-3", "closing the big one brings up the next");
+
+  controller.api.leaveAllScreenShares();
+  assert.equal(controller.api.screenShareViewing.value, false);
+});
+
+test("stopping our own share keeps the streams we watch", async () => {
+  controller.handleMessage({ type: "screenShareJoined", stream: remote });
+  await nextTurn();
+  const viewerPeer = Peer.instances.at(-1)!;
+  await controller.api.startScreenShare(false);
+  confirmStart("mine");
+  controller.api.stopScreenShare();
+  assert.equal(viewerPeer.closed, false);
+  assert.equal(controller.api.screenShareViewingStreamId.value, remote.streamId);
+});
+
+test("a failed join closes only that stream", async () => {
+  controller.handleMessage({ type: "screenShareJoined", stream: remote });
+  controller.api.joinScreenShare("native");
+  const requestId = sent.findLast(message => message.type === "screenShareJoin")?.requestId;
+  controller.handleMessage({ type: "screenShareJoined", requestId, stream: { ...remote, streamId: "native", ownerPeerId: "ts-7", source: "teamspeak" } });
+  controller.handleMessage({ type: "screenShareError", requestId, code: "SCREEN_SHARE_NATIVE_BRIDGE_REQUIRED", message: "x" });
+  assert.deepEqual(controller.api.screenShareViewedStreamIds.value, [remote.streamId]);
+});
