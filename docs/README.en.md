@@ -203,6 +203,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Whisper: the button lights up while you hold the desktop whisper key, and switching to a game no longer ends a whisper you are holding with the key.
 - KAAK theme: whoever is talking gets a green ring round their avatar and a green microphone in the channel list on the left.
 - Screen sharing: watch up to four streams at once. Open more from the members’ “Watch” buttons; a switch above the player chooses between one big stream with the others as tiles (click a tile to make it big) and an equal grid. Small streams are muted until you unmute them.
+- Screen sharing: a stream can be detached into its own always-on-top window (the button next to fullscreen, or on a tile) and brought back from the page; one stream at a time.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

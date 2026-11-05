@@ -7790,6 +7790,51 @@
   }
 }
 
+/* A stream detached into its own window leaves a note in its place. */
+:deep(.screen-share-popped) {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #f1f4f3;
+  background: rgba(8, 9, 11, .92);
+  text-align: center;
+}
+
+:deep(.screen-share-popped strong) {
+  font-size: 14px;
+}
+
+:deep(.screen-share-popped button) {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid #ffffff40;
+  border-radius: 9px;
+  color: inherit;
+  background: #ffffff14;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+:deep(.screen-share-popped button:hover) {
+  background: #ffffff26;
+}
+
+:deep(.screen-share-tile-popped) {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #f1f4f3;
+  background: rgba(8, 9, 11, .85);
+}
+
 :deep(.screen-share-player:fullscreen .screen-share-player-stage) {
   width: 100%;
   height: 100%;

@@ -22,7 +22,20 @@
         @loadedmetadata="updateStageSize"
       ></video>
       <div
-        v-else
+        v-if="poppedOut"
+        class="screen-share-popped"
+        data-ws-part="voice.screen-player.popped"
+        ><Icon
+          name="popout"
+          :size="26" /><strong>{{ t("screenSharePoppedOut") }}</strong
+        ><button
+          type="button"
+          @click="onPopIn?.()"
+          >{{ t("screenSharePopIn") }}</button
+        ></div
+      >
+      <div
+        v-if="!screenShareRemoteStream"
         class="screen-share-player-placeholder"
         data-ws-part="voice.screen-player.placeholder"
         ><span class="screen-share-player-placeholder-icon"
@@ -95,6 +108,18 @@
             @input="onScreenShareVolume"
         /></label>
         <button
+          v-if="onPopOut && screenShareRemoteStream"
+          type="button"
+          data-ws-part="voice.screen-player.popout"
+          :aria-label="poppedOut ? t('screenSharePopIn') : t('screenSharePopOut')"
+          :title="poppedOut ? t('screenSharePopIn') : t('screenSharePopOut')"
+          :aria-pressed="poppedOut === true"
+          @click="poppedOut ? onPopIn?.() : onPopOut()"
+          ><Icon
+            name="popout"
+            :size="18"
+        /></button>
+        <button
           type="button"
           data-ws-part="voice.screen-player.fullscreen"
           :aria-label="
@@ -121,6 +146,10 @@ const props = defineProps<{
   model: Pick<ReturnType<typeof useWebClientScreenShare>, "fullscreen" | "viewers" | "viewerCount" | "ownerName" | "errorText" | "setPlayerElement" | "setVideoElement" | "viewerStyle" | "setVolume" | "toggleFullscreen">;
   screenShareRemoteStream: MediaStream | null; screenShareRemoteVolume: number; screenShareError: string;
   leaveScreenShare: () => void; avatarInitial: (name: string) => string; t: (key: string) => string;
+  /** Detach the stream into its own window; the button shows only when given. */
+  onPopOut?: () => void;
+  onPopIn?: () => void;
+  poppedOut?: boolean;
 }>();
 const { fullscreen: screenShareFullscreen, viewers: screenSharePlayerViewers, viewerCount: screenSharePlayerViewerCount, ownerName: screenSharePlayerOwnerName, errorText: screenShareErrorText, setPlayerElement, setVideoElement: setScreenVideoElement, viewerStyle: screenShareViewerStyle, setVolume: onScreenShareVolume, toggleFullscreen: toggleScreenShareFullscreen } = props.model;
 const playerElement = ref<HTMLElement | null>(null);

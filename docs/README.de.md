@@ -193,6 +193,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Flüstern: Die Schaltfläche leuchtet, solange du die Flüstertaste des Desktop-Clients hältst, und der Wechsel ins Spiel beendet ein per Taste gehaltenes Flüstern nicht mehr.
 - KAAK-Design: wer spricht, bekommt in der Kanalliste links einen grünen Ring um den Avatar und ein grünes Mikrofon.
 - Bildschirmfreigabe: bis zu vier Streams gleichzeitig ansehen. Weitere über „Ansehen“ bei den Mitgliedern öffnen; ein Schalter über dem Player wählt zwischen einem großen Stream mit Kacheln (Kachel anklicken macht sie groß) und einem gleichmäßigen Raster. Kleine Streams sind stumm, bis man sie einschaltet.
+- Bildschirmfreigabe: ein Stream lässt sich in ein eigenes, immer obenliegendes Fenster lösen (Schaltfläche neben Vollbild oder auf einer Kachel) und zurückholen; jeweils ein Stream.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

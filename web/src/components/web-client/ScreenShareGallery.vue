@@ -39,7 +39,10 @@
         ></span
       ></div
     >
-    <div class="screen-share-gallery-items">
+    <div
+      ref="itemsElement"
+      class="screen-share-gallery-items"
+    >
       <ScreenSharePlayer
         :model="model"
         :screen-share-remote-stream="remoteStream"
@@ -48,6 +51,9 @@
         :leave-screen-share="() => leave()"
         :avatar-initial="avatarInitial"
         :t="t"
+        :popped-out="popped?.streamId === focusedStreamId"
+        :on-pop-out="popOutSupported ? () => popOut(focusedStreamId) : undefined"
+        :on-pop-in="popIn"
       />
       <div
         v-if="others.length"
@@ -82,6 +88,13 @@
               name="monitor"
               :size="20"
           /></span>
+          <span
+            v-if="popped?.streamId === view.streamId"
+            class="screen-share-tile-popped"
+            ><Icon
+              name="popout"
+              :size="18"
+          /></span>
           <span class="screen-share-tile-name">{{ ownerOf(view.streamId) }}</span>
           <span class="screen-share-tile-actions"
             ><button
@@ -95,6 +108,18 @@
               @keydown.stop
               ><Icon
                 :name="audible.has(view.streamId) ? 'volume' : 'volume-off'"
+                :size="15" /></button
+            ><button
+              v-if="popOutSupported && view.media"
+              type="button"
+              data-ws-part="voice.screen-gallery.tile-popout"
+              :aria-pressed="popped?.streamId === view.streamId"
+              :aria-label="popped?.streamId === view.streamId ? t('screenSharePopIn') : t('screenSharePopOut')"
+              :title="popped?.streamId === view.streamId ? t('screenSharePopIn') : t('screenSharePopOut')"
+              @click.stop="popped?.streamId === view.streamId ? popIn() : popOut(view.streamId)"
+              @keydown.stop
+              ><Icon
+                name="popout"
                 :size="15" /></button
             ><button
               type="button"
@@ -114,7 +139,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from "vue";
+import { canPopOutStreams, popOutStream, type StreamPopOut } from "../../services/stream-popout.js";
 import Icon from "../Icon.vue";
 import ScreenSharePlayer from "./ScreenSharePlayer.vue";
 import type { useWebClientScreenShare } from "../../composables/useWebClientScreenShare.js";
@@ -184,6 +210,43 @@ function toggleAudio(streamId: string): void {
 watch(() => props.remoteVolume, (volume) => {
   for (const video of videos.values()) video.volume = Math.max(0, Math.min(1, volume));
 });
+// One stream at a time in its own always-on-top window (a browser limit).
+const popOutSupported = canPopOutStreams();
+const popped = shallowRef<{ streamId: string; handle: StreamPopOut } | null>(null);
+const itemsElement = ref<HTMLElement | null>(null);
+
+/** Called from a click: the browser opens these windows only on a user gesture. */
+async function popOut(streamId: string): Promise<void> {
+  const media = props.views.find(view => view.streamId === streamId)?.media;
+  if (!media) return;
+  popIn();
+  const pageVideo = streamId === props.focusedStreamId
+    ? itemsElement.value?.querySelector<HTMLVideoElement>(".screen-share-player-video") ?? null
+    : videos.get(streamId) ?? null;
+  try {
+    const handle = await popOutStream({
+      media,
+      title: ownerOf(streamId),
+      pageVideo,
+      onClosed: () => { if (popped.value?.streamId === streamId) popped.value = null; },
+    });
+    if (handle) popped.value = { streamId, handle };
+  } catch { /* the window was refused (no gesture or blocked) */ }
+}
+
+function popIn(): void {
+  const current = popped.value;
+  popped.value = null;
+  current?.handle.close();
+}
+
+// Closing the stream also closes its window.
+watch(() => props.views.map(view => `${view.streamId}:${view.media ? 1 : 0}`).join(","), () => {
+  const current = popped.value;
+  if (current && !props.views.some(view => view.streamId === current.streamId && view.media)) popIn();
+});
+onBeforeUnmount(popIn);
+
 // Forget closed streams' audio choice.
 watch(() => props.views.map(view => view.streamId), (ids) => {
   for (const id of [...audible]) if (!ids.includes(id)) audible.delete(id);
