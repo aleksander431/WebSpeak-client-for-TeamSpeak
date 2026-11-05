@@ -1315,7 +1315,7 @@ const channelPasswordDialog = reactive({ open: false, channelId: "", password: "
 const serverPasswordDialog = reactive({ open: false, password: "", errorCode: "" });
 const qqModalOpen = ref(false);
 const qqJoinUrl = "http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=yhumUMDD9PmyYFWdXWUb_x7hM5trFQY8&authKey=Pw3HBGT7GwMinTQnuFGfnpf0aRSzXOJKcAiujVP1%2BXMpjheAKrncTRivicBJxpjV&noverify=0&group_code=869500475";
-const githubRepositoryUrl = "https://github.com/EchoSixHIYA/WebSpeak-client-for-TeamSpeak";
+const githubRepositoryUrl = "https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak";
 const toast = ref("");
 const localPersistenceAvailable = isLocalPersistenceAvailable();
 const identityReady = ref(!localPersistenceAvailable);

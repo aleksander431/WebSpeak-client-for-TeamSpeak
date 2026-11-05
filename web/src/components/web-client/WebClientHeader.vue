@@ -28,7 +28,7 @@
       >
       <a
         class="github-button"
-        href="https://github.com/EchoSixHIYA/WebSpeak-client-for-TeamSpeak"
+        href="https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak"
         target="_blank"
         rel="noreferrer"
         :title="t('githubRepository')"
@@ -135,7 +135,7 @@ const changelogFile: Record<Language, string> = {
   ja: "README.ja.md",
 };
 const changelogUrl = computed(() => {
-  return `https://github.com/EchoSixHIYA/WebSpeak-client-for-TeamSpeak/blob/master/docs/${changelogFile[language.value]}#latest-release-notes`;
+  return `https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/blob/master/docs/${changelogFile[language.value]}#latest-release-notes`;
 });
 const emit = defineEmits<{
   openQq: [];
