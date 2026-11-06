@@ -2183,7 +2183,8 @@
                 "part": "identity-monogram",
                 "children": [
                   {
-                    "text": "TS"
+                    "widget": "voice.self-avatar",
+                    "part": "identity-avatar"
                   },
                   {
                     "tag": "span",

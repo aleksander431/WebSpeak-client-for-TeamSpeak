@@ -68,6 +68,7 @@ export const SKIN_PLUGIN_HOST_WIDGETS = Object.freeze([
   "voice.connection-status",
   "voice.connection-controls",
   "voice.disconnect-control",
+  "voice.self-avatar",
 ] as const);
 export type SkinPluginHostWidget = typeof SKIN_PLUGIN_HOST_WIDGETS[number];
 export interface SkinPluginWidgetOptions {
@@ -100,6 +101,7 @@ export const SKIN_PLUGIN_HOST_WIDGET_PERMISSIONS: Partial<Record<SkinPluginHostW
   "voice.screen-share-player": widgetPermissions("voice.screenShare.read", "voice.screenShare.control"),
   "voice.screen-share-start": widgetPermissions("voice.screenShare.control"),
   "voice.whisper-controls": widgetPermissions("voice.whisper.status.read", "voice.whisper.control"),
+  "voice.self-avatar": widgetPermissions("session.members.read", "session.memberAvatars.read"),
 });
 export function skinPluginWidgetPermissions(
   widget: SkinPluginHostWidget,

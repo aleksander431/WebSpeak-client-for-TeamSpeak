@@ -5038,3 +5038,14 @@
   font-family: var(--skin-kaak-font);
 }
 [data-ws-part="voice.avatar.save"]:not(:disabled):hover { background: var(--skin-kaak-accent-hover) !important; }
+
+/* The identity circle shows one's own avatar (host widget); clicking it changes the avatar. */
+[data-ws-plugin-part="kaak-workspace.identity-avatar"] {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+[data-ws-plugin-part="kaak-workspace.identity-avatar"] [data-ws-part="voice.self-avatar"] {
+  font-size: 19px;
+}
+[data-ws-plugin-part="kaak-workspace.identity-online"] { z-index: 1; pointer-events: none; }

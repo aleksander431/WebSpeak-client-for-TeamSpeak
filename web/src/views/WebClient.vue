@@ -1091,6 +1091,7 @@ import ServerPasswordDialog from "../components/web-client/ServerPasswordDialog.
 import ChannelMemberPanel from "../components/web-client/ChannelMemberPanel.vue";
 import MemberActionsMenu from "../components/web-client/MemberActionsMenu.vue";
 import AvatarDialog from "../components/web-client/AvatarDialog.vue";
+import SelfAvatarButton from "../components/web-client/SelfAvatarButton.vue";
 import JoinForm from "../components/web-client/JoinForm.vue";
 import ChatPanel from "../components/web-client/ChatPanel.vue";
 import ChatImageViewer from "../components/web-client/ChatImageViewer.vue";
@@ -2328,6 +2329,15 @@ const skinPluginWidgets = {
     avatarInitial,
     t,
   }) : null,
+  "voice.self-avatar": () => h(SelfAvatarButton, {
+    nickname: selfMember.value?.nickname || nickname.value,
+    avatar: selfMember.value?.avatar,
+    initial: avatarInitial(selfMember.value?.nickname || nickname.value),
+    initialStyle: avatarStyle(selfMember.value?.nickname || nickname.value, true),
+    canEdit: voiceState.connected && Boolean(selfMember.value),
+    t,
+    onEdit: openAvatarDialog,
+  }),
   "voice.whisper-controls": () => whisperTargetIds.size ? h(WhisperControls, {
     targets: whisperTargets.value,
     active: whisperActive.value,
