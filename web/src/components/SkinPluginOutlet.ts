@@ -61,6 +61,8 @@ export default defineComponent({
     assets: { type: Object as PropType<Record<string, Blob>>, required: true },
     actions: { type: Object as PropType<Record<string, HostAction>>, required: true },
     serverAddLabel: { type: String, default: "添加服务器 / Add server" },
+    resizeLabel: { type: String, default: "Resize" },
+    resizeHint: { type: String, default: "Drag to resize, double-click to reset" },
     onAddServer: { type: Function as PropType<() => void>, default: () => undefined },
     widgets: { type: Object as PropType<Partial<Record<SkinPluginHostWidget, HostWidget>>>, default: () => ({}) },
   },
@@ -508,8 +510,8 @@ export default defineComponent({
         "aria-valuemin": spec.min,
         "aria-valuemax": spec.max,
         ...(current !== null ? { "aria-valuenow": current } : {}),
-        "aria-label": "调整宽度 / Resize",
-        title: "调整宽度（双击恢复）/ Drag to resize, double-click to reset",
+        "aria-label": props.resizeLabel,
+        title: props.resizeHint,
         onPointerdown: (event: PointerEvent) => {
           if (!event.isTrusted || event.button !== 0) return;
           const handle = event.currentTarget as HTMLElement;
