@@ -945,37 +945,82 @@ export function useVoiceWebSocket() {
     }
   }
 
-  function playNotification(kind: "connected" | "disconnected" | "poke" | "private" | "mention" | "reconnectFailed" | "memberJoined" | "memberLeft"): void {
-    if (notificationVolume.value <= 0 || outputMuted.value || effectiveOutputVolume() <= 0 || typeof window === "undefined") return;
+  type NotificationKind = "connected" | "disconnected" | "poke" | "private" | "mention" | "reconnectFailed" | "memberJoined" | "memberLeft"
+    | "channelSwitched" | "shareStarted" | "shareStopped";
+
+  /** Each cue is a few short notes; the step is the time between them. */
+  const NOTIFICATION_TONES: Record<NotificationKind, { notes: number[]; step: number }> = {
+    connected: { notes: [660, 880], step: 0.08 },
+    disconnected: { notes: [440, 330], step: 0.08 },
+    poke: { notes: [740, 980], step: 0.08 },
+    private: { notes: [600, 760], step: 0.08 },
+    mention: { notes: [880, 1175], step: 0.08 },
+    reconnectFailed: { notes: [300, 220], step: 0.08 },
+    // Someone entered or left your channel: softer and shorter than your own connection cues.
+    memberJoined: { notes: [587, 784], step: 0.08 },
+    memberLeft: { notes: [784, 587], step: 0.08 },
+    // You moved to another channel: a quick rising run.
+    channelSwitched: { notes: [523, 659, 784], step: 0.055 },
+    // Your own screen share: bright up when it starts, the same notes down when it ends.
+    shareStarted: { notes: [698, 880, 1047], step: 0.07 },
+    shareStopped: { notes: [1047, 880, 698], step: 0.07 },
+  };
+
+  function scheduleTone(ctx: AudioContext, kind: NotificationKind): number {
+    const { notes, step } = NOTIFICATION_TONES[kind];
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+    notes.forEach((frequency, index) => oscillator.frequency.setValueAtTime(frequency, now + index * step));
+    const end = now + step * (notes.length - 1) + 0.1;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, notificationVolume.value * effectiveOutputVolume() * 0.12), now + 0.01);
+    // Longer runs hold their level so the last note is heard; two-note cues keep their original fade.
+    if (notes.length > 2) gain.gain.setValueAtTime(Math.max(0.0001, notificationVolume.value * effectiveOutputVolume() * 0.12), end - 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start(now);
+    oscillator.stop(end + 0.02);
+    return end - now;
+  }
+
+  function notificationsAudible(): boolean {
+    return notificationVolume.value > 0 && !outputMuted.value && effectiveOutputVolume() > 0 && typeof window !== "undefined";
+  }
+
+  function playNotification(kind: NotificationKind): void {
+    if (!notificationsAudible()) return;
     try {
       const ctx = getAudioCtx();
       if (ctx.state === "suspended") return;
-      const frequencies: Record<typeof kind, number[]> = {
-        connected: [660, 880],
-        disconnected: [440, 330],
-        poke: [740, 980],
-        private: [600, 760],
-        mention: [880, 1175],
-        reconnectFailed: [300, 220],
-        // Someone entered or left your channel: softer and shorter than your own connection cues.
-        memberJoined: [587, 784],
-        memberLeft: [784, 587],
-      };
-      const oscillator = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const now = ctx.currentTime;
-      oscillator.frequency.setValueAtTime(frequencies[kind][0], now);
-      oscillator.frequency.setValueAtTime(frequencies[kind][1], now + 0.08);
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, notificationVolume.value * effectiveOutputVolume() * 0.12), now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
-      oscillator.connect(gain);
-      gain.connect(ctx.destination);
-      oscillator.start(now);
-      oscillator.stop(now + 0.2);
+      scheduleTone(ctx, kind);
     } catch {
       // Notification sounds are best effort and must never affect the session.
     }
+  }
+
+  /**
+   * For cues that happen while the session's audio is being torn down (leaving
+   * the server): a short-lived context of its own on the chosen output.
+   */
+  function playDetachedNotification(kind: NotificationKind): void {
+    if (!notificationsAudible() || typeof AudioContext === "undefined") return;
+    void (async () => {
+      let ctx: SinkAudioContext | null = null;
+      try {
+        ctx = new AudioContext() as SinkAudioContext;
+        const deviceId = selectedOutputDeviceId.value;
+        if (deviceId && typeof ctx.setSinkId === "function") await ctx.setSinkId(deviceId).catch(() => undefined);
+        if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
+        if (ctx.state !== "running") { void ctx.close().catch(() => undefined); return; }
+        const duration = scheduleTone(ctx, kind);
+        const owned = ctx;
+        setTimeout(() => { void owned.close().catch(() => undefined); }, Math.ceil(duration * 1000) + 300);
+      } catch {
+        void ctx?.close().catch(() => undefined);
+      }
+    })();
   }
 
   function connect(target: string, channel: string, nickname: string, serverPassword = "", identity = "", rememberIdentity = false, inviteToken = "", accelerated = false, accelerationRelayId = ""): void {
@@ -1661,6 +1706,7 @@ export function useVoiceWebSocket() {
     startMicrophoneTest,
     stopMicrophoneTest,
     playNotification,
+    playDetachedNotification,
     connect,
     reconnectNow,
     wakeAudio,

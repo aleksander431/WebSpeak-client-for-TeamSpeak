@@ -1197,6 +1197,7 @@ const {
   startMicrophoneTest,
   stopMicrophoneTest,
   playNotification,
+  playDetachedNotification,
   connect,
   reconnectNow,
   wakeAudio,
@@ -2443,6 +2444,33 @@ watch(() => {
 }, ({ scope, ids }) => {
   const change = memberPresence.update(scope, ids ? ids.split(",").map(Number) : []);
   if (change) playNotification(change === "joined" ? "memberJoined" : "memberLeft");
+});
+
+// Leaving the server (or being dropped without a reconnect): the session's
+// audio is closing, so the cue plays on a context of its own.
+watch(() => voiceState.connected, (connected, wasConnected) => {
+  if (wasConnected && !connected && !voiceState.reconnecting) playDetachedNotification("disconnected");
+});
+
+// Moving to another channel, yourself or moved by someone.
+let soundChannelScope = "";
+watch(() => {
+  if (!voiceState.connected) return "";
+  const selfId = voiceState.tsClientId;
+  const own = channelTree.value.find((item) => item.members.some((member) => member.id === selfId));
+  return own ? `${sessionEpoch.value}:${own.id}` : "";
+}, (scope) => {
+  if (!scope) return;
+  const previous = soundChannelScope;
+  soundChannelScope = scope;
+  const [epoch] = scope.split(":");
+  if (previous && previous !== scope && previous.split(":")[0] === epoch) playNotification("channelSwitched");
+});
+
+// Your own screen share starting and ending.
+watch(screenShareActive, (active, wasActive) => {
+  if (!voiceState.connected || active === wasActive) return;
+  playNotification(active ? "shareStarted" : "shareStopped");
 });
 
 watch(() => voiceState.reconnecting, (reconnecting, wasReconnecting) => {
