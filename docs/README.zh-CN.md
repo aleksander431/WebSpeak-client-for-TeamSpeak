@@ -199,7 +199,7 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
-### [v0.4.4](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.4) · 2026-11-04
+### [v0.5.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.0) · 2026-11-06
 
 #### 新功能
 

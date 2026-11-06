@@ -195,7 +195,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
-### [v0.4.4](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.4) · 2026-11-04
+### [v0.5.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.0) · 2026-11-06
 
 #### New features
 

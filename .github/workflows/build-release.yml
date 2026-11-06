@@ -282,13 +282,21 @@ jobs:
   desktop-audio-helper:
     needs: verify
     runs-on: ubuntu-latest
+    # A hung package mirror once held a release for more than 45 minutes; this job takes about one.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Build the system-audio helper (WASAPI process loopback)
         run: |
           set -euo pipefail
-          sudo apt-get update -q
-          sudo apt-get install -y -q g++-mingw-w64-x86-64
+          for attempt in 1 2 3; do
+            if timeout 240 sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update -q \
+              && timeout 300 sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y -q g++-mingw-w64-x86-64; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            echo "apt attempt $attempt failed, retrying"; sleep 15
+          done
           mkdir -p desktop/native/bin
           x86_64-w64-mingw32-g++ -municode -O2 -Wall -Wextra -Werror -static \
             -o desktop/native/bin/webspeak-audio-capture.exe desktop/native/audio-capture.cpp -lole32 -lmmdevapi -luuid
