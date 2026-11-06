@@ -715,8 +715,10 @@
                 :avatar-style="avatarStyle"
                 :avatar-initial="avatarInitial"
                 :t="t"
+                :edit-avatar="voiceState.connected"
                 @member-actions="openMemberActions"
                 @stop-share="stopScreenShare"
+                @edit-avatar="openAvatarDialog"
               />
               <WhisperControls
                 v-if="whisperTargetIds.size"
@@ -953,6 +955,19 @@
       @close="screenShareSettingsOpen = false"
     />
 
+    <AvatarDialog
+      v-if="avatarDialogOpen && selfMember"
+      :nickname="selfMember.nickname"
+      :current-avatar="selfMember.avatar"
+      :initial="avatarInitial(selfMember.nickname)"
+      :initial-style="avatarStyle(selfMember.nickname, true)"
+      :save="setAvatar"
+      :remove="removeAvatar"
+      :t="t"
+      @saved="(removed) => showToast(t(removed ? 'avatarRemoved' : 'avatarSaved'))"
+      @close="avatarDialogOpen = false"
+    />
+
     <MemberActionsMenu
       :model="memberControls"
       :is-mobile-viewport="isMobileViewport"
@@ -1071,6 +1086,7 @@ import ChannelPasswordDialog from "../components/web-client/ChannelPasswordDialo
 import ServerPasswordDialog from "../components/web-client/ServerPasswordDialog.vue";
 import ChannelMemberPanel from "../components/web-client/ChannelMemberPanel.vue";
 import MemberActionsMenu from "../components/web-client/MemberActionsMenu.vue";
+import AvatarDialog from "../components/web-client/AvatarDialog.vue";
 import JoinForm from "../components/web-client/JoinForm.vue";
 import ChatPanel from "../components/web-client/ChatPanel.vue";
 import ChatImageViewer from "../components/web-client/ChatImageViewer.vue";
@@ -1186,6 +1202,8 @@ const {
   sendServerMessage,
   sendPrivateMessage,
   sendPoke,
+  setAvatar,
+  removeAvatar,
   setAway,
   setWhisperTargets,
   setWhisperActive,
@@ -1227,6 +1245,13 @@ provide(WEB_CLIENT_T, t);
 // Channel whiteboard: one board per channel, shared by browser users.
 const whiteboardClient = new WhiteboardClient({ transport: whiteboardTransport });
 const stopWhiteboardMessages = whiteboardTransport.subscribe(message => whiteboardClient.receive(message));
+/** One's own TeamSpeak avatar is changed from a dialog opened on one's own card or row. */
+const avatarDialogOpen = ref(false);
+const selfMember = computed(() => members.find((member) => member.isSelf) ?? null);
+function openAvatarDialog() {
+  if (voiceState.connected && selfMember.value) avatarDialogOpen.value = true;
+}
+watch(() => voiceState.connected, (connected) => { if (!connected) avatarDialogOpen.value = false; });
 const whiteboardOpen = ref(false);
 watch(() => voiceState.connected, connected => {
   whiteboardClient.setConnected(connected);
@@ -1609,6 +1634,7 @@ const memberControls = useWebClientMembers({
   sendPoke,
   setAway,
   onManualStatusChange: () => mobileAwayController?.preserveManualStatus(),
+  onSelfMenu: () => openAvatarDialog(),
   stopWhisperTalk,
   localizedMessage,
   showToast,
@@ -2244,8 +2270,10 @@ const skinPluginWidgets = {
     avatarStyle,
     avatarInitial,
     t,
+    editAvatar: voiceState.connected,
     onMemberActions: openMemberActions,
     onStopShare: stopScreenShare,
+    onEditAvatar: openAvatarDialog,
   }),
   "voice.chat-panel": () => h(ChatPanel, {
     model: chat,

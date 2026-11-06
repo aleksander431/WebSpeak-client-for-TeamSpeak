@@ -67,6 +67,8 @@ export class SessionEventCoordinator {
   private clientId = 0;
   private channelId = 0n;
   private directoryStatusRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Last avatar marker seen per unique id; a new marker means a new image. */
+  private readonly avatarMarkers = new Map<string, string>();
 
   constructor(private readonly options: SessionEventOptions) {
     const { state, client } = options;
@@ -201,6 +203,44 @@ export class SessionEventCoordinator {
 
   scheduleAvatars(): void { this.avatars.schedule(); }
 
+  /** This session changed its own avatar: show it at once instead of downloading it back. */
+  applyOwnAvatar(uid: string, marker: string, avatar: string | null): void {
+    if (!uid) return;
+    const { state } = this.options;
+    this.avatarMarkers.set(uid, marker);
+    state.avatarCache.set(uid, avatar);
+    for (const member of state.members.values()) {
+      if (member.uid !== uid) continue;
+      if (avatar) member.avatar = avatar;
+      else delete member.avatar;
+      if (this.options.isPublished()) this.options.sendJson({ type: "memberAvatar", id: member.id, uid, avatar: avatar ?? "" });
+    }
+    this.refresh();
+    this.publishDirectory();
+  }
+
+  /** Forget cached images whose TeamSpeak marker changed; returns the ids whose avatar was removed. */
+  private trackAvatarMarkers(clients: readonly { id: number; uid: string; avatarMarker?: string }[]): { changed: boolean; removed: Array<{ id: number; uid: string }> } {
+    const cache = this.options.state.avatarCache;
+    let changed = false;
+    const removedUids = new Set<string>();
+    for (const client of clients) {
+      if (!client.uid || client.avatarMarker === undefined) continue;
+      const previous = this.avatarMarkers.get(client.uid);
+      this.avatarMarkers.set(client.uid, client.avatarMarker);
+      if (previous === undefined || previous === client.avatarMarker) continue;
+      if (client.avatarMarker) {
+        cache.delete(client.uid);
+        changed = true;
+      } else if (cache.get(client.uid)) {
+        cache.set(client.uid, null);
+        removedUids.add(client.uid);
+      }
+    }
+    const removed = clients.filter(client => removedUids.has(client.uid)).map(client => ({ id: client.id, uid: client.uid }));
+    return { changed, removed };
+  }
+
   private refresh(): void {
     const snapshot = this.directory.getSnapshot();
     if (!snapshot) return;
@@ -210,6 +250,7 @@ export class SessionEventCoordinator {
     const sdkChannelId = client.getChannelId();
     if (this.channelId === 0n && sdkChannelId !== 0n) this.channelId = sdkChannelId;
     const normalized = normalizeDirectorySnapshot(snapshot, selfId, this.channelId, this.options.nickname, this.options.requestedChannel);
+    const avatarChanges = this.trackAvatarMarkers(normalized.clients);
     state.channelTree = mapChannelTree(normalized, state.avatarCache);
     state.members.clear();
     for (const member of normalized.clients) {
@@ -219,6 +260,10 @@ export class SessionEventCoordinator {
         inputMuted: member.inputMuted, outputMuted: member.outputMuted, channelCommander: member.channelCommander,
       });
     }
+    if (this.options.isPublished()) {
+      for (const { id, uid } of avatarChanges.removed) this.options.sendJson({ type: "memberAvatar", id, uid, avatar: "" });
+    }
+    if (avatarChanges.changed) this.avatars.schedule();
     for (const id of state.whisperTargetIds) {
       if (!state.members.has(id) || id === selfId) state.whisperTargetIds.delete(id);
     }
@@ -248,6 +293,7 @@ export class SessionEventCoordinator {
     if (this.directoryStatusRefreshTimer) clearTimeout(this.directoryStatusRefreshTimer);
     this.directoryStatusRefreshTimer = null;
     this.avatars.reset();
+    this.avatarMarkers.clear();
     this.clientId = 0;
     this.channelId = 0n;
     this.directory.clear();

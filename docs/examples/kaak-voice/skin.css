@@ -5024,3 +5024,17 @@
 [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-tile { border-color: #34363b; }
 [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-tile:hover,
 [data-ws-plugin-part="kaak-workspace.screen-share-player"] .screen-share-tile:focus-visible { border-color: var(--skin-kaak-accent); }
+
+/* Avatar dialog: the host dialog in KAAK colours. */
+[data-ws-part="voice.avatar.dialog"] {
+  --skin-avatar-surface: #242529;
+  --skin-avatar-surface-2: var(--skin-kaak-raised);
+  --skin-avatar-border: var(--skin-kaak-border);
+  --skin-avatar-text: var(--skin-kaak-text);
+  --skin-avatar-text-secondary: var(--skin-kaak-muted);
+  --skin-avatar-muted: var(--skin-kaak-dim);
+  --skin-avatar-accent: var(--skin-kaak-accent);
+  --skin-avatar-danger: var(--skin-kaak-danger);
+  font-family: var(--skin-kaak-font);
+}
+[data-ws-part="voice.avatar.save"]:not(:disabled):hover { background: var(--skin-kaak-accent-hover) !important; }

@@ -11,7 +11,8 @@ test("all command payloads preserve request IDs through the shared parser", () =
     poke: { clientId: 2, message: "hello" }, setAway: { away: true, message: "away" },
     setWhisperTargets: { targetIds: [2, 3] }, setWhisperActive: { active: true },
     setMicrophoneMuted: { muted: false }, setVoiceGate: { open: false }, setAccompanimentActive: { active: true },
-    setMemberVolume: { clientId: 2, volume: 0 }, chatReact: { ref: "0123456789abcdef", emoji: "👍", active: true }, chatPin: { ref: "0123456789abcdef", active: false }, latencyProbe: { sequence: "old" }, audioStatsProbe: { sequence: "new" },
+    setMemberVolume: { clientId: 2, volume: 0 }, chatReact: { ref: "0123456789abcdef", emoji: "👍", active: true }, chatPin: { ref: "0123456789abcdef", active: false },
+    setAvatar: { data: "iVBORw0KGgo=" }, removeAvatar: {}, latencyProbe: { sequence: "old" }, audioStatsProbe: { sequence: "new" },
   };
   for (const [type, payload] of Object.entries(payloads)) {
     const command = { type, payload, requestId: "request-1" };
@@ -70,3 +71,11 @@ test("screen signal bounds and ICE filtering are identical in both environments"
 // @ts-expect-error A microphone payload must never type-check as a move request.
 const invalidCommand: ClientCommand = { type: "moveClient", payload: { muted: true } };
 void invalidCommand;
+
+test("avatar uploads must be bounded base64", () => {
+  for (const data of ["", 7, "not base64!", "A".repeat(Math.ceil(200_000 / 3) * 4 + 4)]) {
+    const result = parseClientCommand(JSON.stringify({ type: "setAvatar", payload: { data } }));
+    assert.ok("error" in result && result.error.code === "INVALID_AVATAR");
+  }
+  assert.ok(!("error" in parseClientCommand(JSON.stringify({ type: "setAvatar", payload: { data: "A".repeat(Math.ceil(200_000 / 3) * 4) } }))));
+});

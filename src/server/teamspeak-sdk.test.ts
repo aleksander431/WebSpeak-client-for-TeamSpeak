@@ -45,7 +45,7 @@ test("ordinary-client directories and avatar metadata use the live view without 
   assert.deepEqual(await sdk.listDirectoryChannels(), [{ id: 1n, parentID: 0n, order: 0n, name: "Lobby", description: "",
     passwordProtected: true, isPermanent: true, maxClients: 12, maxClientsLimited: true }]);
   assert.deepEqual(await sdk.listDirectoryClients(), [{ id: 1, nickname: "Member 1", uid, channelID: 1n, type: 0,
-    serverGroups: [], away: true, awayMessage: "Away", inputMuted: true, outputMuted: false, channelCommander: true }]);
+    serverGroups: [], away: true, awayMessage: "Away", inputMuted: true, outputMuted: false, channelCommander: true, avatarMarker: "avatar-hash" }]);
   assert.deepEqual(await sdk.getClientAvatarMetadata(1), { uid, cacheKey: "avatar-hash", path: `/${avatarFileName(uid)}` });
   assert.equal(await sdk.getClientAvatarMetadata(2), null);
   assert.deepEqual(sdk.serverInfo, { name: "Shanghai", iconId: null, hostBannerGfxUrl: "https://example.invalid/banner", welcomeMessage: "Welcome" });

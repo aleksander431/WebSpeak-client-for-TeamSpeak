@@ -1250,7 +1250,7 @@ export function useVoiceWebSocket() {
         const code = normalizedClientErrorCode(msg.error?.code, "OPERATION_FAILED");
         const text = protocolErrorMessage(code, String(msg.error?.message || msg.message || "操作失败"));
         // A reaction to a message the gateway forgot is not worth a page-wide error.
-        if (!["REACTION_UNAVAILABLE", "PIN_UNAVAILABLE", "PIN_LIMIT"].includes(msg.error?.code ?? "")) { state.errorCode = code; state.error = text; }
+        if (!["REACTION_UNAVAILABLE", "PIN_UNAVAILABLE", "PIN_LIMIT", "INVALID_AVATAR", "AVATAR_TOO_LARGE", "AVATAR_NOT_ALLOWED", "AVATAR_FAILED"].includes(msg.error?.code ?? "")) { state.errorCode = code; state.error = text; }
         const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
         commands.settle(requestId, Object.assign(new Error(text), { code }));
         break;
@@ -1353,6 +1353,17 @@ export function useVoiceWebSocket() {
 
   function sendPoke(clientId: number, message = ""): void {
     sendCmd("poke", { clientId, message: message.trim().slice(0, 200) });
+  }
+
+  /** Replace one's TeamSpeak avatar (base64 PNG/JPEG/GIF/WebP); everybody on the server sees it. */
+  async function setAvatar(base64: string): Promise<void> {
+    if (!state.connected || ws.value?.readyState !== WebSocket.OPEN) throw Object.assign(new Error("not connected"), { code: "SESSION_NOT_READY" });
+    await sendCommandAndWait("setAvatar", { data: base64 }, 30_000);
+  }
+
+  async function removeAvatar(): Promise<void> {
+    if (!state.connected || ws.value?.readyState !== WebSocket.OPEN) throw Object.assign(new Error("not connected"), { code: "SESSION_NOT_READY" });
+    await sendCommandAndWait("removeAvatar", {}, 15_000);
   }
 
   function setAway(away: boolean, message = ""): void {
@@ -1661,6 +1672,8 @@ export function useVoiceWebSocket() {
     sendServerMessage,
     sendPrivateMessage,
     sendPoke,
+    setAvatar,
+    removeAvatar,
     setAway,
     setWhisperTargets,
     setWhisperActive,

@@ -20,6 +20,8 @@ interface UseWebClientMembersOptions {
   sendPoke: (clientId: number, message: string) => void;
   setAway: (away: boolean, message: string) => void;
   onManualStatusChange?: () => void;
+  /** Right-clicking one's own row opens one's own settings (the avatar dialog). */
+  onSelfMenu?: () => void;
   stopWhisperTalk: () => void;
   localizedMessage: (message: string) => string;
   showToast: (message: string) => void;
@@ -37,6 +39,7 @@ export function useWebClientMembers({
   sendPoke,
   setAway,
   onManualStatusChange,
+  onSelfMenu,
   stopWhisperTalk,
   localizedMessage,
   showToast,
@@ -79,7 +82,10 @@ export function useWebClientMembers({
   });
 
   function openMemberMenu(member: ChannelMember, event: Event): void {
-    if (member.isSelf) return;
+    if (member.isSelf) {
+      if (onSelfMenu) { event.preventDefault(); onSelfMenu(); }
+      return;
+    }
     memberMoveMenuOpen.value = false;
     const point = event instanceof MouseEvent ? event : undefined;
     memberMenu.value = {

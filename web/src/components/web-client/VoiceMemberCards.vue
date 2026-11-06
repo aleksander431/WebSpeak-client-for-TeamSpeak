@@ -42,8 +42,19 @@
           :class="['voice-avatar', { speaking: isSpeaking(member) }]"
           data-ws-part="voice.member.avatar"
           :style="avatarStyle(member.nickname, member.isSelf, member.avatar)"
-          >{{ member.avatar ? "" : avatarInitial(member.nickname) }}</div
-        >
+          >{{ member.avatar ? "" : avatarInitial(member.nickname)
+          }}<button
+            v-if="member.isSelf && editAvatar"
+            type="button"
+            class="voice-avatar-edit"
+            data-ws-part="voice.member.avatar-edit"
+            :aria-label="t('avatarChange')"
+            :title="t('avatarChange')"
+            @click.stop="emit('editAvatar')"
+            ><Icon
+              name="camera"
+              :size="18" /></button
+        ></div>
         <span
           v-if="member.inputMuted"
           class="voice-muted-indicator"
@@ -176,7 +187,9 @@ const props = withDefaults(defineProps<{
   isSpeaking: (member: ChannelMember) => boolean;
   avatarStyle: (name: string, isSelf?: boolean, avatar?: string) => Record<string, string>;
   avatarInitial: (name: string) => string; t: (key: string) => string;
-}>(), { showScreenShare: true });
+  /** Show the "change avatar" button on one's own card. */
+  editAvatar?: boolean;
+}>(), { showScreenShare: true, editAvatar: false });
 const screenShareControlsEnabled = computed(() => props.showScreenShare !== false && Boolean(props.controls));
 const screenShareStatusEnabled = computed(() => screenShareControlsEnabled.value && Boolean(props.sharing));
 const screenShareActive = computed(() => screenShareStatusEnabled.value && Boolean(props.sharing?.screenShareActive.value));
@@ -197,7 +210,7 @@ function toggleScreenShareSettings() {
   if (!screenShareStatusEnabled.value || !props.sharing) return;
   props.sharing.settingsOpen.value = !props.sharing.settingsOpen.value;
 }
-const emit = defineEmits<{ memberActions: [member: ChannelMember, event: MouseEvent]; stopShare: [] }>();
+const emit = defineEmits<{ memberActions: [member: ChannelMember, event: MouseEvent]; stopShare: []; editAvatar: [] }>();
 const screenShareIndicatorBars = [5, 10, 7, 12, 8, 10];
 
 function handleMemberContextMenu(member: ChannelMember, event: MouseEvent): void {
@@ -209,6 +222,52 @@ function handleMemberContextMenu(member: ChannelMember, event: MouseEvent): void
 </script>
 
 <style scoped>
+/* One's own avatar: a camera over it on hover opens the avatar dialog. */
+/* Inside the avatar circle, so it follows each theme's avatar size. */
+.voice-avatar:has(> .voice-avatar-edit) {
+  position: relative;
+}
+.voice-avatar-edit {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: rgb(0 0 0 / 52%);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+/* The camera replaces the initial while it shows. */
+.voice-avatar:has(> .voice-avatar-edit):hover {
+  color: transparent !important;
+  text-shadow: none !important;
+}
+.voice-avatar:hover > .voice-avatar-edit,
+.voice-avatar-edit:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  /* Touch screens: a small badge in the corner instead of a hover overlay. */
+  .voice-avatar-edit {
+    top: auto;
+    left: auto;
+    right: -4px;
+    bottom: -4px;
+    width: 26px;
+    height: 26px;
+    opacity: 1;
+    border: 2px solid var(--surface-1, #fff);
+    background: var(--accent, #2f8f6f);
+  }
+  .voice-avatar-edit :deep(svg) { width: 13px; height: 13px; }
+}
 .voice-muted-indicator {
   position: absolute;
   z-index: 4;

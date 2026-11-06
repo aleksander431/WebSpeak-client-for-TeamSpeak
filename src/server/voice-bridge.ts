@@ -136,6 +136,7 @@ interface WebClientEntry extends SessionDirectoryState {
   onChatSent?(scope: "channel" | "server", channelId: string, message: string): string | undefined;
   onChatReact?(ref: string, emoji: string, active: boolean): boolean;
   onChatPin?(ref: string, active: boolean): "pinned" | "unpinned" | "limit" | "unavailable";
+  onOwnAvatar?(uid: string, marker: string, avatar: string | null): void;
 }
 
 export class VoiceBridge {
@@ -328,6 +329,7 @@ export class VoiceBridge {
       };
       entry.onChatReact = (ref, emoji, active) => this.reactToChat(entry!, ref, emoji, active);
       entry.onChatPin = (ref, active) => this.pinChat(entry!, ref, active);
+      entry.onOwnAvatar = (uid, marker, avatar) => entry!.events?.applyOwnAvatar(uid, marker, avatar);
       let tsReady = false;
       const sendJson = (message: ServerMessage) => {
         if (this.entries.get(entryId) === entry && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));

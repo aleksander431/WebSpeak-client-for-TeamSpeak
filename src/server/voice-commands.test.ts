@@ -20,6 +20,8 @@ function fixture() {
       setAway: async (...args) => { calls.push(["away", ...args]); },
       setInputMuted: async (...args) => { calls.push(["mute", ...args]); },
       setAccompanimentActive: async (...args) => { calls.push(["accompaniment", ...args]); },
+      setOwnAvatar: async (data) => { calls.push(["avatar", data.length]); return { uid: "self-uid", marker: "md5" }; },
+      removeOwnAvatar: async () => { calls.push(["removeAvatar"]); return { uid: "self-uid" }; },
     },
     channelTree: [{ id: "18446744073709551615", parentID: "0", name: "Large ID" }],
     members,
@@ -177,4 +179,34 @@ test("push-to-talk gates the mixer without touching TeamSpeak's mute flag", asyn
   await f.run({ type: "setVoiceGate", payload: { open: true }, requestId: "ptt-down" });
   assert.deepEqual(gate, [false, true]);
   assert.deepEqual(f.calls, [], "TeamSpeak is not told the user is muted");
+});
+
+test("avatar commands upload known image types and report the change", async () => {
+  const { context, calls, messages, run } = fixture();
+  const shown: Array<[string, string, string | null]> = [];
+  context.onOwnAvatar = (uid, marker, avatar) => { shown.push([uid, marker, avatar]); };
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+  await run({ type: "setAvatar", requestId: "a", payload: { data: png.toString("base64") } });
+  assert.deepEqual(calls.at(-1), ["avatar", png.length]);
+  assert.equal(shown[0]?.[0], "self-uid");
+  assert.equal(shown[0]?.[1], "md5");
+  assert.match(shown[0]?.[2] ?? "", /^data:image\/png;base64,/);
+  assert.equal(messages.at(-1)?.type, "commandCompleted");
+
+  await run({ type: "setAvatar", requestId: "b", payload: { data: Buffer.from("plain text").toString("base64") } });
+  const rejected = messages.at(-1);
+  assert.ok(rejected?.type === "error" && rejected.error?.code === "INVALID_AVATAR");
+  assert.equal(calls.filter(call => call[0] === "avatar").length, 1);
+
+  await run({ type: "removeAvatar", requestId: "c", payload: {} });
+  assert.deepEqual(shown.at(-1), ["self-uid", "", null]);
+  assert.equal(messages.at(-1)?.type, "commandCompleted");
+});
+
+test("an avatar over the server's size permission has its own error", async () => {
+  const { context, messages, run } = fixture();
+  context.tsClient.setOwnAvatar = async () => { throw Object.assign(new Error("invalid size"), { id: 2565 }); };
+  await run({ type: "setAvatar", requestId: "a", payload: { data: Buffer.from([0xff, 0xd8, 0xff, 0]).toString("base64") } });
+  const reply = messages.at(-1);
+  assert.ok(reply?.type === "error" && reply.error?.code === "AVATAR_TOO_LARGE");
 });

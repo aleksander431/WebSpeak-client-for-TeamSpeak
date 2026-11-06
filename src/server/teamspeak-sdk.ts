@@ -17,7 +17,7 @@ import {
   type FileDownloadInfo,
   type ServerFamily,
 } from "@honeybbq/teamspeak";
-import { Client, type ClientOptions, type Identity } from "@honeybbq/teamspeak/client";
+import { Client, removeAvatar, uploadAvatar, type ClientOptions, type Identity } from "@honeybbq/teamspeak/client";
 import { resolveLocalTeamSpeakAlias } from "./teamspeak-resolver.js";
 import { formatTeamSpeakTarget, parseTeamSpeakTarget } from "../domain/teamspeak-target.js";
 
@@ -39,6 +39,8 @@ export interface DirectoryClientInfo extends ClientInfo {
   inputMuted?: boolean;
   outputMuted?: boolean;
   channelCommander?: boolean;
+  /** TeamSpeak's avatar marker; it changes whenever the image does ("" without one). */
+  avatarMarker?: string;
 }
 
 export interface DirectoryChannelInfo {
@@ -198,6 +200,23 @@ export class TeamSpeakSdkClient extends EventEmitter implements CommandExecutor 
     return this.readDirectory().clients;
   }
 
+  /** Store `data` as this client's avatar; resolves with the new avatar marker (MD5 hex). */
+  async uploadOwnAvatar(data: Uint8Array): Promise<string> {
+    return uploadAvatar(this.requireClient(), data);
+  }
+
+  /** Delete this client's avatar; false when it had none. */
+  async removeOwnAvatar(): Promise<boolean> {
+    return removeAvatar(this.requireClient());
+  }
+
+  /** The avatar marker the live view holds for this client ("" without an avatar). */
+  ownAvatarMarker(): { uid: string; marker: string } | null {
+    const client = this.requireClient();
+    const info = client.view.clients.get(asClientID(Number(client.clientID ?? 0)));
+    return info?.uid ? { uid: info.uid, marker: info.avatar ?? "" } : null;
+  }
+
   async getClientAvatarMetadata(clientId: number): Promise<{ uid: string; cacheKey: string; path: string } | null> {
     const info = this.requireClient().view.clients.get(asClientID(clientId));
     if (!info?.uid || !info.avatar) return null;
@@ -337,5 +356,6 @@ function toDirectoryClient(entry: ClientEntry): DirectoryClientInfo {
     ...(entry.isInputMuted !== undefined ? { inputMuted: entry.isInputMuted } : {}),
     ...(entry.isOutputMuted !== undefined ? { outputMuted: entry.isOutputMuted } : {}),
     ...(entry.isChannelCommander !== undefined ? { channelCommander: entry.isChannelCommander } : {}),
+    avatarMarker: entry.avatar ?? "",
   };
 }

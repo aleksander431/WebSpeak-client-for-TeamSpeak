@@ -477,6 +477,32 @@ export class TSClient extends EventEmitter {
     await this.client.execCommand(`clientupdate client_away=${away ? 1 : 0} client_away_message=${escaped}`);
   }
 
+  /**
+   * Replace this client's TeamSpeak avatar, visible to every client on the
+   * server. Resolves with the uploaded marker and the client's unique id, or
+   * null when the session changed meanwhile.
+   */
+  async setOwnAvatar(data: Buffer): Promise<{ uid: string; marker: string } | null> {
+    const client = this.client;
+    if (!client || !this.connected) throw new Error("TeamSpeak session is not ready");
+    const generation = this.connectionGeneration;
+    const self = client.ownAvatarMarker();
+    const marker = await client.uploadOwnAvatar(data);
+    if (this.client !== client || !this.connected || this.connectionGeneration !== generation) return null;
+    return { uid: self?.uid ?? "", marker };
+  }
+
+  /** Delete this client's TeamSpeak avatar. Resolves with its unique id, or null when the session changed. */
+  async removeOwnAvatar(): Promise<{ uid: string } | null> {
+    const client = this.client;
+    if (!client || !this.connected) throw new Error("TeamSpeak session is not ready");
+    const generation = this.connectionGeneration;
+    const self = client.ownAvatarMarker();
+    await client.removeOwnAvatar();
+    if (this.client !== client || !this.connected || this.connectionGeneration !== generation) return null;
+    return { uid: self?.uid ?? "" };
+  }
+
   async setInputMuted(muted: boolean): Promise<void> {
     await this.updateInputState({ muted });
   }

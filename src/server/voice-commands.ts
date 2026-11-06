@@ -1,15 +1,16 @@
 import type { ServerMessage } from "../shared/server-messages.js";
 import type { ChannelInfo } from "../shared/voice-models.js";
-import type { ClientCommand } from "../shared/client-commands.js";
+import { AVATAR_UPLOAD_MAX_BYTES, type ClientCommand } from "../shared/client-commands.js";
 import type { TSClient } from "./ts-client.js";
 import type { WebRtcAudioSession } from "./webrtc-audio.js";
 import { snapshotAudioStatus, type AudioStatsSource } from "./audio-stats.js";
 import { pingTeamSpeakSession } from "./network-probe.js";
 import { teamSpeakServerErrorCode } from "../errors.js";
+import { avatarDataUrl } from "./directory-view.js";
 
 /** Only the session capabilities used by control commands cross this boundary. */
 export interface VoiceCommandContext extends AudioStatsSource {
-  tsClient: Pick<TSClient, "execCommandWithResponse" | "switchChannel" | "getClientId" | "getChannelId" | "moveClient" | "sendTextMessage" | "poke" | "setAway" | "setInputMuted" | "setAccompanimentActive">;
+  tsClient: Pick<TSClient, "execCommandWithResponse" | "switchChannel" | "getClientId" | "getChannelId" | "moveClient" | "sendTextMessage" | "poke" | "setAway" | "setInputMuted" | "setAccompanimentActive" | "setOwnAvatar" | "removeOwnAvatar">;
   channelTree: ChannelInfo[];
   members: ReadonlyMap<number, { uid?: string }>;
   whisperTargetIds: Set<number>;
@@ -28,6 +29,8 @@ export interface VoiceCommandContext extends AudioStatsSource {
   onChatReact?(ref: string, emoji: string, active: boolean): boolean;
   /** Pin or unpin; "unavailable" when the message is not visible to this session. */
   onChatPin?(ref: string, active: boolean): "pinned" | "unpinned" | "limit" | "unavailable";
+  /** One's own avatar changed: show it at once (null: removed). */
+  onOwnAvatar?(uid: string, marker: string, avatar: string | null): void;
 }
 
 export async function handleCommand(
@@ -191,6 +194,28 @@ export async function handleCommand(
         sendJson({ type: "error", requestId: command.requestId, error: { code: "REACTION_UNAVAILABLE", message: "This message can no longer be reacted to", recoverable: false } });
         return;
       }
+    } else if (command.type === "setAvatar") {
+      const data = Buffer.from(command.payload.data, "base64");
+      const avatar = data.length > 0 && data.length <= AVATAR_UPLOAD_MAX_BYTES ? avatarDataUrl(data) : null;
+      if (!avatar) {
+        sendJson({ type: "error", requestId: command.requestId, error: { code: "INVALID_AVATAR", message: "Avatar must be a PNG, JPEG, GIF or WebP image up to 200 KB", recoverable: false } });
+        return;
+      }
+      try {
+        const result = await entry.tsClient.setOwnAvatar(data);
+        if (result) entry.onOwnAvatar?.(result.uid, result.marker, avatar);
+      } catch (error: unknown) {
+        sendJson({ type: "error", requestId: command.requestId, error: avatarError(error) });
+        return;
+      }
+    } else if (command.type === "removeAvatar") {
+      try {
+        const result = await entry.tsClient.removeOwnAvatar();
+        if (result) entry.onOwnAvatar?.(result.uid, "", null);
+      } catch (error: unknown) {
+        sendJson({ type: "error", requestId: command.requestId, error: avatarError(error) });
+        return;
+      }
     } else if (command.type === "setMemberVolume") {
       const clientId = command.payload.clientId;
       entry.webrtc?.setMemberVolume(clientId, command.payload.volume);
@@ -232,6 +257,23 @@ function classifyOperationError(error: unknown, fallbackCode: string, fallbackMe
   if (/full|maximum.*clients/.test(normalized)) return { code: "CHANNEL_FULL", message: "该频道已满" };
   if (/not found|unknown client|invalid client/.test(normalized)) return { code: "CLIENT_NOT_FOUND", message: "成员已离线" };
   return { code: fallbackCode, message: fallbackMessage };
+}
+
+/** Avatar failures have their own codes: they belong to the avatar dialog, not the page. */
+function avatarError(error: unknown): { code: string; message: string; recoverable: false } {
+  if (isAvatarSizeError(error)) return { code: "AVATAR_TOO_LARGE", message: "The server does not accept an avatar of this size", recoverable: false };
+  const operation = classifyOperationError(error, "AVATAR_FAILED", "Avatar could not be changed");
+  if (operation.code === "PERMISSION_DENIED") return { code: "AVATAR_NOT_ALLOWED", message: "The server does not allow changing the avatar", recoverable: false };
+  if (operation.code === "FLOOD_PROTECTION") return { ...operation, recoverable: false };
+  return { code: "AVATAR_FAILED", message: "Avatar could not be changed", recoverable: false };
+}
+
+/** ServerError 2565 (file_invalid_size): over `i_client_max_avatar_filesize`, which is 0 where avatars are not allowed. */
+function isAvatarSizeError(error: unknown): boolean {
+  const rawId = isRecord(error) ? (error.id ?? error.code) : undefined;
+  const text = error instanceof Error ? error.message.toLocaleLowerCase() : String(error).toLocaleLowerCase();
+  const inlineId = /\bid[\s=:]*(\d{3,5})\b/.exec(text)?.[1];
+  return [rawId, inlineId].some(id => String(id ?? "").trim() === "2565") || /invalid.?size/.test(text);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

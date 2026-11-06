@@ -3,6 +3,9 @@ import { CHAT_REF_PATTERN, isChatReactionEmoji } from "./chat-reactions.js";
 /** Longest chat message accepted, in characters (TeamSpeak's own limit is about 1 KB). */
 export const CHAT_COMMAND_MAX_LENGTH = 1000;
 
+/** Largest avatar accepted, in bytes; TeamSpeak's own default ceiling (`i_client_max_avatar_filesize`). */
+export const AVATAR_UPLOAD_MAX_BYTES = 200_000;
+
 /** Payloads stay correlated with their command names across both runtimes. */
 export interface ClientCommandPayloads {
   switchChannel: { channelId: string; password?: string };
@@ -23,6 +26,10 @@ export interface ClientCommandPayloads {
   chatReact: { ref: string; emoji: string; active: boolean };
   /** Pin (`active`) or unpin a channel/server message the gateway referenced. */
   chatPin: { ref: string; active: boolean };
+  /** Replace one's TeamSpeak avatar: a PNG, JPEG, GIF or WebP image, base64-encoded. */
+  setAvatar: { data: string };
+  /** Remove one's TeamSpeak avatar. */
+  removeAvatar: Record<string, never>;
   latencyProbe: { sequence: string };
   audioStatsProbe: { sequence: string };
 }
@@ -47,7 +54,7 @@ export function parseClientCommand(raw: string): ClientCommandResult {
   if (value.requestId !== undefined && (typeof value.requestId !== "string" || value.requestId.length > 64)) {
     return { error: { code: "INVALID_REQUEST_ID", message: "请求标识无效" } };
   }
-  const supportedTypes = new Set(["switchChannel", "moveClient", "sendTextMessage", "sendServerMessage", "sendPrivateMessage", "poke", "setAway", "setWhisperTargets", "setWhisperActive", "setMicrophoneMuted", "setVoiceGate", "setAccompanimentActive", "setMemberVolume", "chatReact", "chatPin", "latencyProbe", "audioStatsProbe"]);
+  const supportedTypes = new Set(["switchChannel", "moveClient", "sendTextMessage", "sendServerMessage", "sendPrivateMessage", "poke", "setAway", "setWhisperTargets", "setWhisperActive", "setMicrophoneMuted", "setVoiceGate", "setAccompanimentActive", "setMemberVolume", "chatReact", "chatPin", "setAvatar", "removeAvatar", "latencyProbe", "audioStatsProbe"]);
   if (!supportedTypes.has(value.type)) {
     return { error: { code: "UNKNOWN_MESSAGE_TYPE", message: "不支持的消息类型" } };
   }
@@ -108,6 +115,10 @@ export function parseClientCommand(raw: string): ClientCommandResult {
   }
   if (value.type === "chatPin" && (typeof value.payload.ref !== "string" || !CHAT_REF_PATTERN.test(value.payload.ref) || typeof value.payload.active !== "boolean")) {
     return { error: { code: "INVALID_PIN", message: "Invalid pin" } };
+  }
+  if (value.type === "setAvatar" && (typeof value.payload.data !== "string" || !value.payload.data
+    || value.payload.data.length > Math.ceil(AVATAR_UPLOAD_MAX_BYTES / 3) * 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value.payload.data))) {
+    return { error: { code: "INVALID_AVATAR", message: "Invalid avatar image" } };
   }
   if (value.type === "setVoiceGate" && typeof value.payload.open !== "boolean") {
     return { error: { code: "INVALID_VOICE_GATE", message: "Invalid push-to-talk state" } };

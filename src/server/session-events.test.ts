@@ -162,3 +162,26 @@ test("chat routing, poke and forwarded SDK events retain their payloads and stop
   assert.equal(f.messages.length, 4);
   assert.equal(f.callbacks.length, 3);
 });
+
+test("a changed TeamSpeak avatar marker refreshes or removes the cached image", t => {
+  const f = fixture(t);
+  f.phase.published = true;
+  const withAvatar = (id: number, avatarMarker: string) => ({ ...member(id), avatarMarker });
+  f.state.avatarCache.set("uid-2", "data:image/png;base64,old");
+  f.client.emit("directorySnapshot", { ...snapshot(member(1), withAvatar(2, "a")), complete: true });
+  assert.equal(f.state.members.get(2)?.avatar, "data:image/png;base64,old");
+  f.client.emit("directorySnapshot", { ...snapshot(member(1), withAvatar(2, "b")), complete: true });
+  assert.equal(f.state.avatarCache.has("uid-2"), false, "a new image is downloaded again");
+  f.state.avatarCache.set("uid-2", "data:image/png;base64,new");
+  f.client.emit("directorySnapshot", { ...snapshot(member(1), withAvatar(2, "")), complete: true });
+  assert.equal(f.state.avatarCache.get("uid-2"), null);
+  assert.equal(f.state.members.get(2)?.avatar, undefined);
+  assert.deepEqual(f.messages.filter(message => message.type === "memberAvatar").at(-1), { type: "memberAvatar", id: 2, uid: "uid-2", avatar: "" });
+
+  f.coordinator.applyOwnAvatar("uid-1", "mine", "data:image/jpeg;base64,me");
+  assert.equal(f.state.members.get(1)?.avatar, "data:image/jpeg;base64,me");
+  assert.deepEqual(f.messages.filter(message => message.type === "memberAvatar").at(-1), { type: "memberAvatar", id: 1, uid: "uid-1", avatar: "data:image/jpeg;base64,me" });
+  // The echo of one's own upload does not throw the image away.
+  f.client.emit("directorySnapshot", { ...snapshot(withAvatar(1, "mine"), withAvatar(2, "")), complete: true });
+  assert.equal(f.state.avatarCache.get("uid-1"), "data:image/jpeg;base64,me");
+});
