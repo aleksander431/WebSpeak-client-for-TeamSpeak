@@ -163,6 +163,8 @@ const props = defineProps<{
   focus: (streamId: string) => void;
   avatarInitial: (name: string) => string;
   t: (key: string) => string;
+  /** Tell the user when the browser refused the window. */
+  notify?: (text: string) => void;
 }>();
 
 function readLayout(): ScreenShareGalleryLayout {
@@ -231,7 +233,11 @@ async function popOut(streamId: string): Promise<void> {
       onClosed: () => { if (popped.value?.streamId === streamId) popped.value = null; },
     });
     if (handle) popped.value = { streamId, handle };
-  } catch { /* the window was refused (no gesture or blocked) */ }
+    else props.notify?.(props.t("screenSharePopOutFailed"));
+  } catch {
+    // The window was refused (no gesture, blocked or not supported here).
+    props.notify?.(props.t("screenSharePopOutFailed"));
+  }
 }
 
 function popIn(): void {

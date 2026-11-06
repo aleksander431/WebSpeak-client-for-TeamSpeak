@@ -206,6 +206,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Screen sharing: a stream can be detached into its own always-on-top window (the button next to fullscreen, or on a tile) and brought back from the page; one stream at a time.
 - Whiteboard: the board can be detached into its own window (button next to close) — handy on a second monitor; drawing keeps going over the same connection, and the button there brings it back. In the desktop app this needs the new desktop version.
 - Avatars: set your own TeamSpeak avatar — the camera on your card in the room (or right-click yourself in the channel list), pick or drop a picture, save. Everybody on the server sees it, TeamSpeak clients included; it can be removed again. In the KAAK theme the round identity badge at the bottom left now shows your avatar and changes it on click. Pictures are cropped to a square; small GIFs stay animated. Avatars other people change now update without reconnecting.
+- Fix: detaching a stream did nothing in the desktop app; it now opens the system mini player there, and a refused window shows a message instead of failing silently.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

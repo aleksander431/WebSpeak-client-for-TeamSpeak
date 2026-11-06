@@ -708,6 +708,7 @@
                 :focus="focusScreenShare"
                 :avatar-initial="avatarInitial"
                 :t="t"
+                :notify="showToast"
               />
               <VoiceMemberCards
                 :current-members="currentMembers"
@@ -2328,6 +2329,7 @@ const skinPluginWidgets = {
     focus: focusScreenShare,
     avatarInitial,
     t,
+    notify: showToast,
   }) : null,
   "voice.self-avatar": () => h(SelfAvatarButton, {
     nickname: selfMember.value?.nickname || nickname.value,

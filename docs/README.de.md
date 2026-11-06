@@ -196,6 +196,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Bildschirmfreigabe: ein Stream lässt sich in ein eigenes, immer obenliegendes Fenster lösen (Schaltfläche neben Vollbild oder auf einer Kachel) und zurückholen; jeweils ein Stream.
 - Whiteboard: das Board lässt sich in ein eigenes Fenster lösen (Schaltfläche neben Schließen) — praktisch auf einem zweiten Monitor; gezeichnet wird über dieselbe Verbindung, die Schaltfläche dort holt es zurück. In der Desktop-App ist dafür die neue Desktop-Version nötig.
 - Avatare: den eigenen TeamSpeak-Avatar direkt in WebSpeak setzen — Kamera auf der eigenen Karte im Raum (oder Rechtsklick auf sich selbst in der Kanalliste), Bild wählen oder hineinziehen, speichern. Alle auf dem Server sehen ihn, auch TeamSpeak-Clients; entfernen geht ebenso. Im KAAK-Design zeigt das runde Identitätssymbol unten links jetzt den eigenen Avatar und ändert ihn per Klick. Bilder werden quadratisch zugeschnitten, kleine GIFs bleiben animiert. Avatar-Änderungen anderer erscheinen jetzt ohne Neuverbindung.
+- Behoben: Das Lösen eines Streams tat in der Desktop-App nichts; dort öffnet sich jetzt der System-Miniplayer, und ein verweigertes Fenster meldet sich statt still zu scheitern.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

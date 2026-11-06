@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canPopOutStreams, popOutStream, type StreamPopOutEnvironment } from "./stream-popout.js";
+import { browserStreamPopOutEnvironment, canPopOutStreams, popOutStream, type StreamPopOutEnvironment } from "./stream-popout.js";
 
 function fakeWindow() {
   const listeners = new Map<string, () => void>();
@@ -63,4 +63,22 @@ test("without window Picture-in-Picture the page's own video floats instead", as
   const unsupported: StreamPopOutEnvironment = { videoPictureInPicture: false, exitVideoPictureInPicture: async () => {}, videoInPictureInPicture: () => null };
   assert.equal(canPopOutStreams(unsupported), false);
   assert.equal(await popOutStream({ media, title: "", pageVideo: null, onClosed: () => {} }, unsupported), null);
+});
+
+test("the desktop shell skips document Picture-in-Picture, whose window it refuses", () => {
+  const scope = globalThis as unknown as Record<string, unknown>;
+  const saved = { window: scope.window, document: scope.document };
+  const api = { requestWindow: async () => { throw new Error("no window"); }, window: null };
+  try {
+    scope.document = { pictureInPictureEnabled: true };
+    scope.window = { documentPictureInPicture: api };
+    assert.equal(browserStreamPopOutEnvironment().documentPictureInPicture, api);
+    scope.window = { documentPictureInPicture: api, webspeakDesktop: { reportState() {} } };
+    const environment = browserStreamPopOutEnvironment();
+    assert.equal(environment.documentPictureInPicture, undefined);
+    assert.equal(environment.videoPictureInPicture, true);
+  } finally {
+    scope.window = saved.window;
+    scope.document = saved.document;
+  }
 });

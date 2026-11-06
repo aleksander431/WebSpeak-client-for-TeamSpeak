@@ -26,10 +26,14 @@ export interface StreamPopOutEnvironment {
 }
 
 export function browserStreamPopOutEnvironment(): StreamPopOutEnvironment {
-  const scope = typeof window === "undefined" ? undefined : window as Window & { documentPictureInPicture?: DocumentPictureInPictureApi };
+  const scope = typeof window === "undefined" ? undefined : window as Window & { documentPictureInPicture?: DocumentPictureInPictureApi; webspeakDesktop?: unknown };
   const doc = typeof document === "undefined" ? undefined : document;
+  // The desktop shell exposes Document Picture-in-Picture but refuses its
+  // window ("no window"), and by then the click no longer counts for the
+  // fallback. Its video Picture-in-Picture works, so use that directly.
+  const documentWindows = scope?.documentPictureInPicture && !scope.webspeakDesktop ? scope.documentPictureInPicture : undefined;
   return {
-    ...(scope?.documentPictureInPicture ? { documentPictureInPicture: scope.documentPictureInPicture } : {}),
+    ...(documentWindows ? { documentPictureInPicture: documentWindows } : {}),
     videoPictureInPicture: Boolean(doc && "pictureInPictureEnabled" in doc && doc.pictureInPictureEnabled),
     exitVideoPictureInPicture: () => doc?.exitPictureInPicture ? doc.exitPictureInPicture() : Promise.resolve(),
     videoInPictureInPicture: () => doc?.pictureInPictureElement ?? null,
@@ -60,7 +64,8 @@ export async function popOutStream(request: PopOutRequest, environment: StreamPo
     try {
       pip = await environment.documentPictureInPicture.requestWindow({ width: size.width, height: size.height });
     } catch {
-      // Some shells expose the API but refuse the window: use video Picture-in-Picture.
+      // A refused window can still try video Picture-in-Picture, though the
+      // browser may no longer accept it without a fresh click.
       pip = null;
     }
     if (pip) {
