@@ -208,6 +208,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Avatars: set your own TeamSpeak avatar — the camera on your card in the room (or right-click yourself in the channel list), pick or drop a picture, save. Everybody on the server sees it, TeamSpeak clients included; it can be removed again. In the KAAK theme the round identity badge at the bottom left now shows your avatar and changes it on click. Pictures are cropped to a square; small GIFs stay animated. Avatars other people change now update without reconnecting.
 - Fix: detaching a stream did nothing in the desktop app; it now opens the system mini player there, and a refused window shows a message instead of failing silently.
 - Sounds: leaving the server, moving to another channel, and starting or stopping your own screen share now have their own short cues (they follow the notification volume).
+- Auto-reconnect: if the connection drops because of the network or a server restart, WebSpeak rejoins by itself (on every device, also minimised) and returns to your channel. The room shows a countdown with "reconnect now"; it keeps trying for about five minutes and stops on a kick or ban.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

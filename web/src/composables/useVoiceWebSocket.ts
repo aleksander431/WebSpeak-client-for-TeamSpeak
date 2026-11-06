@@ -1081,8 +1081,12 @@ export function useVoiceWebSocket() {
     4004: "SERVER_REJECTED",
     4005: "IDENTITY_IN_USE",
     4006: "ACCELERATION_UNAVAILABLE",
+    // Going away / restarting / try again later: a proxy or the gateway restarting.
+    1001: "GATEWAY_NETWORK_LOST",
     1006: "GATEWAY_NETWORK_LOST",
     1011: "GATEWAY_SESSION_ENDED",
+    1012: "GATEWAY_NETWORK_LOST",
+    1013: "GATEWAY_NETWORK_LOST",
   };
 
   function closeErrorCode(code: number, reason = ""): string {

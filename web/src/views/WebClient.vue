@@ -585,6 +585,33 @@
         </div>
 
         <div
+          v-if="showRecoveryBanner"
+          :class="['reconnect-banner', { failed: recoveryStatus.exhausted }]"
+          data-ws-part="voice.connection-recovery"
+          role="status"
+        >
+          <div class="reconnect-copy"
+            ><strong>{{ t("connectionLostTitle") }}</strong
+            ><span>{{ recoveryText }}</span></div
+          >
+          <div class="reconnect-actions"
+            ><button
+              type="button"
+              class="secondary-button"
+              data-ws-part="voice.connection-recovery.retry"
+              :disabled="voiceState.connecting"
+              @click="rejoinNow"
+              >{{ t("reconnectNow") }}</button
+            ><button
+              type="button"
+              class="text-button"
+              data-ws-part="voice.connection-recovery.leave"
+              @click="leaveVoiceWorkspace"
+              >{{ t("back") }}</button
+            ></div
+          >
+        </div>
+        <div
           v-if="voiceState.reconnecting || voiceState.reconnectFailed"
           :class="['reconnect-banner', { failed: voiceState.reconnectFailed }]"
           data-ws-part="voice.connection-status"
@@ -1127,7 +1154,7 @@ import { BUILTIN_DARK_SKIN, BUILTIN_LIGHT_SKIN } from "../services/skin-runtime.
 import { applyTheme, getStoredTheme, type ThemeMode } from "../services/theme.js";
 import { createScreenWakeLockController, getScreenWakeLockApi, type ScreenWakeLockController, type ScreenWakeLockSnapshot } from "../services/screen-wake-lock.js";
 import { createMobileAwayController, type MobileAwayController } from "../services/mobile-away.js";
-import { createBackgroundRecovery, type BackgroundRecoveryController } from "../services/background-recovery.js";
+import { createBackgroundRecovery, type BackgroundRecoveryController, type RecoveryStatus } from "../services/background-recovery.js";
 import { createCallMediaSession, type CallMediaSessionController } from "../services/call-media-session.js";
 import { desktopHost } from "../composables/useDesktopBridge.js";
 import { createSkinPluginQuickServerProjection, safeSkinServerDisplayName } from "../services/skin-plugin-context.js";
@@ -1750,8 +1777,10 @@ function requestVoiceConnection(): void {
   if (!canRequestVoiceConnection.value || favoriteServerDialogOpen.value || serverPasswordDialog.open) return;
   beginFavoriteConnection();
 }
+/** What the room shows while it waits to rejoin. */
+const recoveryStatus = reactive<RecoveryStatus>({ pending: false, attempt: 0, nextAttemptAt: null, exhausted: false });
 const showVoiceShell = computed(() => Boolean(
-  voiceWorkspace.active.value ||
+  voiceWorkspace.active.value || recoveryStatus.pending ||
   voiceState.connected || voiceState.reconnecting || voiceState.reconnectFailed
   || favoriteSwitchPending.value || favoriteSwitchFailed.value,
 ));
@@ -2361,9 +2390,10 @@ const skinPluginWidgets = {
     nickname: nickname.value,
     "onUpdate:nickname": (value: string) => { if (!voiceConnectionBusy.value) nickname.value = value; },
     error: voiceConnectionError.value,
-    canConnect: canRequestVoiceConnection.value,
+    canConnect: canRequestVoiceConnection.value || (recoveryStatus.pending && !voiceState.connecting),
+    ...(recoveryText.value ? { recovery: `${t("connectionLostTitle")}. ${recoveryText.value}` } : {}),
     t,
-    onConnect: requestVoiceConnection,
+    onConnect: () => recoveryStatus.pending ? rejoinNow() : requestVoiceConnection(),
   }),
   "voice.connection-controls": () => h("div", { class: "ws-plugin-connection-controls", role: "toolbar", "aria-label": t("desktopAudioControls") }, [
     h("button", { type: "button", "aria-label": t("copyInvite"), title: t("copyInvite"), onClick: doShare }, [h(Icon, { name: "share", size: 18 })]),
@@ -2511,22 +2541,57 @@ watch(() => voiceState.connected, (connected) => {
   }, { immediate: true });
   const giveUp = window.setTimeout(stop, 10_000);
 });
-const RECOVERABLE_DROPS = new Set(["GATEWAY_NETWORK_LOST"]);
-const RECOVERABLE_RETRIES = new Set(["GATEWAY_NETWORK_LOST", "REQUEST_FAILED", "REQUEST_TIMEOUT", "VOICE_GATEWAY_UNAVAILABLE"]);
+/** A dropped socket worth rejoining: the network, a proxy or the gateway restarting. */
+const RECOVERABLE_DROPS = new Set(["GATEWAY_NETWORK_LOST", "GATEWAY_SESSION_ENDED"]);
+/**
+ * While rejoining, failures that a restart or a network blip explains: the
+ * gateway or TeamSpeak still starting, or the old TeamSpeak client not yet timed
+ * out (its nickname still taken). Kicks, bans, passwords and identity problems stop it.
+ */
+const RECOVERABLE_RETRIES = new Set([
+  "GATEWAY_NETWORK_LOST", "GATEWAY_SESSION_ENDED", "REQUEST_FAILED", "REQUEST_TIMEOUT", "VOICE_GATEWAY_UNAVAILABLE",
+  "CONNECTION_FAILED", "CONNECTION_INITIALISATION_FAILED", "SERVER_SHUTTING_DOWN", "TEAM_SPEAK_CLIENT_UNAVAILABLE",
+  "UNREACHABLE", "CONNECTION_REFUSED", "CONNECTION_RESET", "TIMEOUT", "NICKNAME_IN_USE", "FLOOD_PROTECTION", "SERVER_FULL", "RATE_LIMITED",
+]);
+const recoveryClock = ref(Date.now());
+let recoveryClockTimer: number | undefined;
+watch(() => recoveryStatus.pending && recoveryStatus.nextAttemptAt !== null, (ticking) => {
+  if (recoveryClockTimer !== undefined) window.clearInterval(recoveryClockTimer);
+  recoveryClockTimer = undefined;
+  if (ticking) {
+    recoveryClock.value = Date.now();
+    recoveryClockTimer = window.setInterval(() => { recoveryClock.value = Date.now(); }, 500);
+  }
+});
+const recoverySecondsLeft = computed(() => recoveryStatus.nextAttemptAt === null ? 0 : Math.max(1, Math.ceil((recoveryStatus.nextAttemptAt - recoveryClock.value) / 1000)));
+const recoveryText = computed(() => {
+  if (!recoveryStatus.pending) return "";
+  if (voiceState.connecting) return t("rejoiningAttempt", { attempt: recoveryStatus.attempt });
+  if (recoveryStatus.nextAttemptAt !== null) return t("rejoiningIn", { seconds: recoverySecondsLeft.value, attempt: recoveryStatus.attempt + 1 });
+  return t(recoveryStatus.exhausted ? "rejoiningGaveUp" : "rejoiningWaitingNetwork");
+});
+/** The socket is gone but the page is rejoining (or may, at the user's word). */
+const showRecoveryBanner = computed(() => recoveryStatus.pending && !voiceState.connected && !voiceState.reconnecting && !voiceState.reconnectFailed);
 watch(() => voiceState.connecting, (connecting) => {
   // The user started a connection of their own: it replaces any pending rejoin.
   if (connecting && !recoveryRejoining) backgroundRecovery?.cancel();
 });
 watch(() => voiceState.errorCode, (code) => {
   if (!code || voiceState.connected || voiceState.connecting) return;
-  if (RECOVERABLE_DROPS.has(code) || (recoveryRejoining && RECOVERABLE_RETRIES.has(code))) backgroundRecovery?.dropped();
+  // The gateway gave up reconnecting to TeamSpeak (down for over five minutes): keep trying from here.
+  const gatewayGaveUp = voiceState.reconnectFailed && RECOVERABLE_RETRIES.has(code);
+  if (RECOVERABLE_DROPS.has(code) || gatewayGaveUp || (recoveryRejoining && RECOVERABLE_RETRIES.has(code))) backgroundRecovery?.dropped();
   else { recoveryRejoining = false; backgroundRecovery?.cancel(); }
 });
 function rejoinAfterBackground(): void {
+  if (!recoveryRejoining) showToast(t("backgroundRejoining"));
   recoveryRejoining = true;
-  showToast(t("backgroundRejoining"));
   enableScreenWakeLockForSession();
   reconnectNow();
+}
+function rejoinNow(): void {
+  if (recoveryStatus.pending) backgroundRecovery?.retryNow();
+  else reconnectMobile();
 }
 
 // Phone background: a "call in progress" card in the notification shade.
@@ -2551,10 +2616,12 @@ onMounted(() => {
   });
   mobileAwayController.sync();
   backgroundRecovery = createBackgroundRecovery(document, window, {
-    enabled: () => isPhoneBrowser.value,
+    enabled: () => true,
+    retryWhileHidden: () => !isPhoneBrowser.value,
     canResume: () => canReconnect() && !voiceState.connected && !voiceState.connecting && !voiceState.reconnecting,
     resume: rejoinAfterBackground,
     wakeAudio,
+    onStatus: (status) => Object.assign(recoveryStatus, status),
   });
   callMediaSession = createCallMediaSession({
     toggleMicrophone: () => toggleMicrophone(),
@@ -2603,6 +2670,7 @@ onMounted(() => {
 onUnmounted(() => {
   mobileAwayController?.dispose();
   backgroundRecovery?.dispose();
+  if (recoveryClockTimer !== undefined) window.clearInterval(recoveryClockTimer);
   callMediaSession?.dispose();
   screenWakeLockController?.dispose();
   stopViewportObservation?.();

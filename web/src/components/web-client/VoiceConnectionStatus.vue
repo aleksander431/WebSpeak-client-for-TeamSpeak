@@ -3,10 +3,10 @@
     v-if="!connected"
     class="voice-connection-status"
     data-ws-part="voice.connection-status"
-    :data-ws-state="connecting ? 'connecting' : error ? 'failed' : 'disconnected'"
+    :data-ws-state="recovery ? 'recovering' : connecting ? 'connecting' : error ? 'failed' : 'disconnected'"
   >
     <p role="status" aria-live="polite" data-ws-part="voice.connection-status.message">
-      {{ connecting ? t('connecting') : error || t('voiceHealthDisconnected') }}
+      {{ recovery || (connecting ? t('connecting') : error || t('voiceHealthDisconnected')) }}
     </p>
     <label data-ws-part="voice.connection-status.nickname">
       <span>{{ t('nickname') }}</span>
@@ -37,6 +37,8 @@ defineProps<{
   nickname: string;
   error: string;
   canConnect: boolean;
+  /** Automatic rejoin in progress: what it is doing; the button then retries at once. */
+  recovery?: string;
   t: (key: string) => string;
 }>();
 defineEmits<{ connect: []; 'update:nickname': [value: string] }>();
