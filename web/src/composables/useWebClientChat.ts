@@ -55,6 +55,8 @@ interface UseWebClientChatOptions {
   /** Pinned messages by conversation ("channel:<id>", "server:"); live updates arrive from the gateway. */
   pins?: Map<string, ChatPin[]>;
   pinChat?: (ref: string, active: boolean) => Promise<void>;
+  /** The session's conversation key for a present member (a unique id learned from its messages when the directory has none). */
+  memberConversationKey?: (clientId: number) => string | undefined;
 }
 
 export function useWebClientChat({
@@ -82,6 +84,7 @@ export function useWebClientChat({
   notifyMention,
   pins,
   pinChat,
+  memberConversationKey,
 }: UseWebClientChatOptions) {
   const tab = ref<WebClientChatTab>("channel");
   const panelOpen = ref(!isMobileViewport.value);
@@ -99,7 +102,13 @@ export function useWebClientChat({
   let scrollGeneration = 0;
   let historyGeneration = 0;
   const persistedMessageIds = new Set<string>();
-  const memberKey = (member: ChannelMember) => member.uid ? `uid:${member.uid}` : `client:${JSON.stringify([member.id, member.nickname])}`;
+  /** A unique id the session learned for a present member without one in the directory. */
+  const learnedKey = (id: number, nickname: string): string | undefined => {
+    const key = memberConversationKey?.(id);
+    return key?.startsWith("uid:") && members.some(member => member.id === id && !member.uid && member.nickname === nickname) ? key : undefined;
+  };
+  const memberKey = (member: ChannelMember) => member.uid ? `uid:${member.uid}`
+    : learnedKey(member.id, member.nickname) ?? `client:${JSON.stringify([member.id, member.nickname])}`;
   const recipient = computed(() => members.find(member => member.id === privateClientId.value && memberKey(member) === privateConversationKey.value));
   const destination = computed(() => `${sessionEpoch.value}:${tab.value}:${tab.value === "private" ? privateConversationKey.value : tab.value === "channel" ? currentChannel.value?.id ?? selectedChannelId.value : ""}`);
   const canSend = computed(() => connected.value && !sending.value && tab.value !== "events" && (tab.value !== "private" || Boolean(recipient.value)));
@@ -111,7 +120,7 @@ export function useWebClientChat({
     if (message.senderUid && !message.isSelf) return `uid:${message.senderUid}`;
     const id = Number(message.conversationId) || message.senderId || 0;
     const name = message.conversationName || (message.isSelf ? "" : message.invokerName);
-    return id ? `client:${JSON.stringify([id, name])}` : `legacy:${message.id}`;
+    return id ? learnedKey(id, name) ?? `client:${JSON.stringify([id, name])}` : `legacy:${message.id}`;
   };
 
   const conversations = computed<PrivateConversation[]>(() => {

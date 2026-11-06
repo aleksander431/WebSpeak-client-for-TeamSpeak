@@ -1393,7 +1393,10 @@ export function useVoiceWebSocket() {
     const text = chatText(message);
     const member = members.find(candidate => candidate.id === clientId);
     const key = sessionState.memberConversationKey(clientId);
-    if (!member || clientId === state.tsClientId || (expectedKey !== undefined && key !== expectedKey)) {
+    // The chat names a member without any unique id by its id and nickname.
+    const sameMember = expectedKey === undefined || key === expectedKey
+      || (member && !key?.startsWith("uid:") && expectedKey === `client:${JSON.stringify([member.id, member.nickname])}`);
+    if (!member || clientId === state.tsClientId || !sameMember) {
       throw Object.assign(new Error("成员已离线或当前不可见"), { code: "CLIENT_NOT_FOUND" });
     }
     await sendChat("sendPrivateMessage", { clientId, message: text, ...(member.uid ? { clientUid: member.uid } : {}) },

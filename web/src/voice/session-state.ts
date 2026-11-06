@@ -32,6 +32,22 @@ export function createVoiceSessionState(options: SessionStateOptions) {
     memberKeys.set(id, key);
     return key;
   }
+  /**
+   * Unique ids learned from private messages for members whose directory entry
+   * has none (some servers omit it), so the reply tab and the message tab are
+   * the same conversation. Bound to that client id and nickname only.
+   */
+  const learnedUids = new Map<number, { uid: string; nickname: string }>();
+  function memberKeyFor(member: ChannelMember): string {
+    if (member.uid) return conversationKey(member.id, member.uid);
+    const learned = learnedUids.get(member.id);
+    if (learned && learned.nickname === member.nickname) return `uid:${learned.uid}`;
+    if (learned) {
+      learnedUids.delete(member.id);
+      if (memberKeys.get(member.id) === `uid:${learned.uid}`) memberKeys.delete(member.id);
+    }
+    return conversationKey(member.id);
+  }
   function incomingConversationKey(id: number, uid?: string): string {
     if (uid) return `uid:${uid}`;
     const known = memberKeys.get(id);
@@ -48,9 +64,10 @@ export function createVoiceSessionState(options: SessionStateOptions) {
       if (!replacement || replacement.uid !== member.uid) {
         options.onMemberRemoved(member.id);
         memberKeys.delete(member.id);
+        learnedUids.delete(member.id);
       }
     }
-    for (const member of byId.values()) memberKeys.set(member.id, conversationKey(member.id, member.uid));
+    for (const member of byId.values()) memberKeys.set(member.id, memberKeyFor(member));
     members.splice(0, members.length, ...byId.values());
     options.onMembersChanged();
   }
@@ -84,8 +101,9 @@ export function createVoiceSessionState(options: SessionStateOptions) {
     if (previous && !sameIdentity) {
       options.onMemberRemoved(member.id);
       memberKeys.delete(member.id);
+      learnedUids.delete(member.id);
     }
-    memberKeys.set(member.id, conversationKey(member.id, member.uid));
+    memberKeys.set(member.id, memberKeyFor(current));
     if (index < 0) members.push(current);
     else members.splice(index, 1, current);
     const canonical = members[index < 0 ? members.length - 1 : index];
@@ -100,6 +118,7 @@ export function createVoiceSessionState(options: SessionStateOptions) {
     options.onMemberRemoved(id);
     memberKeys.delete(id);
     unknownSenders.delete(id);
+    learnedUids.delete(id);
     const index = members.findIndex(member => member.id === id);
     if (index >= 0) members.splice(index, 1);
     for (const channel of channels) {
@@ -114,6 +133,7 @@ export function createVoiceSessionState(options: SessionStateOptions) {
     channels.length = 0;
     memberKeys.clear();
     unknownSenders.clear();
+    learnedUids.clear();
     replaceMembers(message.members ?? []);
     serverEvents.splice(0, serverEvents.length, ...(message.serverEventLog ?? []));
     pokeNotifications.length = 0;
@@ -136,6 +156,13 @@ export function createVoiceSessionState(options: SessionStateOptions) {
       case "chatMessage": {
         if (message.invokerId === options.selfId()) break;
         const scope = message.scope === "channel" || message.scope === "server" || message.scope === "private" ? message.scope : "system";
+        if (scope === "private" && message.senderUid && message.invokerId) {
+          const sender = members.find(candidate => candidate.id === message.invokerId);
+          if (sender && !sender.uid && sender.nickname === message.invokerName) {
+            learnedUids.set(sender.id, { uid: message.senderUid, nickname: sender.nickname });
+            memberKeys.set(sender.id, `uid:${message.senderUid}`);
+          }
+        }
         const targetId = message.targetId === undefined ? "" : String(message.targetId);
         chatMessages.push({ id: nextId("remote"), scope,
           ...(targetId && targetId !== "0" ? { targetId } : {}),
@@ -175,6 +202,7 @@ export function createVoiceSessionState(options: SessionStateOptions) {
     replaceMembers([]);
     memberKeys.clear();
     unknownSenders.clear();
+    learnedUids.clear();
     channels.length = 0;
     chatMessages.length = 0;
     chatReactions.clear();

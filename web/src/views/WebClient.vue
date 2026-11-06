@@ -1676,6 +1676,7 @@ const memberControls = useWebClientMembers({
 });
 const { away, memberMenu, clearWhisperTargets, isSpeaking, openMemberMenu, openMemberActions, setAutomaticAway } = memberControls;
 const chat = useWebClientChat({
+  memberConversationKey,
   messages: chatMessages,
   members,
   currentChannel,
