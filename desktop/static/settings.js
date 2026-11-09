@@ -8,6 +8,72 @@
   for (const element of document.querySelectorAll("[data-t]")) element.textContent = t(element.dataset.t);
 
   const $ = (id) => document.getElementById(id);
+  for (const element of document.querySelectorAll("[data-placeholder]")) element.placeholder = t(element.dataset.placeholder);
+  $("brandVersion").textContent = t("version", { version: snapshot.version });
+
+  // --- pages and search ---------------------------------------------------
+  const PAGE_KEY = "webspeak:settings-page";
+  const navButtons = [...document.querySelectorAll("nav button[data-page]")];
+  const sections = [...document.querySelectorAll(".pages > section[data-page]")];
+  const pageLabel = (page) => navButtons.find((button) => button.dataset.page === page)?.querySelector("span")?.textContent || "";
+  let page = (() => { try { return localStorage.getItem(PAGE_KEY) || ""; } catch { return ""; } })();
+  if (!navButtons.some((button) => button.dataset.page === page)) page = navButtons[0].dataset.page;
+  const fold = (text) => text.toLocaleLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ");
+  function showPage(next) {
+    page = next;
+    try { localStorage.setItem(PAGE_KEY, page); } catch { /* per session only */ }
+    if ($("search").value) { $("search").value = ""; }
+    render();
+    $("form").querySelector(".pages").scrollTop = 0;
+  }
+  function render() {
+    const query = fold($("search").value.trim());
+    const nav = $("nav");
+    nav.classList.toggle("searching", Boolean(query));
+    $("form").classList.toggle("searching-results", Boolean(query));
+    const counts = new Map();
+    let total = 0;
+    for (const section of sections) {
+      const items = [...section.querySelectorAll("[data-item]")];
+      for (const item of items) item.classList.remove("search-hidden", "match");
+      for (const child of section.children) child.classList.remove("search-hidden");
+      if (!query) { section.classList.toggle("search-hidden", section.dataset.page !== page); continue; }
+      const titleMatch = fold(section.querySelector("h2")?.textContent || "").includes(query) || fold(pageLabel(section.dataset.page)).includes(query);
+      let found = 0;
+      for (const item of items) {
+        const text = fold(`${item.textContent} ${item.dataset.keywords || ""}`);
+        const match = text.includes(query);
+        item.classList.toggle("match", match);
+        item.classList.toggle("search-hidden", !match && !titleMatch);
+        if (match) found += 1;
+      }
+      // Hints and other text without a setting of their own stay with a matching title only.
+      if (!titleMatch) for (const child of section.children) if (child.tagName !== "H2" && !child.matches("[data-item]") && !child.querySelector("[data-item]")) child.classList.add("search-hidden");
+      const visible = titleMatch || found > 0;
+      section.classList.toggle("search-hidden", !visible);
+      const hits = titleMatch ? Math.max(found, 1) : found;
+      if (visible) { counts.set(section.dataset.page, (counts.get(section.dataset.page) || 0) + hits); total += hits; }
+    }
+    for (const button of navButtons) {
+      const count = counts.get(button.dataset.page) || 0;
+      button.classList.toggle("match", count > 0);
+      button.querySelector(".count").textContent = count ? String(count) : "";
+      if (query) button.removeAttribute("aria-current");
+      else if (button.dataset.page === page) { button.setAttribute("aria-current", "page"); button.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+      else button.removeAttribute("aria-current");
+    }
+    $("pageTitle").textContent = query ? t("searchResults") : pageLabel(page);
+    $("searchEmpty").hidden = !query || total > 0;
+  }
+  for (const button of navButtons) button.addEventListener("click", () => showPage(button.dataset.page));
+  $("search").addEventListener("input", render);
+  $("search").addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && $("search").value) { event.preventDefault(); event.stopPropagation(); $("search").value = ""; render(); }
+    if (event.key === "Enter") event.preventDefault();
+  });
+  document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f" && !listening) { event.preventDefault(); $("search").focus(); $("search").select(); }
+  });
   const actions = [["mic", "hotkeyMic"], ["sound", "hotkeySound"], ["stream", "hotkeyStream"]];
   const draft = { hotkeys: { ...snapshot.settings.hotkeys }, pushToTalk: snapshot.settings.pushToTalk || "", whisper: snapshot.settings.whisper || "" };
   // Keys that act while held: push-to-talk and whisper. Field in the draft and settings, plus strings.
@@ -65,6 +131,7 @@
   for (const [action, key] of actions) {
     const row = document.createElement("div");
     row.className = "hotkey";
+    row.dataset.item = "";
     const name = document.createElement("span");
     name.textContent = t(key);
     const capture = document.createElement("button");
@@ -87,6 +154,7 @@
   for (const [slot, hold] of Object.entries(HOLDS)) {
     const row = document.createElement("div");
     row.className = "hotkey";
+    row.dataset.item = "";
     const name = document.createElement("span");
     name.textContent = t(hold.name);
     const capture = document.createElement("button");
@@ -295,7 +363,7 @@
       overlay: overlayDraft(),
     });
     if (!result) return;
-    if (result.error === "serverInvalid") { $("serverError").hidden = false; $("serverUrl").focus(); return; }
+    if (result.error === "serverInvalid") { showPage("general"); $("serverError").hidden = false; $("serverUrl").focus(); return; }
     snapshot = { ...result, strings };
     Object.assign(draft.hotkeys, snapshot.settings.hotkeys);
     draft.pushToTalk = snapshot.settings.pushToTalk || "";
@@ -306,4 +374,5 @@
     setTimeout(() => { note.hidden = true; }, 2000);
   });
   fill();
+  render();
 })();

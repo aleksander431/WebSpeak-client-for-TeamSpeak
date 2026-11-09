@@ -8,111 +8,131 @@
 <link rel="stylesheet" href="settings.css">
 </head>
 <body>
-<form id="form" novalidate>
-  <h1 data-t="settingsTitle"></h1>
-
-  <section>
-    <h2 data-t="server"></h2>
-    <input type="url" id="serverUrl" spellcheck="false" autocomplete="off">
-    <p class="hint" data-t="serverHint"></p>
-    <p class="error" id="serverError" hidden data-t="serverInvalid"></p>
-  </section>
-
-  <section>
-    <h2 data-t="startup"></h2>
-    <label class="check"><input type="checkbox" id="launchAtLogin"> <span data-t="launchAtLogin"></span></label>
-    <label class="check"><input type="checkbox" id="startHidden"> <span data-t="startHidden"></span></label>
-    <label class="check"><input type="checkbox" id="closeToTray"> <span data-t="closeToTray"></span></label>
-  </section>
-
-  <section>
-    <h2 data-t="hotkeys"></h2>
-    <p class="hint" data-t="hotkeysHint"></p>
-    <p class="hint" data-t="hotkeySingleHint"></p>
-    <div class="hotkeys" id="hotkeys"></div>
-    <label class="field"><span data-t="streamSource"></span>
-      <select id="streamHotkeySource">
-        <option value="picker" data-t="streamSourcePicker"></option>
-        <option value="screen" data-t="streamSourceScreen"></option>
-      </select>
-    </label>
-    <label class="check"><input type="checkbox" id="hotkeySounds"> <span data-t="hotkeySounds"></span></label>
-  </section>
-
-  <section>
-    <h2 data-t="pttTitle"></h2>
-    <p class="hint" data-t="pttHint"></p>
-    <div class="hotkeys" id="ptt"></div>
-  </section>
-
-  <section>
-    <h2 data-t="whisperTitle"></h2>
-    <p class="hint" data-t="whisperHint"></p>
-    <div class="hotkeys" id="whisperHotkey"></div>
-  </section>
-
-  <section>
-    <h2 data-t="overlayTitle"></h2>
-    <p class="hint" data-t="overlayHint"></p>
-    <label class="check"><input type="checkbox" id="overlayEnabled"> <span data-t="overlayEnabled"></span></label>
-    <fieldset id="overlayOptions" class="overlay-options">
-      <label class="field"><span data-t="overlayShowWhen"></span>
-        <select id="overlayShowWhen">
-          <option value="games" data-t="overlayShowWhenGames"></option>
-          <option value="always" data-t="overlayShowWhenAlways"></option>
-        </select>
-      </label>
-      <label class="field" id="overlayAppsField"><span data-t="overlayApps"></span>
-        <textarea id="overlayApps" rows="3" spellcheck="false" autocomplete="off" placeholder="dota2.exe&#10;cs2.exe"></textarea>
-        <small class="hint" data-t="overlayAppsHint"></small>
-      </label>
-      <label class="field"><span data-t="overlayCorner"></span>
-        <select id="overlayCorner">
-          <option value="top-left" data-t="overlayCornerTopLeft"></option>
-          <option value="top-right" data-t="overlayCornerTopRight"></option>
-          <option value="bottom-left" data-t="overlayCornerBottomLeft"></option>
-          <option value="bottom-right" data-t="overlayCornerBottomRight"></option>
-        </select>
-      </label>
-      <label class="field"><span data-t="overlayMode"></span>
-        <select id="overlayMode">
-          <option value="channel" data-t="overlayModeChannel"></option>
-          <option value="speaking" data-t="overlayModeSpeaking"></option>
-        </select>
-      </label>
-      <label class="field range"><span data-t="overlayScale"></span>
-        <input type="range" id="overlayScale" min="60" max="200" step="10"><output id="overlayScaleValue"></output>
-      </label>
-      <label class="field range"><span data-t="overlayOpacity"></span>
-        <input type="range" id="overlayOpacity" min="20" max="100" step="5"><output id="overlayOpacityValue"></output>
-      </label>
-      <div class="field"><span data-t="overlayOffset"></span>
-        <div class="offsets">
-          <label><span data-t="overlayOffsetX"></span> <input type="number" id="overlayOffsetX" min="0" max="2000" step="1"></label>
-          <label><span data-t="overlayOffsetY"></span> <input type="number" id="overlayOffsetY" min="0" max="2000" step="1"></label>
-        </div>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand"><img src="icon.png" alt="" width="40" height="40"><div><strong>WebSpeak</strong><small id="brandVersion"></small></div></div>
+    <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" id="search" autocomplete="off" spellcheck="false" data-placeholder="searchPlaceholder"></label>
+    <nav id="nav" aria-label="">
+      <p class="nav-group" data-t="navGroupApp"></p>
+      <button type="button" data-page="general"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg><span data-t="navGeneral"></span><i class="count"></i></button>
+      <p class="nav-group" data-t="navGroupControls"></p>
+      <button type="button" data-page="hotkeys"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg><span data-t="navHotkeys"></span><i class="count"></i></button>
+      <button type="button" data-page="voice"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg><span data-t="navVoice"></span><i class="count"></i></button>
+      <p class="nav-group" data-t="navGroupGames"></p>
+      <button type="button" data-page="overlay"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="14" rx="2"/><rect x="5" y="7" width="6" height="5" rx="1"/><path d="M8 21h8"/></svg><span data-t="navOverlay"></span><i class="count"></i></button>
+      <p class="nav-group" data-t="navGroupAbout"></p>
+      <button type="button" data-page="updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span data-t="navUpdates"></span><i class="count"></i></button>
+    </nav>
+  </aside>
+  <form id="form" class="content" novalidate>
+    <header class="page-head"><h1 id="pageTitle"></h1></header>
+    <div class="pages">
+    <section data-page="general">
+      <h2 id="serverHeading" data-t="server"></h2>
+      <div class="item" data-item data-keywords="url address адрес сервер server">
+        <input type="url" id="serverUrl" spellcheck="false" autocomplete="off" aria-labelledby="serverHeading">
+        <p class="hint" data-t="serverHint"></p>
+        <p class="error" id="serverError" hidden data-t="serverInvalid"></p>
       </div>
-      <label class="check"><input type="checkbox" id="overlayShowSelf"> <span data-t="overlayShowSelf"></span></label>
-      <label class="check"><input type="checkbox" id="overlayShowChannel"> <span data-t="overlayShowChannel"></span></label>
-      <p class="hint" data-t="overlayFullscreenHint"></p>
-    </fieldset>
-  </section>
+    </section>
 
-  <section>
-    <h2 data-t="updates"></h2>
-    <div class="update-row">
-      <span id="version"></span>
-      <span id="updateStatus" class="hint"></span>
-      <button type="button" class="button" id="updateButton"></button>
+    <section data-page="general">
+      <h2 data-t="startup"></h2>
+      <label class="check" data-item><input type="checkbox" id="launchAtLogin"> <span data-t="launchAtLogin"></span></label>
+      <label class="check" data-item><input type="checkbox" id="startHidden"> <span data-t="startHidden"></span></label>
+      <label class="check" data-item><input type="checkbox" id="closeToTray"> <span data-t="closeToTray"></span></label>
+    </section>
+
+    <section data-page="hotkeys">
+      <h2 data-t="hotkeys"></h2>
+      <p class="hint" data-t="hotkeysHint"></p>
+      <p class="hint" data-t="hotkeySingleHint"></p>
+      <div class="hotkeys" id="hotkeys"></div>
+      <label class="field" data-item><span data-t="streamSource"></span>
+        <select id="streamHotkeySource">
+          <option value="picker" data-t="streamSourcePicker"></option>
+          <option value="screen" data-t="streamSourceScreen"></option>
+        </select>
+      </label>
+      <label class="check" data-item><input type="checkbox" id="hotkeySounds"> <span data-t="hotkeySounds"></span></label>
+    </section>
+
+    <section data-page="voice">
+      <h2 data-t="pttTitle"></h2>
+      <p class="hint" data-t="pttHint"></p>
+      <div class="hotkeys" id="ptt"></div>
+    </section>
+
+    <section data-page="voice">
+      <h2 data-t="whisperTitle"></h2>
+      <p class="hint" data-t="whisperHint"></p>
+      <div class="hotkeys" id="whisperHotkey"></div>
+    </section>
+
+    <section data-page="overlay">
+      <h2 data-t="overlayTitle"></h2>
+      <p class="hint" data-t="overlayHint"></p>
+      <label class="check" data-item><input type="checkbox" id="overlayEnabled"> <span data-t="overlayEnabled"></span></label>
+      <fieldset id="overlayOptions" class="overlay-options">
+        <label class="field" data-item><span data-t="overlayShowWhen"></span>
+          <select id="overlayShowWhen">
+            <option value="games" data-t="overlayShowWhenGames"></option>
+            <option value="always" data-t="overlayShowWhenAlways"></option>
+          </select>
+        </label>
+        <label class="field" id="overlayAppsField" data-item data-keywords="exe game игра программа"><span data-t="overlayApps"></span>
+          <textarea id="overlayApps" rows="3" spellcheck="false" autocomplete="off" placeholder="dota2.exe&#10;cs2.exe"></textarea>
+          <small class="hint" data-t="overlayAppsHint"></small>
+        </label>
+        <label class="field" data-item><span data-t="overlayCorner"></span>
+          <select id="overlayCorner">
+            <option value="top-left" data-t="overlayCornerTopLeft"></option>
+            <option value="top-right" data-t="overlayCornerTopRight"></option>
+            <option value="bottom-left" data-t="overlayCornerBottomLeft"></option>
+            <option value="bottom-right" data-t="overlayCornerBottomRight"></option>
+          </select>
+        </label>
+        <label class="field" data-item><span data-t="overlayMode"></span>
+          <select id="overlayMode">
+            <option value="channel" data-t="overlayModeChannel"></option>
+            <option value="speaking" data-t="overlayModeSpeaking"></option>
+          </select>
+        </label>
+        <label class="field range" data-item><span data-t="overlayScale"></span>
+          <input type="range" id="overlayScale" min="60" max="200" step="10"><output id="overlayScaleValue"></output>
+        </label>
+        <label class="field range" data-item><span data-t="overlayOpacity"></span>
+          <input type="range" id="overlayOpacity" min="20" max="100" step="5"><output id="overlayOpacityValue"></output>
+        </label>
+        <div class="field" data-item><span data-t="overlayOffset"></span>
+          <div class="offsets">
+            <label><span data-t="overlayOffsetX"></span> <input type="number" id="overlayOffsetX" min="0" max="2000" step="1"></label>
+            <label><span data-t="overlayOffsetY"></span> <input type="number" id="overlayOffsetY" min="0" max="2000" step="1"></label>
+          </div>
+        </div>
+        <label class="check" data-item><input type="checkbox" id="overlayShowSelf"> <span data-t="overlayShowSelf"></span></label>
+        <label class="check" data-item><input type="checkbox" id="overlayShowChannel"> <span data-t="overlayShowChannel"></span></label>
+        <p class="hint" data-t="overlayFullscreenHint"></p>
+      </fieldset>
+    </section>
+
+    <section data-page="updates">
+      <h2 data-t="updates"></h2>
+      <div class="update-row" data-item data-keywords="version версия update обновление">
+        <span id="version"></span>
+        <span id="updateStatus" class="hint"></span>
+        <button type="button" class="button" id="updateButton"></button>
+      </div>
+    </section>
+      <p class="search-empty" id="searchEmpty" hidden data-t="searchEmpty"></p>
     </div>
-  </section>
-
-  <footer>
-    <span id="savedNote" class="saved" hidden data-t="saved"></span>
-    <button type="button" class="button" id="close" data-t="cancel"></button>
-    <button type="submit" class="button primary" id="save" data-t="save"></button>
-  </footer>
-</form>
+    <footer>
+      <span id="savedNote" class="saved" hidden data-t="saved"></span>
+      <button type="button" class="button" id="close" data-t="cancel"></button>
+      <button type="submit" class="button primary" id="save" data-t="save"></button>
+    </footer>
+  </form>
+</div>
 <script src="settings.js"></script>
 </body>
 </html>

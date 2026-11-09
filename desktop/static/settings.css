@@ -1,5 +1,46 @@
-form { display: grid; gap: 18px; max-width: 640px; margin: 0 auto; padding: 20px 22px 18px; }
+/* Discord-like: groups and search on the left, the chosen page on the right. */
+html, body { overflow: hidden; }
+.layout { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100vh; }
+.sidebar { display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 18px 12px 14px; overflow-y: auto; border-right: 1px solid var(--border); background: #0c1110; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; }
+.brand img { flex: none; border-radius: 10px; }
+.brand strong { display: block; font-size: 15px; }
+.brand small { display: block; color: var(--muted); font-size: 12px; }
+.search { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.search:focus-within { border-color: var(--accent); }
+.search svg { flex: none; width: 16px; height: 16px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+.search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: none; background: none; }
+.search input::-webkit-search-cancel-button { filter: invert(.6); }
+nav { display: grid; gap: 2px; }
+.nav-group { margin: 10px 8px 4px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+.nav-group:first-child { margin-top: 0; }
+nav button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); text-align: left; }
+nav button svg { flex: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+nav button span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+nav button:hover { color: var(--text); background: var(--surface); }
+nav button[aria-current="page"] { color: var(--text); background: var(--surface-2); font-weight: 600; }
+nav button .count { display: none; min-width: 20px; padding: 0 6px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-style: normal; font-weight: 700; line-height: 18px; text-align: center; }
+nav.searching button { opacity: .45; }
+nav.searching button.match { opacity: 1; }
+nav.searching button.match .count { display: inline-block; }
+.content { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; }
+.page-head { padding: 18px 28px 10px; border-bottom: 1px solid var(--border); }
 h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.pages { display: grid; align-content: start; gap: 16px; min-height: 0; padding: 20px 28px 28px; overflow-y: auto; }
+.pages > section, .pages > .search-empty { width: 100%; max-width: 660px; }
+.search-empty { margin: 24px 0; color: var(--muted); text-align: center; }
+.content > footer { padding: 12px 28px; border-top: 1px solid var(--border); background: var(--bg); }
+.search-hidden, [hidden] { display: none !important; }
+.searching-results [data-item].match { border-radius: 8px; box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 10%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+mark { padding: 0 1px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 35%, transparent); color: inherit; }
+@media (max-width: 640px) {
+  .layout { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .sidebar { gap: 8px; padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .brand, .nav-group { display: none; }
+  nav { display: flex; gap: 4px; overflow-x: auto; }
+  nav button { width: auto; flex: none; }
+  .page-head, .pages, .content > footer { padding-left: 16px; padding-right: 16px; }
+}
 h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 section { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 input[type=url], select, textarea { width: 100%; min-height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }

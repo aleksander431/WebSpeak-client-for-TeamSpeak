@@ -200,6 +200,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Join page: browsers that may join (approved devices, when approval is on) see who is on the server now, by channel; a click on a channel puts it into the channel field. The same list appears under "Reconnect now" in a disconnected room, where a click rejoins straight into that channel. The list comes from a connected WebSpeak user or, when nobody is connected, from the optional ServerQuery access in the admin panel.
 - Fix: an avatar set in WebSpeak disappeared after rejoining. TeamSpeak keeps the picture but forgets the flag that shows it, so WebSpeak now announces it again on every connection (it still belongs to your identity: keep "Remember identity" on).
 - Desktop app (needs the new desktop version): the overlay can show only in games — while a program fills the screen (full-screen browsers and video players excluded) or is one you list by file name, e.g. dota2.exe. This is the new default; "always" is still there.
+- Desktop app (needs the new desktop version): settings are laid out like Discord's — groups on the left (server and startup, hotkeys, push-to-talk and whisper, overlay, updates) with a search box (Ctrl+F) that finds any option.
 
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 

@@ -456,7 +456,7 @@ function refreshTray(): void {
 function openSettings(): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) { settingsWindow.show(); settingsWindow.focus(); return; }
   const window = new BrowserWindow({
-    title: t("settingsTitle"), width: 600, height: 760, minWidth: 460, minHeight: 480,
+    title: t("settingsTitle"), width: 900, height: 700, minWidth: 460, minHeight: 480,
     show: false, autoHideMenuBar: true, backgroundColor: "#101614", icon: join(STATIC, "icon.png"),
     webPreferences: { preload: join(__dirname, "settings-preload.js"), contextIsolation: true, sandbox: true },
   });

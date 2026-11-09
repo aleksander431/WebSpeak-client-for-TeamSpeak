@@ -190,6 +190,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Anmeldeseite: Browser, die beitreten dürfen (freigegebene Geräte, wenn die Freigabe aktiv ist), sehen, wer gerade in welchen Kanälen auf dem Server ist; ein Klick auf einen Kanal trägt ihn ins Kanalfeld ein. Dieselbe Liste steht in einem getrennten Raum unter „Erneut verbinden“; dort verbindet ein Klick direkt in diesen Kanal. Die Liste kommt von einem verbundenen WebSpeak-Nutzer oder, wenn niemand verbunden ist, über den optionalen ServerQuery-Zugang im Admin-Bereich.
 - Behoben: Ein in WebSpeak gesetzter Avatar verschwand nach dem erneuten Beitreten. TeamSpeak behält das Bild, vergisst aber die Markierung, die es anzeigt; WebSpeak setzt sie jetzt bei jeder Verbindung neu (der Avatar gehört weiter zur Identität: „Identität merken“ eingeschaltet lassen).
 - Desktop-App (neue Desktop-Version nötig): Das Overlay kann nur in Spielen erscheinen — solange ein Programm den Bildschirm füllt (Browser und Videoplayer im Vollbild ausgenommen) oder in Ihrer Liste steht, z. B. dota2.exe. Das ist jetzt Standard; „immer“ gibt es weiterhin.
+- Desktop-App (neue Desktop-Version nötig): Die Einstellungen sind wie bei Discord aufgebaut — links Gruppen (Server und Start, Tastenkürzel, Push-to-Talk und Flüstern, Overlay, Updates) mit einer Suche (Strg+F) über alle Optionen.
 
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 
