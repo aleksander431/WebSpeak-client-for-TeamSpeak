@@ -4416,6 +4416,21 @@
   background: #e8f4f1;
 }
 
+:deep(.chat-tabs .chat-tab-close) {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-right: -4px;
+  border-radius: 4px;
+  opacity: 0.55;
+}
+
+:deep(.chat-tabs .chat-tab-close:hover) {
+  opacity: 1;
+  background: rgb(127 127 127 / 22%);
+}
+
 :deep(.chat-tabs button.active) {
   color: #006a64;
   background: #dff1ed;

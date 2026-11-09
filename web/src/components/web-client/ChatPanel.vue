@@ -61,13 +61,26 @@
           chatTab === 'private' && privateConversationKey === conversation.key ? 'active' : 'idle'
         "
         :class="{ active: chatTab === 'private' && privateConversationKey === conversation.key }"
+        class="chat-private-tab"
         @click="openConversation(conversation)"
+        @auxclick.middle.prevent="closeConversation(conversation)"
+        @keydown.delete.prevent="closeConversation(conversation)"
         ><Icon
           name="message"
           :size="15"
         />
-        {{ conversation.name }}</button
-      >
+        {{ conversation.name
+        }}<span
+          class="chat-tab-close"
+          data-ws-part="voice.chat.tab-close"
+          role="button"
+          :aria-label="t('closePrivateChat', { name: conversation.name })"
+          :title="t('closePrivateChat', { name: conversation.name })"
+          @click.stop="closeConversation(conversation)"
+          ><Icon
+            name="close"
+            :size="12" /></span
+      ></button>
       <button
         type="button"
         data-ws-part="voice.chat.tab"
@@ -553,7 +566,7 @@ type ChatPanelModel = Pick<ReturnType<typeof useWebClientChat>,
   | "tab" | "privateConversationKey" | "canSend" | "status" | "messageDraft"
   | "panelOpen"
   | "listElement" | "conversations" | "visibleMessages" | "tabLabel" | "title"
-  | "placeholder" | "openConversation" | "submitMessage" | "onScroll"
+  | "placeholder" | "openConversation" | "closeConversation" | "submitMessage" | "onScroll"
   | "uploads" | "canAttach" | "maxFileBytes" | "sendFiles" | "dismissUpload" | "scrollIfFollowing"
   | "replyTo" | "startReply" | "cancelReply" | "reactionsOf" | "toggleReaction" | "canReact"
   | "searchOpen" | "searchQuery" | "searching" | "toggleSearch"
@@ -589,6 +602,7 @@ const {
   title: chatTitle,
   placeholder: chatPlaceholder,
   openConversation,
+  closeConversation,
   submitMessage,
   onScroll,
   uploads,

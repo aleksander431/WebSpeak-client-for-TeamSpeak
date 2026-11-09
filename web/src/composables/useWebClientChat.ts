@@ -139,6 +139,25 @@ export function useWebClientChat({
     return id ? learnedKey(id, name) ?? (name ? historyKeyByName.value.get(name) : undefined) ?? `client:${JSON.stringify([id, name])}` : `legacy:${message.id}`;
   };
 
+  /**
+   * Closed private tabs, per server: each conversation key maps to the time of
+   * its latest message when it was closed. A later message reopens the tab;
+   * the history itself is kept.
+   */
+  const closedStorageKey = () => `webspeak:closed-private-chats:${normalizeChatHistoryServerKey(serverKey.value)}`;
+  const readClosed = (): Record<string, number> => {
+    try {
+      const parsed: unknown = JSON.parse(localStorage.getItem(closedStorageKey()) ?? "{}");
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, number> : {};
+    } catch { return {}; }
+  };
+  const closedConversations = ref<Record<string, number>>(readClosed());
+  watch(serverKey, () => { closedConversations.value = readClosed(); });
+  function writeClosed(next: Record<string, number>): void {
+    closedConversations.value = next;
+    try { localStorage.setItem(closedStorageKey(), JSON.stringify(next)); } catch { /* Optional storage. */ }
+  }
+
   const conversations = computed<PrivateConversation[]>(() => {
     const byConversation = new Map<string, PrivateConversation>();
     for (const message of messages) {
@@ -167,7 +186,11 @@ export function useWebClientChat({
         lastMessage: existing?.lastMessage ?? 0,
       });
     }
-    return [...byConversation.values()].sort((left, right) => right.lastMessage - left.lastMessage);
+    const closed = closedConversations.value;
+    return [...byConversation.values()]
+      .filter(conversation => !(conversation.key in closed && conversation.lastMessage <= closed[conversation.key])
+        || (tab.value === "private" && conversation.key === privateConversationKey.value))
+      .sort((left, right) => right.lastMessage - left.lastMessage);
   });
 
   const replyTo = ref<ChatMessage | null>(null);
@@ -321,6 +344,10 @@ export function useWebClientChat({
 
   function openConversation(conversation: PrivateConversation): void {
     if (disposed) return;
+    if (conversation.key in closedConversations.value) {
+      const { [conversation.key]: _reopened, ...rest } = closedConversations.value;
+      writeClosed(rest);
+    }
     panelOpen.value = true;
     privateClientId.value = conversation.id;
     privateConversationKey.value = conversation.key;
@@ -329,6 +356,17 @@ export function useWebClientChat({
     closeMemberMenu();
     followingLatest = true;
     scrollIfFollowing();
+  }
+
+  /** Hides a private tab until its next message; the history stays. */
+  function closeConversation(conversation: PrivateConversation): void {
+    if (disposed) return;
+    writeClosed({ ...closedConversations.value, [conversation.key]: conversation.lastMessage });
+    if (tab.value === "private" && privateConversationKey.value === conversation.key) {
+      privateClientId.value = 0;
+      privateConversationKey.value = "";
+      tab.value = "channel";
+    }
   }
 
   function togglePanel(): void {
@@ -588,6 +626,7 @@ export function useWebClientChat({
     placeholder,
     openPrivateChat,
     openConversation,
+    closeConversation,
     submitMessage,
     uploads,
     canAttach,

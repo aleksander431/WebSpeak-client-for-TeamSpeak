@@ -103,6 +103,7 @@
   :deep(.status-button),
   :deep(.chat-tabs button) { min-height: 44px; min-width: 44px; }
   :deep(.chat-tabs button) { max-width: 70vw; overflow: hidden; text-overflow: ellipsis; }
+  :deep(.chat-tabs .chat-tab-close) { width: 28px; height: 28px; }
 
   :deep(.modal-backdrop), :deep(.member-menu-backdrop) {
     top: var(--ws-viewport-top, 0px);
