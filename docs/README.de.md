@@ -192,6 +192,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Desktop-App (neue Desktop-Version nötig): Das Overlay kann nur in Spielen erscheinen — solange ein Programm den Bildschirm füllt (Browser und Videoplayer im Vollbild ausgenommen) oder in Ihrer Liste steht, z. B. dota2.exe. Das ist jetzt Standard; „immer“ gibt es weiterhin.
 - Desktop-App (neue Desktop-Version nötig): Die Einstellungen sind wie bei Discord aufgebaut — links Gruppen (Server und Start, Tastenkürzel, Push-to-Talk und Flüstern, Overlay, Updates) mit einer Suche (Strg+F) über alle Optionen.
 - Die Begleitmusik spielt jetzt als eigener Teilnehmer („Alex 🎵“) in Ihrem Kanal, sodass jeder Zuhörer — in WebSpeak oder der TeamSpeak-App — ihre Lautstärke getrennt von Ihrer Stimme einstellen oder sie stummschalten kann. Kann dieser Teilnehmer nicht beitreten (Server voll, unbekanntes Kanalpasswort), wird die Musik wie bisher in die Stimme gemischt.
+- Das Ereignisprotokoll (wer beigetreten, gegangen oder gewechselt ist, Kanaländerungen) wird jetzt wie der Chatverlauf auf dem Server gespeichert und nach dem erneuten Beitreten oder auf einem anderen Gerät wieder angezeigt. Es folgt dem Schalter für den Chatverlauf im Admin-Bereich; aufgezeichnet wird nur, was passiert, während jemand über WebSpeak verbunden ist.
 
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 

@@ -182,3 +182,23 @@ test("attachment messages round-trip through TeamSpeak BBCode", () => {
   assert.ok(long.length < 200, "long names are shortened to fit a TeamSpeak message");
   assert.match(long, /\.mp4\[\/URL\]$/);
 });
+
+test("server events are kept once per server, without a session's own events, and follow the history switch", async t => {
+  const { storage, tick } = fixture(t);
+  await storage.initialize();
+  const joined = { id: "a", kind: "joined", message: "Ann 加入了服务器", timestamp: 1_000, code: "memberJoined", params: { name: "Ann" } };
+  storage.recordEvent("ts:1", joined);
+  // A second gateway session saw the same thing.
+  storage.recordEvent("ts:1", { ...joined, id: "b", timestamp: 1_500 });
+  storage.recordEvent("ts:1", { id: "c", kind: "poke", message: "poke", timestamp: 1_600, code: "poked", params: { name: "Bob" } });
+  storage.recordEvent("ts:2", { ...joined, id: "d" });
+  tick(20_000);
+  storage.recordEvent("ts:1", { id: "e", kind: "left", message: "Ann 离开了服务器", timestamp: 21_000, code: "memberLeft", params: { name: "Ann" } });
+  await storage.flush();
+  const history = storage.eventHistory("ts:1");
+  assert.deepEqual(history.map(event => [event.kind, event.code, event.params?.name, event.timestamp]), [["joined", "memberJoined", "Ann", 1_000], ["left", "memberLeft", "Ann", 21_000]]);
+  assert.match(history[0]!.id, /^stored-\d+$/);
+  assert.equal(storage.eventHistory("ts:2").length, 1);
+  await storage.updateSettings({ ...storage.settings(), historyEnabled: false });
+  assert.deepEqual(storage.eventHistory("ts:1"), []);
+});

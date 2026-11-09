@@ -15,7 +15,7 @@ test("relay voice endpoint is stored by the current database migration", (contex
     rmSync(directory, { recursive: true, force: true });
   });
 
-  assert.equal(DATABASE_SCHEMA_VERSION, 18);
+  assert.equal(DATABASE_SCHEMA_VERSION, 19);
   assert.equal(database.schemaVersion, DATABASE_SCHEMA_VERSION);
   assert.equal(database.getTsAdminSettings().transport, "web");
   assert.equal(database.getTsAdminSettings().enabled, false);
@@ -62,7 +62,7 @@ test("schema 17 adds message references and saved reactions to existing chat his
   old.close();
   const migrated = new WebSpeakDatabase(filename);
   t.after(() => { migrated.close(); rmSync(directory, { recursive: true, force: true }); });
-  assert.equal(migrated.schemaVersion, 18);
+  assert.equal(migrated.schemaVersion, 19);
   assert.equal(migrated.listChatHistory("ts:1", "server", "", 10)[0]?.ref, "", "older messages have no reference");
   migrated.setChatReaction("0123456789abcdef", "👍", "uid:a", "Ann", true, 2);
   assert.deepEqual(migrated.listChatReactions("0123456789abcdef"), [{ emoji: "👍", userKey: "uid:a", userName: "Ann" }]);

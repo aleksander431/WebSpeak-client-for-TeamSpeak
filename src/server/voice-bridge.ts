@@ -18,6 +18,7 @@ import type { ChatStorage } from "./chat-storage.js";
 import { BlockList, isIP } from "node:net";
 import { parseIdentity } from "@honeybbq/teamspeak/client";
 import { AccompanimentRelay, accompanimentNickname } from "./accompaniment-relay.js";
+import { EVENT_HISTORY_PAGE, SHARED_EVENT_KINDS } from "./chat-storage.js";
 import { TSClient, type TSClientOptions } from "./ts-client.js";
 import type { Logger as LoggerType } from "../logger.js";
 import { clientConnectionFailureCode, describeTeamSpeakError, normalizeTeamSpeakError } from "../errors.js";
@@ -386,6 +387,8 @@ export class VoiceBridge {
         };
         entry!.eventLog.push(event);
         if (entry!.eventLog.length > 200) entry!.eventLog.splice(0, entry!.eventLog.length - 200);
+        // Server-wide events are kept like chat history, for everyone who joins later.
+        this.options.chatStorage?.recordEvent(teamSpeakTargetKey(entry!.target), event);
         if (initialStateSent) sendJson({ type: "serverEvent", event });
       };
       const sendInitialState = () => {
@@ -410,7 +413,7 @@ export class VoiceBridge {
           type: "connected",
           tsClientId: events.selfId,
           members: Array.from(entry!.members.values()),
-          serverEventLog: entry!.eventLog,
+          serverEventLog: this.composeEventLog(entry!),
           whisperTargetIds: [...entry!.whisperTargetIds],
           whisperActive: entry!.whisperActive,
           webrtcAvailable: this.getWebRtcOptions()?.enabled === true,
@@ -984,6 +987,19 @@ export class VoiceBridge {
     state.separate = true;
     sendJson({ type: "accompanimentRoute", separate: true, clientId: relay.clientId });
     await this.mixAccompaniment(entry, false);
+  }
+
+  /**
+   * The event log a session gets on (re)joining: the server's stored events
+   * plus this session's own (connection, pokes). Without history it is the
+   * session's own log, as before.
+   */
+  private composeEventLog(entry: WebClientEntry): ServerEvent[] {
+    // Only joined/left/moved are ever stored, so the kinds fit.
+    const stored = (this.options.chatStorage?.eventHistory(teamSpeakTargetKey(entry.target)) ?? []) as ServerEvent[];
+    if (!stored.length) return entry.eventLog;
+    const own = entry.eventLog.filter(event => !SHARED_EVENT_KINDS.has(event.kind));
+    return [...stored, ...own].sort((left, right) => left.timestamp - right.timestamp).slice(-EVENT_HISTORY_PAGE);
   }
 
   private ownNickname(entry: WebClientEntry): string {

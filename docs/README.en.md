@@ -202,6 +202,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Desktop app (needs the new desktop version): the overlay can show only in games — while a program fills the screen (full-screen browsers and video players excluded) or is one you list by file name, e.g. dota2.exe. This is the new default; "always" is still there.
 - Desktop app (needs the new desktop version): settings are laid out like Discord's — groups on the left (server and startup, hotkeys, push-to-talk and whisper, overlay, updates) with a search box (Ctrl+F) that finds any option.
 - Accompaniment now plays as its own participant ("Alex 🎵") in your channel, so every listener — in WebSpeak or the TeamSpeak app — can set its volume or mute it separately from your voice. If that participant cannot join (server full, a channel password it does not know), the music is mixed into your voice as before.
+- The event log (who joined, left or moved, channel changes) is now kept on the server like chat history and shown again after rejoining or on another device. It follows the chat history switch in the admin panel; only events seen while someone was connected through WebSpeak are recorded.
 
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 

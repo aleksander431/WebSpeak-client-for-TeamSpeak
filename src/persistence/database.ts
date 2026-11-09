@@ -6,7 +6,17 @@ import type { AdminCredential } from "../security/admin-password.js";
 import type { TeamSpeakProtocol } from "../server/teamspeak-adapter.js";
 import { DEFAULT_WEBRTC_UDP_PORT_RANGE } from "../server/webrtc-config.js";
 
-export const DATABASE_SCHEMA_VERSION = 18;
+export interface EventHistoryRow {
+  id: number;
+  targetKey: string;
+  kind: string;
+  code: string;
+  paramsJson: string;
+  message: string;
+  createdAt: number;
+}
+
+export const DATABASE_SCHEMA_VERSION = 19;
 export type AccessMode = "fixed" | "open";
 
 export interface PersistedSettings {
@@ -861,9 +871,30 @@ export class WebSpeakDatabase {
     return { fileBytes: Number(files.bytes), fileCount: Number(files.count), messageBytes: Number(messages.bytes), messageCount: Number(messages.count) };
   }
 
+  insertEventHistory(entry: Omit<EventHistoryRow, "id">): void {
+    this.database.prepare(
+      "INSERT INTO event_history (target_key, kind, code, params_json, message, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(entry.targetKey, entry.kind, entry.code, entry.paramsJson, entry.message, entry.createdAt);
+  }
+
+  /** Newest first, at most `limit`. */
+  listEventHistory(targetKey: string, limit: number): EventHistoryRow[] {
+    const rows = this.database.prepare(
+      "SELECT id, target_key, kind, code, params_json, message, created_at FROM event_history WHERE target_key = ? ORDER BY id DESC LIMIT ?",
+    ).all(targetKey, Math.max(1, Math.floor(limit))) as Array<{ id: number; target_key: string; kind: string; code: string; params_json: string; message: string; created_at: number }>;
+    return rows.map(row => ({ id: Number(row.id), targetKey: row.target_key, kind: row.kind, code: row.code, paramsJson: row.params_json, message: row.message, createdAt: Number(row.created_at) }));
+  }
+
+  /** Keep only the newest `keep` events of a server. */
+  pruneEventHistory(targetKey: string, keep: number): void {
+    this.database.prepare(
+      "DELETE FROM event_history WHERE target_key = ? AND id <= (SELECT id FROM event_history WHERE target_key = ? ORDER BY id DESC LIMIT 1 OFFSET ?)",
+    ).run(targetKey, targetKey, Math.max(0, Math.floor(keep)));
+  }
+
   clearChatStorage(): void {
     this.transaction(() => {
-      this.database.exec("DELETE FROM chat_files; DELETE FROM chat_history; DELETE FROM chat_reactions; DELETE FROM chat_pins;");
+      this.database.exec("DELETE FROM chat_files; DELETE FROM chat_history; DELETE FROM chat_reactions; DELETE FROM chat_pins; DELETE FROM event_history;");
     });
   }
 
@@ -1284,6 +1315,25 @@ export class WebSpeakDatabase {
             PRIMARY KEY (target_key, scope, channel_id, ref)
           );
           PRAGMA user_version = 18;
+        `);
+      });
+      version = 18;
+    }
+    if (version === 18) {
+      this.transaction(() => {
+        // Server-wide join/leave/move and channel events, kept like chat history.
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS event_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_key TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            code TEXT NOT NULL,
+            params_json TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS event_history_target_idx ON event_history(target_key, id);
+          PRAGMA user_version = 19;
         `);
       });
     }

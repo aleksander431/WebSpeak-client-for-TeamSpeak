@@ -3,6 +3,7 @@ import { mkdir, readdir, rename, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import type { WebSpeakDatabase } from "../persistence/database.js";
+import type { ServerEvent } from "../shared/voice-models.js";
 import {
   CHAT_FILE_ID_PATTERN, CHAT_MAX_FILE_BYTES_CEILING, CHAT_QUOTA_BYTES_CEILING, DEFAULT_CHAT_STORAGE_SETTINGS,
   type ChatFileInfo, type ChatHistoryMessage, type ChatStorageSettings, type ChatStorageUsage,
@@ -18,6 +19,11 @@ const SEARCH_RESULT_LIMIT = 50;
 const SEARCH_SCAN_LIMIT = 50_000;
 /** Fixed bookkeeping cost per stored message, so empty messages still count. */
 const MESSAGE_OVERHEAD_BYTES = 64;
+/** Server events kept per TeamSpeak server, and how many a session gets on joining. */
+export const EVENT_HISTORY_KEEP = 1000;
+export const EVENT_HISTORY_PAGE = 200;
+/** Events that describe the server itself (not a session's own connection or pokes). */
+export const SHARED_EVENT_KINDS: ReadonlySet<string> = new Set(["joined", "left", "moved"]);
 
 export class ChatStorageError extends Error {
   constructor(readonly code: "CHAT_UPLOADS_DISABLED" | "FILE_TOO_LARGE" | "FILE_EMPTY" | "UPLOAD_FAILED" | "INVALID_CHAT_STORAGE_SETTINGS", message: string = code) {
@@ -46,6 +52,7 @@ export interface ChatMessageRecord {
 export class ChatStorage {
   private usage: { fileBytes: number; fileCount: number; messageBytes: number; messageCount: number } | null = null;
   private readonly recent = new Map<string, number>();
+  private eventInserts = 0;
   /** Finalising uploads and rotation run one at a time. */
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -217,6 +224,38 @@ export class ChatStorage {
       usage.messageBytes += size;
       usage.messageCount += 1;
     }).catch(() => undefined);
+  }
+
+  /**
+   * Keep a server-wide event (someone joined, left, moved; a channel changed),
+   * once even when several gateway sessions saw it. Follows the history switch.
+   */
+  recordEvent(targetKey: string, event: ServerEvent): void {
+    if (!this.settings().historyEnabled || !SHARED_EVENT_KINDS.has(event.kind)) return;
+    const now = event.timestamp || this.now();
+    const params = JSON.stringify(event.params ?? {});
+    const key = JSON.stringify(["event", targetKey, event.kind, event.code ?? "", params, event.code ? "" : event.message]);
+    const seen = this.recent.get(key);
+    if (seen !== undefined && now - seen < DUPLICATE_WINDOW_MS) return;
+    this.recent.set(key, now);
+    void this.serialize(async () => {
+      this.database.insertEventHistory({ targetKey, kind: event.kind.slice(0, 32), code: (event.code ?? "").slice(0, 64), paramsJson: params.slice(0, 1024), message: event.message.slice(0, 512), createdAt: now });
+      this.eventInserts = (this.eventInserts + 1) % 50;
+      if (this.eventInserts === 0) this.database.pruneEventHistory(targetKey, EVENT_HISTORY_KEEP);
+    }).catch(() => undefined);
+  }
+
+  /** The newest stored server events, oldest first, for a session's event log. */
+  eventHistory(targetKey: string, limit = EVENT_HISTORY_PAGE): ServerEvent[] {
+    if (!this.settings().historyEnabled) return [];
+    return this.database.listEventHistory(targetKey, Math.min(limit, EVENT_HISTORY_KEEP)).reverse().map(row => {
+      let params: Record<string, string> = {};
+      try {
+        const parsed = JSON.parse(row.paramsJson) as unknown;
+        if (parsed && typeof parsed === "object") params = Object.fromEntries(Object.entries(parsed).filter(([, value]) => typeof value === "string")) as Record<string, string>;
+      } catch { /* an unreadable row keeps its stored text */ }
+      return { id: `stored-${row.id}`, kind: row.kind, message: row.message, timestamp: row.createdAt, ...(row.code ? { code: row.code, params } : {}) };
+    });
   }
 
   /** Wait for queued history writes (tests and shutdown). */
