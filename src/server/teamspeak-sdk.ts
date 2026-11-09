@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { Writable } from "node:stream";
 import {
@@ -10,6 +11,7 @@ import {
   sendChannelMessage,
   sendPrivateMessage,
   sendServerMessage,
+  updateClient,
   type Channel,
   type ClientEntry,
   type Codec,
@@ -17,7 +19,7 @@ import {
   type FileDownloadInfo,
   type ServerFamily,
 } from "@honeybbq/teamspeak";
-import { Client, removeAvatar, uploadAvatar, type ClientOptions, type Identity } from "@honeybbq/teamspeak/client";
+import { Client, downloadAvatar, removeAvatar, uploadAvatar, type ClientOptions, type Identity } from "@honeybbq/teamspeak/client";
 import { resolveLocalTeamSpeakAlias } from "./teamspeak-resolver.js";
 import { formatTeamSpeakTarget, parseTeamSpeakTarget } from "../domain/teamspeak-target.js";
 
@@ -203,6 +205,25 @@ export class TeamSpeakSdkClient extends EventEmitter implements CommandExecutor 
   /** Store `data` as this client's avatar; resolves with the new avatar marker (MD5 hex). */
   async uploadOwnAvatar(data: Uint8Array): Promise<string> {
     return uploadAvatar(this.requireClient(), data);
+  }
+
+  /**
+   * TeamSpeak keeps an uploaded avatar file per identity, but a client that
+   * connects without announcing `client_flag_avatar` shows none (the official
+   * client sets the flag again on every connect). When this client's flag is
+   * empty and its avatar file is still on the server, announce it again.
+   * Resolves with the file and its marker, or null when there is nothing to restore.
+   */
+  async restoreOwnAvatarFlag(): Promise<{ uid: string; marker: string; data: Uint8Array } | null> {
+    const client = this.requireClient();
+    const self = this.ownAvatarMarker();
+    if (!self || self.marker) return null;
+    let data: Uint8Array | undefined;
+    try { data = await downloadAvatar(client, self.uid); } catch { return null; }
+    if (!data?.length || this.sdkClient !== client) return null;
+    const marker = createHash("md5").update(data).digest("hex");
+    await updateClient(client, { avatar: marker });
+    return { uid: self.uid, marker, data };
   }
 
   /** Delete this client's avatar; false when it had none. */

@@ -414,6 +414,21 @@ export class VoiceBridge {
         if (wasReconnecting) sendJson({ type: "reconnected" });
         events.scheduleAvatars();
         void publishServerInfo();
+        void restoreOwnAvatar();
+      };
+
+      // An avatar uploaded in an earlier session stays on the server, but the
+      // flag that makes clients show it is not kept: announce it again on
+      // every TeamSpeak connection (also after the gateway reconnects).
+      const restoreOwnAvatar = async () => {
+        const current = entry!;
+        try {
+          const restored = await current.tsClient.restoreOwnAvatar();
+          if (!restored || this.entries.get(current.id) !== current) return;
+          current.onOwnAvatar?.(restored.uid, restored.marker, avatarDataUrl(restored.data));
+        } catch {
+          // Optional: the generated initial stays.
+        }
       };
 
       const resetDirectoryForReconnect = () => {

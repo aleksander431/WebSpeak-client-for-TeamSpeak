@@ -198,6 +198,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 ### [v0.5.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.2) · 2026-11-09
 
 - Join page: browsers that may join (approved devices, when approval is on) see who is on the server now, by channel; a click on a channel puts it into the channel field. The same list appears under "Reconnect now" in a disconnected room, where a click rejoins straight into that channel. The list comes from a connected WebSpeak user or, when nobody is connected, from the optional ServerQuery access in the admin panel.
+- Fix: an avatar set in WebSpeak disappeared after rejoining. TeamSpeak keeps the picture but forgets the flag that shows it, so WebSpeak now announces it again on every connection (it still belongs to your identity: keep "Remember identity" on).
 
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 

@@ -492,6 +492,25 @@ export class TSClient extends EventEmitter {
     return { uid: self?.uid ?? "", marker };
   }
 
+  /**
+   * Announce this identity's avatar again when the server still has its file
+   * but the flag came back empty on connect. Null when there is nothing to
+   * restore or the session changed; failures stay optional.
+   */
+  async restoreOwnAvatar(): Promise<{ uid: string; marker: string; data: Buffer } | null> {
+    const client = this.client;
+    if (!client || !this.connected) return null;
+    const generation = this.connectionGeneration;
+    try {
+      const restored = await client.restoreOwnAvatarFlag();
+      if (!restored || this.client !== client || !this.connected || this.connectionGeneration !== generation) return null;
+      if (restored.data.length > MAX_CLIENT_AVATAR_BYTES) return null;
+      return { uid: restored.uid, marker: restored.marker, data: Buffer.from(restored.data) };
+    } catch {
+      return null;
+    }
+  }
+
   /** Delete this client's TeamSpeak avatar. Resolves with its unique id, or null when the session changed. */
   async removeOwnAvatar(): Promise<{ uid: string } | null> {
     const client = this.client;
