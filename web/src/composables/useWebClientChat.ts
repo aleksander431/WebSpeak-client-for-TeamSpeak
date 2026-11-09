@@ -107,8 +107,24 @@ export function useWebClientChat({
     const key = memberConversationKey?.(id);
     return key?.startsWith("uid:") && members.some(member => member.id === id && !member.uid && member.nickname === nickname) ? key : undefined;
   };
+  /**
+   * Private history kept in this browser outlives a session's learned unique
+   * ids: a conversation already known by unique id under a nickname is the
+   * one to continue with a member listed under that nickname without one.
+   */
+  const historyKeyByName = computed(() => {
+    const keys = new Map<string, string>();
+    for (const message of messages) {
+      if (message.scope !== "private") continue;
+      const key = message.conversationKey?.startsWith("uid:") ? message.conversationKey
+        : message.senderUid && !message.isSelf ? `uid:${message.senderUid}` : "";
+      const name = message.isSelf ? message.conversationName : message.invokerName;
+      if (key && name) keys.set(name, key);
+    }
+    return keys;
+  });
   const memberKey = (member: ChannelMember) => member.uid ? `uid:${member.uid}`
-    : learnedKey(member.id, member.nickname) ?? `client:${JSON.stringify([member.id, member.nickname])}`;
+    : learnedKey(member.id, member.nickname) ?? historyKeyByName.value.get(member.nickname) ?? `client:${JSON.stringify([member.id, member.nickname])}`;
   const recipient = computed(() => members.find(member => member.id === privateClientId.value && memberKey(member) === privateConversationKey.value));
   const destination = computed(() => `${sessionEpoch.value}:${tab.value}:${tab.value === "private" ? privateConversationKey.value : tab.value === "channel" ? currentChannel.value?.id ?? selectedChannelId.value : ""}`);
   const canSend = computed(() => connected.value && !sending.value && tab.value !== "events" && (tab.value !== "private" || Boolean(recipient.value)));
@@ -120,7 +136,7 @@ export function useWebClientChat({
     if (message.senderUid && !message.isSelf) return `uid:${message.senderUid}`;
     const id = Number(message.conversationId) || message.senderId || 0;
     const name = message.conversationName || (message.isSelf ? "" : message.invokerName);
-    return id ? learnedKey(id, name) ?? `client:${JSON.stringify([id, name])}` : `legacy:${message.id}`;
+    return id ? learnedKey(id, name) ?? (name ? historyKeyByName.value.get(name) : undefined) ?? `client:${JSON.stringify([id, name])}` : `legacy:${message.id}`;
   };
 
   const conversations = computed<PrivateConversation[]>(() => {

@@ -1406,13 +1406,17 @@ export function useVoiceWebSocket() {
     const member = members.find(candidate => candidate.id === clientId);
     const key = sessionState.memberConversationKey(clientId);
     // The chat names a member without any unique id by its id and nickname.
+    // The chat names a member without any unique id by its id and nickname, or
+    // continues the conversation its history knows by unique id for that nickname.
     const sameMember = expectedKey === undefined || key === expectedKey
-      || (member && !key?.startsWith("uid:") && expectedKey === `client:${JSON.stringify([member.id, member.nickname])}`);
+      || (member && !key?.startsWith("uid:") && (expectedKey === `client:${JSON.stringify([member.id, member.nickname])}`
+        || (!member.uid && expectedKey.startsWith("uid:"))));
     if (!member || clientId === state.tsClientId || !sameMember) {
       throw Object.assign(new Error("成员已离线或当前不可见"), { code: "CLIENT_NOT_FOUND" });
     }
     await sendChat("sendPrivateMessage", { clientId, message: text, ...(member.uid ? { clientUid: member.uid } : {}) },
-      { scope: "private", targetId, conversationId: String(clientId), conversationKey: key, conversationName: member.nickname });
+      { scope: "private", targetId, conversationId: String(clientId),
+        conversationKey: !key?.startsWith("uid:") && expectedKey?.startsWith("uid:") ? expectedKey : key, conversationName: member.nickname });
   }
 
   function sendPoke(clientId: number, message = ""): void {
