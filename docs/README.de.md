@@ -185,6 +185,18 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
+
+- Behoben: Das Lösen eines Streams tat in der Desktop-App nichts; dort öffnet sich jetzt der System-Miniplayer, und ein verweigertes Fenster meldet sich statt still zu scheitern.
+- Töne: Verlassen des Servers, Wechsel in einen anderen Kanal sowie Start und Ende der eigenen Bildschirmübertragung haben jetzt eigene kurze Signale (sie folgen der Benachrichtigungslautstärke).
+- Automatisches Neuverbinden: Bricht die Verbindung wegen des Netzwerks oder eines Serverneustarts ab, tritt WebSpeak selbst wieder bei (auf allen Geräten, auch minimiert) und kehrt in deinen Kanal zurück. Der Raum zeigt einen Countdown mit „Jetzt neu verbinden“; versucht wird etwa fünf Minuten lang, nach Kick oder Bann nicht.
+- Behoben: Ein Privatchat konnte doppelt erscheinen (ein Tab von der eingehenden Nachricht, einer beim Antworten), wenn der Server Mitglieder ohne eindeutige ID listet; jetzt ist es eine Unterhaltung, und Senden an solche Mitglieder funktioniert.
+- Behoben (Desktop-App, neue Desktop-Version nötig): Beim Teilen eines Fensters wird nur noch der Ton seines Programms übertragen, nicht alles, was der PC abspielt; die Tonoption in der Auswahl sagt das.
+- Behoben (Desktop-App und Server): Die Begleitmusik bricht nicht mehr nach etwa 30 Sekunden von selbst ab und läuft weiter, während Sie eine Bildschirmfreigabe starten oder beenden.
+- Chat: Ein eingefügter Screenshot (oder eine hineingezogene bzw. gewählte Datei) wartet zuerst mit Vorschau über dem Eingabefeld; Enter sendet, Esc oder × entfernt ihn.
+- Bildschirmfreigabe: Die eigene Karte zeigt eine Vorschau des Geteilten (ausblendbar), und jedes Live-Abzeichen zeigt, wie viele zusehen, mit Namen beim Überfahren.
+- Das Freigabe-Symbol neben einem Mitglied in der Kanalliste ist jetzt ein Knopf: ein Klick startet oder beendet das Zuschauen.
+
 ### [v0.5.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.0) · 2026-11-06
 
 #### Neue Funktionen
@@ -196,15 +208,6 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Bildschirmfreigabe: ein Stream lässt sich in ein eigenes, immer obenliegendes Fenster lösen (Schaltfläche neben Vollbild oder auf einer Kachel) und zurückholen; jeweils ein Stream.
 - Whiteboard: das Board lässt sich in ein eigenes Fenster lösen (Schaltfläche neben Schließen) — praktisch auf einem zweiten Monitor; gezeichnet wird über dieselbe Verbindung, die Schaltfläche dort holt es zurück. In der Desktop-App ist dafür die neue Desktop-Version nötig.
 - Avatare: den eigenen TeamSpeak-Avatar direkt in WebSpeak setzen — Kamera auf der eigenen Karte im Raum (oder Rechtsklick auf sich selbst in der Kanalliste), Bild wählen oder hineinziehen, speichern. Alle auf dem Server sehen ihn, auch TeamSpeak-Clients; entfernen geht ebenso. Im KAAK-Design zeigt das runde Identitätssymbol unten links jetzt den eigenen Avatar und ändert ihn per Klick. Bilder werden quadratisch zugeschnitten, kleine GIFs bleiben animiert. Avatar-Änderungen anderer erscheinen jetzt ohne Neuverbindung.
-- Behoben: Das Lösen eines Streams tat in der Desktop-App nichts; dort öffnet sich jetzt der System-Miniplayer, und ein verweigertes Fenster meldet sich statt still zu scheitern.
-- Töne: Verlassen des Servers, Wechsel in einen anderen Kanal sowie Start und Ende der eigenen Bildschirmübertragung haben jetzt eigene kurze Signale (sie folgen der Benachrichtigungslautstärke).
-- Automatisches Neuverbinden: Bricht die Verbindung wegen des Netzwerks oder eines Serverneustarts ab, tritt WebSpeak selbst wieder bei (auf allen Geräten, auch minimiert) und kehrt in deinen Kanal zurück. Der Raum zeigt einen Countdown mit „Jetzt neu verbinden“; versucht wird etwa fünf Minuten lang, nach Kick oder Bann nicht.
-- Behoben: Ein Privatchat konnte doppelt erscheinen (ein Tab von der eingehenden Nachricht, einer beim Antworten), wenn der Server Mitglieder ohne eindeutige ID listet; jetzt ist es eine Unterhaltung, und Senden an solche Mitglieder funktioniert.
-- Behoben (Desktop-App, neue Desktop-Version nötig): Beim Teilen eines Fensters wird nur noch der Ton seines Programms übertragen, nicht alles, was der PC abspielt; die Tonoption in der Auswahl sagt das.
-- Behoben (Desktop-App und Server): Die Begleitmusik bricht nicht mehr nach etwa 30 Sekunden von selbst ab und läuft weiter, während Sie eine Bildschirmfreigabe starten oder beenden.
-- Chat: Ein eingefügter Screenshot (oder eine hineingezogene bzw. gewählte Datei) wartet zuerst mit Vorschau über dem Eingabefeld; Enter sendet, Esc oder × entfernt ihn.
-- Bildschirmfreigabe: Die eigene Karte zeigt eine Vorschau des Geteilten (ausblendbar), und jedes Live-Abzeichen zeigt, wie viele zusehen, mit Namen beim Überfahren.
-- Das Freigabe-Symbol neben einem Mitglied in der Kanalliste ist jetzt ein Knopf: ein Klick startet oder beendet das Zuschauen.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 
