@@ -55,6 +55,17 @@
               name="camera"
               :size="18" /></button
         ></div>
+        <video
+          v-if="member.isSelf && selfPreviewStream && selfPreviewVisible"
+          :ref="bindSelfPreview"
+          class="screen-share-self-preview"
+          data-ws-part="voice.member.self-preview"
+          muted
+          autoplay
+          playsinline
+          disablepictureinpicture
+          :aria-label="t('screenSharePreview')"
+        ></video>
         <span
           v-if="member.inputMuted"
           class="voice-muted-indicator"
@@ -77,8 +88,32 @@
               :key="bar"
               :style="{ height: `${bar}px` }"
             ></i></span
-          ><span>{{ t("sharingScreen") }}</span></span
+          ><span>{{ t("sharingScreen") }}</span
+          ><span
+            v-if="viewerCountFor(member) !== null"
+            class="screen-share-viewer-count"
+            data-ws-part="voice.member.viewers"
+            :title="viewerTitleFor(member)"
+            :aria-label="viewerTitleFor(member)"
+            ><Icon
+              name="eye"
+              :size="12"
+            />{{ viewerCountFor(member) }}</span
+          ></span
         >
+        <button
+          v-if="screenShareStatusEnabled && member.isSelf && screenShareActive && selfPreviewStream"
+          type="button"
+          class="screen-share-stop-button screen-share-preview-toggle"
+          data-ws-part="voice.member.preview-toggle"
+          :aria-pressed="selfPreviewVisible"
+          :aria-label="selfPreviewVisible ? t('screenSharePreviewHide') : t('screenSharePreviewShow')"
+          :title="selfPreviewVisible ? t('screenSharePreviewHide') : t('screenSharePreviewShow')"
+          @click.stop="toggleSelfPreview"
+          ><Icon
+            :name="selfPreviewVisible ? 'eye-off' : 'eye'"
+            :size="13"
+        /></button>
         <button
           v-if="screenShareStatusEnabled && member.isSelf && screenShareActive"
           type="button"
@@ -176,13 +211,13 @@
 
 <script setup lang="ts">
 import Icon from "../Icon.vue";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import type { ChannelMember, useVoiceWebSocket } from "../../composables/useVoiceWebSocket.js";
 import type { useWebClientScreenShare } from "../../composables/useWebClientScreenShare.js";
 const props = withDefaults(defineProps<{
   currentMembers: ChannelMember[]; isMobileViewport: boolean; showMemberActions?: boolean;
   showScreenShare?: boolean;
-  sharing?: Pick<ReturnType<typeof useVoiceWebSocket>, "screenShareActive" | "screenShareStarting" | "screenShareViewingStreamId"> & Partial<Pick<ReturnType<typeof useVoiceWebSocket>, "screenShareViewedStreamIds">> & Pick<ReturnType<typeof useWebClientScreenShare>, "settingsOpen">;
+  sharing?: Pick<ReturnType<typeof useVoiceWebSocket>, "screenShareActive" | "screenShareStarting" | "screenShareViewingStreamId"> & Partial<Pick<ReturnType<typeof useVoiceWebSocket>, "screenShareViewedStreamIds" | "screenSharePreviewStream">> & Pick<ReturnType<typeof useWebClientScreenShare>, "settingsOpen">;
   controls?: Pick<ReturnType<typeof useWebClientScreenShare>, "streamForMember" | "toggleForMember" | "startWithSettings">;
   isSpeaking: (member: ChannelMember) => boolean;
   avatarStyle: (name: string, isSelf?: boolean, avatar?: string) => Record<string, string>;
@@ -209,6 +244,34 @@ const startScreenShareWithSettings = () => { if (screenShareStatusEnabled.value)
 function toggleScreenShareSettings() {
   if (!screenShareStatusEnabled.value || !props.sharing) return;
   props.sharing.settingsOpen.value = !props.sharing.settingsOpen.value;
+}
+/** The sharer's own picture on their card; hidden on request (remembered per browser). */
+const SELF_PREVIEW_KEY = "webspeak:screen-share-self-preview";
+const selfPreviewVisible = ref((() => { try { return localStorage.getItem(SELF_PREVIEW_KEY) !== "off"; } catch { return true; } })());
+const selfPreviewStream = computed(() => screenShareActive.value ? props.sharing?.screenSharePreviewStream?.value ?? null : null);
+function toggleSelfPreview(): void {
+  selfPreviewVisible.value = !selfPreviewVisible.value;
+  try { localStorage.setItem(SELF_PREVIEW_KEY, selfPreviewVisible.value ? "on" : "off"); } catch { /* per-session only */ }
+}
+function bindSelfPreview(element: unknown): void {
+  if (!(element instanceof HTMLVideoElement)) return;
+  const stream = selfPreviewStream.value;
+  if (element.srcObject !== stream) element.srcObject = stream;
+  if (stream && element.paused) void element.play().catch(() => { /* muted autoplay may still be refused */ });
+}
+/** How many watch a member's stream (null when not known). */
+function viewerCountFor(member: ChannelMember): number | null {
+  const stream = screenShareStreamForMember(member);
+  if (!stream) return null;
+  const count = typeof stream.viewerCount === "number" ? stream.viewerCount : stream.viewers?.length;
+  return typeof count === "number" ? Math.max(0, count) : null;
+}
+function viewerTitleFor(member: ChannelMember): string {
+  const stream = screenShareStreamForMember(member);
+  const names = (stream?.viewers ?? []).map(viewer => viewer.nickname).filter(Boolean);
+  const count = viewerCountFor(member) ?? 0;
+  if (!count) return props.t("screenShareNoViewers");
+  return names.length ? `${props.t("screenShareViewers")}: ${names.join(", ")}` : props.t("screenShareViewers");
 }
 const emit = defineEmits<{ memberActions: [member: ChannelMember, event: MouseEvent]; stopShare: []; editAvatar: [] }>();
 const screenShareIndicatorBars = [5, 10, 7, 12, 8, 10];
@@ -268,6 +331,49 @@ function handleMemberContextMenu(member: ChannelMember, event: MouseEvent): void
   }
   .voice-avatar-edit :deep(svg) { width: 13px; height: 13px; }
 }
+/* The sharer's own picture replaces the avatar, under the badges and buttons. */
+.voice-avatar-wrap:has(> .screen-share-self-preview) {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+.voice-avatar-wrap:has(> .screen-share-self-preview) > .voice-avatar {
+  visibility: hidden;
+}
+.screen-share-self-preview {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: inherit;
+  background: #000;
+  pointer-events: none;
+}
+.screen-share-stop-button.screen-share-preview-toggle {
+  top: -5px;
+  right: -5px;
+  bottom: auto;
+  left: auto;
+  color: var(--text-muted, #8b8f98);
+}
+.screen-share-stop-button.screen-share-preview-toggle:hover {
+  color: #fff;
+  border-color: var(--accent, #2f8f6f);
+  background: var(--accent, #2f8f6f);
+}
+.screen-share-viewer-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding-left: 7px;
+  border-left: 1px solid currentColor;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+  cursor: default;
+}
+.screen-share-viewer-count :deep(svg) { flex: none; }
 .voice-muted-indicator {
   position: absolute;
   z-index: 4;

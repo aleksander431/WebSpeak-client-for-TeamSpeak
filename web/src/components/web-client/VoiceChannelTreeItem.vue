@@ -95,8 +95,22 @@
             :size="13"
             :title="t('microphoneActive')"
           />
+          <button
+            v-if="isScreenSharing?.(member) && toggleScreenShare && !member.isSelf"
+            type="button"
+            class="ws-voice-channel-member-screen-share"
+            data-ws-part="voice.channel-tree.member-screen-share"
+            :data-ws-state="isWatchingScreenShare?.(member) ? 'viewing' : 'idle'"
+            :aria-pressed="isWatchingScreenShare?.(member) ? 'true' : 'false'"
+            :aria-label="isWatchingScreenShare?.(member) ? t('watching') : t('watchScreenShare')"
+            :title="isWatchingScreenShare?.(member) ? t('watching') : t('watchScreenShare')"
+            draggable="false"
+            @click.stop="toggleScreenShare(member)"
+            @dblclick.stop
+            @mousedown.stop
+          ><Icon name="monitor" :size="12" /></button>
           <span
-            v-if="isScreenSharing?.(member)"
+            v-else-if="isScreenSharing?.(member)"
             class="ws-voice-channel-member-screen-share"
             data-ws-part="voice.channel-tree.member-screen-share"
             role="img"
@@ -125,6 +139,8 @@
             :avatar-initial="avatarInitial"
             :is-speaking="isSpeaking"
             :is-screen-sharing="isScreenSharing"
+          :toggle-screen-share="toggleScreenShare"
+          :is-watching-screen-share="isWatchingScreenShare"
             :show-member-actions="showMemberActions"
             :member-drag-drop="memberDragDrop"
             :dragged-member-id="draggedMemberId"
@@ -191,8 +207,22 @@
             aria-hidden="true"
           ></span>
           <span v-if="member.away" class="ws-voice-channel-member-away" data-ws-part="voice.channel-tree.member-away" aria-hidden="true">·</span>
+          <button
+            v-if="isScreenSharing?.(member) && toggleScreenShare && !member.isSelf"
+            type="button"
+            class="ws-voice-channel-member-screen-share"
+            data-ws-part="voice.channel-tree.member-screen-share"
+            :data-ws-state="isWatchingScreenShare?.(member) ? 'viewing' : 'idle'"
+            :aria-pressed="isWatchingScreenShare?.(member) ? 'true' : 'false'"
+            :aria-label="isWatchingScreenShare?.(member) ? t('watching') : t('watchScreenShare')"
+            :title="isWatchingScreenShare?.(member) ? t('watching') : t('watchScreenShare')"
+            draggable="false"
+            @click.stop="toggleScreenShare(member)"
+            @dblclick.stop
+            @mousedown.stop
+          ><Icon name="monitor" :size="12" /></button>
           <span
-            v-if="isScreenSharing?.(member)"
+            v-else-if="isScreenSharing?.(member)"
             class="ws-voice-channel-member-screen-share"
             data-ws-part="voice.channel-tree.member-screen-share"
             role="img"
@@ -213,6 +243,8 @@
           :avatar-initial="avatarInitial"
           :is-speaking="isSpeaking"
           :is-screen-sharing="isScreenSharing"
+          :toggle-screen-share="toggleScreenShare"
+          :is-watching-screen-share="isWatchingScreenShare"
           :show-member-actions="showMemberActions"
           :member-drag-drop="memberDragDrop"
           :dragged-member-id="draggedMemberId"
@@ -255,6 +287,9 @@ const props = defineProps<{
   avatarInitial: (name: string) => string;
   isSpeaking: (member: ChannelMember) => boolean;
   isScreenSharing?: (member: ChannelMember) => boolean;
+  /** Start or stop watching a member's screen share with one click on its icon. */
+  toggleScreenShare?: (member: ChannelMember) => void;
+  isWatchingScreenShare?: (member: ChannelMember) => boolean;
   showMemberActions?: boolean;
   memberDragDrop?: boolean;
   draggedMemberId?: number | null;
@@ -324,5 +359,26 @@ function handleChannelDrop(event: DragEvent): void {
   color: #fff;
   background: #72c800;
   line-height: 0;
+}
+button.ws-voice-channel-member-screen-share {
+  padding: 0;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  transition: filter .15s ease, box-shadow .15s ease;
+}
+button.ws-voice-channel-member-screen-share:hover {
+  filter: brightness(1.15);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #72c800 35%, transparent);
+}
+button.ws-voice-channel-member-screen-share:focus-visible {
+  outline: 2px solid #72c800;
+  outline-offset: 2px;
+}
+/* Watching: an outlined icon, so the state reads at a glance. */
+button.ws-voice-channel-member-screen-share[data-ws-state="viewing"] {
+  color: #72c800;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px #72c800;
 }
 </style>

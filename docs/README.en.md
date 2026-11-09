@@ -212,6 +212,9 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Fix: a private chat could open twice (one tab from the incoming message, one from replying) with members the server lists without a unique id; it is now one conversation, and sending to such members works.
 - Fix (desktop app, needs the new desktop version): sharing a window now sends only that window's program's sound, not everything the PC plays; the picker's sound option says so.
 - Fix (desktop app and server): accompaniment no longer stops by itself after about 30 seconds, and it keeps running while you start or stop a screen share.
+- Chat: a pasted screenshot (or a dropped or chosen file) first waits above the message box with a preview; Enter sends it, Esc or × removes it.
+- Screen sharing: your own card shows a preview of what you share (can be hidden), and every live badge shows how many people are watching, with their names on hover.
+- The screen-share badge next to a member in the channel list is now a button: one click starts or stops watching.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

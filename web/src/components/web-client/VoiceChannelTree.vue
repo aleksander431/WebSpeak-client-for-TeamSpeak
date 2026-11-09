@@ -20,6 +20,8 @@
       :avatar-initial="avatarInitial"
       :is-speaking="isSpeaking"
       :is-screen-sharing="isScreenSharing"
+      :toggle-screen-share="toggleScreenShare"
+      :is-watching-screen-share="isWatchingScreenShare"
       :show-member-actions="showMemberActions"
       :member-drag-drop="memberDragDrop"
       :dragged-member-id="draggedMemberId"
@@ -60,6 +62,8 @@ const props = defineProps<{
   avatarInitial: (name: string) => string;
   isSpeaking: (member: ChannelMember) => boolean;
   isScreenSharing?: (member: ChannelMember) => boolean;
+  toggleScreenShare?: (member: ChannelMember) => void;
+  isWatchingScreenShare?: (member: ChannelMember) => boolean;
   showMemberActions?: boolean;
   memberDragDrop?: boolean;
   draggedMemberId?: number | null;

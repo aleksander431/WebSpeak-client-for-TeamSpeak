@@ -366,7 +366,7 @@
       v-if="chatTab !== 'events'"
       class="message-composer"
       data-ws-part="voice.chat.composer"
-      @submit.prevent="!composing && submitMessage()"
+      @submit.prevent="!composing && submitAll()"
     >
       <ul
         v-if="uploads.length"
@@ -403,6 +403,40 @@
               :size="13" /></button
         ></li>
       </ul>
+      <ul
+        v-if="staged.length"
+        class="chat-staged"
+        data-ws-part="voice.chat.staged"
+        :aria-label="t('chatStagedFiles')"
+        ><li
+          v-for="item in staged"
+          :key="item.key"
+          :class="{ image: item.url }"
+          :title="item.file.name"
+          ><img
+            v-if="item.url"
+            :src="item.url"
+            alt=""
+          /><span
+            v-else
+            class="chat-staged-file"
+            ><Icon
+              name="paperclip"
+              :size="16"
+            /><span class="chat-staged-name">{{ item.file.name }}</span
+            ><small>{{ formatBytes(item.file.size) }}</small></span
+          ><button
+            type="button"
+            class="chat-staged-remove"
+            :title="t('chatStagedRemove')"
+            :aria-label="t('chatStagedRemove')"
+            @click="unstage(item.key)"
+            ><Icon
+              name="close"
+              :size="12" /></button
+        ></li
+        ><li class="chat-staged-hint">{{ t("chatStagedHint") }}</li></ul
+      >
       <div
         v-if="replyTo"
         class="chat-reply-preview"
@@ -480,7 +514,7 @@
       <button
         class="send-button"
         type="submit"
-        :disabled="!canSendChat || !messageDraft.trim()"
+        :disabled="!canSendChat || (!messageDraft.trim() && !staged.length)"
         :title="t('send')"
         :aria-label="t('send')"
         ><Icon
@@ -682,15 +716,62 @@ function onFilesChosen(event: Event): void {
   const input = event.target as HTMLInputElement;
   const files = [...(input.files ?? [])];
   input.value = "";
-  if (files.length) void sendFiles(files);
+  if (files.length) stage(files);
 }
 
-/** A screenshot pasted into the message box is sent as a file. */
+/**
+ * Files pasted, dropped or chosen wait above the message box (images with a
+ * preview) until Send, so a wrong screenshot can be removed first.
+ */
+interface StagedFile { key: number; file: File; url: string | null }
+const MAX_STAGED_FILES = 10;
+const staged = ref<StagedFile[]>([]);
+let stagedSequence = 0;
+const previewable = (file: File) => /^image\/(png|jpeg|gif|webp|bmp|avif)$/i.test(file.type);
+function stage(files: readonly File[]): void {
+  const room = MAX_STAGED_FILES - staged.value.length;
+  const added = files.slice(0, Math.max(0, room)).map(file => ({
+    key: ++stagedSequence,
+    file,
+    url: previewable(file) && typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : null,
+  }));
+  if (!added.length) return;
+  staged.value = [...staged.value, ...added];
+  void nextTick(() => draftInput.value?.focus());
+}
+function release(item: StagedFile): void {
+  if (item.url) { try { URL.revokeObjectURL(item.url); } catch { /* already released */ } }
+}
+function unstage(key: number): void {
+  const item = staged.value.find(entry => entry.key === key);
+  if (item) release(item);
+  staged.value = staged.value.filter(entry => entry.key !== key);
+  draftInput.value?.focus();
+}
+function unstageAll(): void {
+  for (const item of staged.value) release(item);
+  staged.value = [];
+}
+onBeforeUnmount(unstageAll);
+/** Send the waiting files first, then the text (a caption reads after its picture). */
+async function submitAll(): Promise<void> {
+  if (!canSendChat.value) return;
+  const files = staged.value;
+  if (files.length) {
+    staged.value = [];
+    const sending = sendFiles(files.map(item => item.file));
+    for (const item of files) release(item);
+    await sending;
+  }
+  if (messageDraft.value.trim()) await submitMessage();
+}
+
+/** A screenshot pasted into the message box waits above it with a preview. */
 function onPaste(event: ClipboardEvent): void {
   const files = [...(event.clipboardData?.files ?? [])];
   if (!files.length || !canAttach.value) return;
   event.preventDefault();
-  void sendFiles(files);
+  stage(files);
 }
 
 const dragActive = ref(false);
@@ -717,7 +798,7 @@ function onDrop(event: DragEvent): void {
   dragDepth = 0;
   dragActive.value = false;
   const files = [...(event.dataTransfer?.files ?? [])];
-  if (files.length && canAttach.value) void sendFiles(files);
+  if (files.length && canAttach.value) stage(files);
 }
 
 const composing = ref(false);
@@ -738,13 +819,14 @@ function onDraftKeydown(event: KeyboardEvent): void {
     if (event.key === "Escape") { event.preventDefault(); mentionQuery.value = null; return; }
   }
   if (event.key === "Escape" && replyTo.value) { event.preventDefault(); cancelReply(); return; }
+  if (event.key === "Escape" && staged.value.length) { event.preventDefault(); unstageAll(); return; }
   if (event.key !== "Enter") return;
   // Android IME and Safari can confirm a candidate with Enter; that is not Send.
   if (composing.value || event.isComposing || event.keyCode === 229) { event.preventDefault(); return; }
   // Shift+Enter is a new line; Enter alone sends (also inside a code block).
   if (event.shiftKey) return;
   event.preventDefault();
-  if (canSendChat.value && messageDraft.value.trim()) void submitMessage();
+  if (canSendChat.value && (messageDraft.value.trim() || staged.value.length)) void submitAll();
 }
 
 /** Gateway events carry a translation code; older gateways only send Chinese text. */

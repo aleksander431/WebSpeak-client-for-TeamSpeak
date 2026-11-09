@@ -8868,6 +8868,105 @@
   cursor: pointer;
 }
 
+/* Files waiting above the message box until Send; pictures show a preview. */
+:deep(.chat-staged) {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  background: var(--surface-1, #fff);
+  border: 1px solid var(--border, #dfe8e5);
+  border-radius: 11px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .12);
+}
+
+:deep(.message-composer:has(> .chat-reply-preview) > .chat-staged),
+:deep(.message-composer:has(> .chat-uploads) > .chat-staged) {
+  bottom: calc(100% + 56px);
+}
+
+:deep(.chat-staged > li) {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  height: 76px;
+  border: 1px solid var(--border, #dfe8e5);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--text-primary, #17312c) 6%, transparent);
+}
+
+:deep(.chat-staged > li.image) {
+  width: auto;
+  max-width: 160px;
+}
+
+:deep(.chat-staged > li img) {
+  display: block;
+  max-width: 160px;
+  height: 76px;
+  object-fit: cover;
+}
+
+:deep(.chat-staged-file) {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: 116px;
+  padding: 6px 8px;
+  color: var(--text-muted, #7c8a86);
+  font-size: 11px;
+}
+
+:deep(.chat-staged-name) {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-primary, #17312c);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:deep(.chat-staged-remove) {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: #fff;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 62%);
+  cursor: pointer;
+}
+
+:deep(.chat-staged-remove:hover),
+:deep(.chat-staged-remove:focus-visible) {
+  background: var(--danger, #c0392b);
+}
+
+:deep(.chat-staged > li.chat-staged-hint) {
+  flex: 1 1 140px;
+  place-items: end start;
+  height: auto;
+  min-height: 0;
+  padding: 0 2px;
+  color: var(--text-muted, #7c8a86);
+  border: 0;
+  background: none;
+  font-size: 11px;
+}
+
 :deep(.chat-drop-overlay) {
   position: absolute;
   z-index: 8;

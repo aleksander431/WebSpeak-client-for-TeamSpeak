@@ -202,6 +202,9 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Behoben: Ein Privatchat konnte doppelt erscheinen (ein Tab von der eingehenden Nachricht, einer beim Antworten), wenn der Server Mitglieder ohne eindeutige ID listet; jetzt ist es eine Unterhaltung, und Senden an solche Mitglieder funktioniert.
 - Behoben (Desktop-App, neue Desktop-Version nötig): Beim Teilen eines Fensters wird nur noch der Ton seines Programms übertragen, nicht alles, was der PC abspielt; die Tonoption in der Auswahl sagt das.
 - Behoben (Desktop-App und Server): Die Begleitmusik bricht nicht mehr nach etwa 30 Sekunden von selbst ab und läuft weiter, während Sie eine Bildschirmfreigabe starten oder beenden.
+- Chat: Ein eingefügter Screenshot (oder eine hineingezogene bzw. gewählte Datei) wartet zuerst mit Vorschau über dem Eingabefeld; Enter sendet, Esc oder × entfernt ihn.
+- Bildschirmfreigabe: Die eigene Karte zeigt eine Vorschau des Geteilten (ausblendbar), und jedes Live-Abzeichen zeigt, wie viele zusehen, mit Namen beim Überfahren.
+- Das Freigabe-Symbol neben einem Mitglied in der Kanalliste ist jetzt ein Knopf: ein Klick startet oder beendet das Zuschauen.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

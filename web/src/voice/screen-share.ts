@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, shallowRef } from "vue";
 import { parseScreenShareStream, parseScreenShareViewers, type ServerMessage } from "../../../src/shared/server-messages.js";
 import { createHdrCorrection, isHdrCorrectionSupported, type HdrCorrection } from "./hdr-correction.js";
 import { createFrameSampler, HdrCalibrationError, runHdrCalibration, type CalibrationDisplay, type HdrCalibrationCurve, type HdrCalibrationResult } from "./hdr-calibration.js";
@@ -102,6 +102,8 @@ export function createScreenShareController(transport: ScreenShareTransport) {
   const screenShareErrorCode = ref("");
   const screenShareRemoteVolume = ref(1);
   let screenShareLocalStream: MediaStream | null = null;
+  /** The captured picture, for the sharer's own preview (never sent anywhere from here). */
+  const screenSharePreviewStream = shallowRef<MediaStream | null>(null);
   /** Corrected video replacing the captured track on every sender, when enabled. */
   let screenShareHdr: HdrCorrection | null = null;
   /** Whether frames are currently being HDR-corrected (false when unsupported or failed). */
@@ -744,6 +746,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     disposeScreenShareHdr();
     for (const track of screenShareLocalStream?.getTracks() ?? []) track.stop();
     screenShareLocalStream = null;
+    screenSharePreviewStream.value = null;
   }
 
   /** Start correction on the captured track; failure leaves the original picture. */
@@ -866,6 +869,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       if (!videoTrack) throw new Error("NO_VIDEO_TRACK");
       applyScreenShareContentHint(videoTrack, screenShareOutputSettings);
       screenShareLocalStream = stream;
+      screenSharePreviewStream.value = stream;
       if ((settings?.hdrCorrection ?? 0) > 0) startScreenShareHdr(settings!.hdrCorrection!, settings!.hdrCalibration ?? null);
       screenShareRequestSequence = (screenShareRequestSequence + 1) % 1_000_000;
       screenSharePendingStartId = `screen-start-${screenShareRequestSequence}`;
@@ -878,6 +882,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       acquiredStream?.getTracks().forEach(track => track.stop());
       if (startGeneration !== screenShareStartGeneration) return;
       screenShareLocalStream = null;
+      screenSharePreviewStream.value = null;
       screenShareOutputSettings = null;
       screenShareStarting.value = false;
       screenSharePendingStartId = "";
@@ -1096,6 +1101,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       updateScreenShareOutputSettings,
       measureHdrCalibration,
       screenShareHdrActive,
+      screenSharePreviewStream,
       joinScreenShare,
       leaveScreenShare,
     },

@@ -117,6 +117,30 @@
               class="member-flags"
               data-ws-part="voice.member-row.flags"
               :aria-label="t('memberStates')"
+              ><button
+                v-if="isScreenSharing?.(member) && toggleScreenShare && !member.isSelf"
+                type="button"
+                class="member-screen-share"
+                data-ws-part="voice.member-row.screen-share"
+                :data-ws-state="isWatchingScreenShare?.(member) ? 'viewing' : 'idle'"
+                :aria-pressed="isWatchingScreenShare?.(member) ? 'true' : 'false'"
+                :title="isWatchingScreenShare?.(member) ? t('watching') : t('watchScreenShare')"
+                :aria-label="isWatchingScreenShare?.(member) ? t('watching') : t('watchScreenShare')"
+                draggable="false"
+                @click.stop="toggleScreenShare(member)"
+                @dblclick.stop
+                ><Icon
+                  name="monitor"
+                  :size="12" /></button
+              ><span
+                v-else-if="isScreenSharing?.(member)"
+                class="member-screen-share"
+                data-ws-part="voice.member-row.screen-share"
+                :title="t('sharingScreen')"
+                :aria-label="t('sharingScreen')"
+                ><Icon
+                  name="monitor"
+                  :size="12" /></span
               ><span
                 v-if="member.away"
                 :title="t('away')"
@@ -195,6 +219,7 @@ import ChannelSpacer from "./ChannelSpacer.vue";
 import { getChannelSpacer } from "../../../../src/shared/channel-spacer.js";
 import { memberPresenceKey } from "../../services/member-presence.js";
 import type { TreeChannel } from "../../composables/useWebClientChannels.js";
+import type { ChannelMember } from "../../composables/useVoiceWebSocket.js";
 import type { useWebClientMembers } from "../../composables/useWebClientMembers.js";
 
 type MemberPanelModel = Pick<ReturnType<typeof useWebClientMembers>,
@@ -228,6 +253,10 @@ const props = defineProps<{
   avatarInitial: (name: string) => string;
   rangeStyle: (value: number, max: number) => CSSProperties;
   t: (key: string, variables?: Record<string, string | number>) => string;
+  /** Screen shares: a green badge on the row; one click starts or stops watching. */
+  isScreenSharing?: (member: ChannelMember) => boolean;
+  isWatchingScreenShare?: (member: ChannelMember) => boolean;
+  toggleScreenShare?: (member: ChannelMember) => void;
 }>();
 const emit = defineEmits<{
   selectChannel: [channel: TreeChannel];
@@ -255,3 +284,37 @@ const {
   onChannelDrop,
 } = props.model;
 </script>
+
+<style scoped>
+.member-screen-share {
+  display: inline-grid;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: #fff;
+  background: #72c800;
+  line-height: 0;
+}
+button.member-screen-share {
+  cursor: pointer;
+  transition: filter .15s ease, box-shadow .15s ease;
+}
+button.member-screen-share:hover {
+  filter: brightness(1.12);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #72c800 35%, transparent);
+}
+button.member-screen-share:focus-visible {
+  outline: 2px solid #72c800;
+  outline-offset: 2px;
+}
+button.member-screen-share[data-ws-state="viewing"] {
+  color: #4f9400;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px #72c800;
+}
+</style>

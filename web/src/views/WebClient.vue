@@ -821,6 +821,9 @@
         :avatar-initial="avatarInitial"
         :range-style="rangeStyle"
         :t="t"
+        :is-screen-sharing="isMemberSharingScreen"
+        :is-watching-screen-share="isWatchingMemberScreen"
+        :toggle-screen-share="toggleMemberScreen"
         @select-channel="selectChannel"
         @volume-input="onVolInput"
       >
@@ -1261,6 +1264,7 @@ const {
   updateScreenShareOutputSettings,
   measureHdrCalibration,
   screenShareHdrActive,
+  screenSharePreviewStream,
   joinScreenShare,
   leaveScreenShare,
   screenShareViews,
@@ -1605,7 +1609,14 @@ const screenShareControls = useWebClientScreenShare({
   t,
 });
 const { settingsOpen: screenShareSettingsOpen, errorText: screenShareErrorText } = screenShareControls;
-const memberSharingState = { screenShareActive, screenShareStarting, screenShareViewingStreamId, screenShareViewedStreamIds, settingsOpen: screenShareSettingsOpen };
+// One click on a member's screen-share badge (channel list, tree) starts or stops watching.
+const isMemberSharingScreen = (member: ChannelMember) => Boolean(screenShareControls.streamForMember(member));
+const isWatchingMemberScreen = (member: ChannelMember) => {
+  const streamId = screenShareControls.streamForMember(member)?.streamId;
+  return Boolean(streamId && screenShareViewedStreamIds.value.includes(streamId));
+};
+const toggleMemberScreen = (member: ChannelMember) => screenShareControls.toggleForMember(member);
+const memberSharingState = { screenShareActive, screenShareStarting, screenShareViewingStreamId, screenShareViewedStreamIds, screenSharePreviewStream, settingsOpen: screenShareSettingsOpen };
 // Desktop client: global hotkeys and tray actions, and state for the tray icon.
 useDesktopBridge({
   state: () => ({
@@ -2284,6 +2295,8 @@ const skinPluginWidgets = {
     avatarInitial,
     isSpeaking,
     isScreenSharing: (member: ChannelMember) => Boolean(screenShareControls.streamForMember(member)),
+    toggleScreenShare: toggleMemberScreen,
+    isWatchingScreenShare: isWatchingMemberScreen,
     showMemberActions: options?.memberActions === true,
     memberDragDrop: options?.memberDragDrop === true,
     draggedMemberId: memberControls.draggedMember.value?.id ?? null,
