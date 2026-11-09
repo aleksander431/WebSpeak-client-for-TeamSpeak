@@ -34,6 +34,8 @@ interface TransportOptions {
 interface Attempt {
   connection: Connection;
   peer: RTCPeerConnection | null;
+  /** Sender of the separate accompaniment track; sends only while routed there. */
+  music: RTCRtpSender | null;
   input: WebRtcInput | null;
   meter: MicrophoneMeter | null;
   active: boolean;
@@ -118,7 +120,7 @@ export function createWebRtcTransport(options: TransportOptions) {
 
   async function start(connection: Connection): Promise<void> {
     stop();
-    const record: Attempt = { connection, peer: null, input: null, meter: null,
+    const record: Attempt = { connection, peer: null, music: null, input: null, meter: null,
       active: false, closed: false, answerTimer: null, cancelIce: null };
     current = record;
     let microphone: Microphone | null;
@@ -139,6 +141,10 @@ export function createWebRtcTransport(options: TransportOptions) {
       const input = createWebRtcInput(context, processedStream, silent ? 0 : options.inputVolume(), options.accompanimentVolume?.() ?? 1);
       record.input = input;
       peer.addTrack(input.stream.getAudioTracks()[0]!, input.stream);
+      // A second, silent-until-used audio line: the gateway can then send the
+      // accompaniment through its own TeamSpeak client.
+      try { record.music = peer.addTransceiver("audio", { direction: "sendonly", streams: [input.musicStream] }).sender; }
+      catch { record.music = null; }
       peer.ontrack = event => {
         if (!isCurrent(record)) return;
         try { playback.attach(event.streams[0] ?? new MediaStream([event.track])); }
@@ -186,8 +192,24 @@ export function createWebRtcTransport(options: TransportOptions) {
     } catch { await fail(record, "WEBRTC_ANSWER_REJECTED"); }
   }
 
+  /** The gateway's music client is (not) live: route accompaniment to its own track or back into the voice. */
+  function setAccompanimentSeparate(separate: boolean): boolean {
+    const record = current;
+    if (!record || !isCurrent(record) || !record.input) return false;
+    const input = record.input;
+    const sender = record.music;
+    if (separate && !sender) return false;
+    const track = separate ? input.musicStream.getAudioTracks()[0] ?? null : null;
+    input.setAccompanimentSeparate(separate);
+    void sender?.replaceTrack(track).catch(() => {
+      // Could not send it on its own: keep it audible in the voice.
+      if (current === record && record.input === input) input.setAccompanimentSeparate(false);
+    });
+    return true;
+  }
+
   return {
-    start, stop, applyAnswer,
+    start, stop, applyAnswer, setAccompanimentSeparate,
     get generation(): number { return generation; },
     releaseInput(): void { releaseInput(); },
     async fallback(reason: string): Promise<void> { if (current) await fail(current, reason); },

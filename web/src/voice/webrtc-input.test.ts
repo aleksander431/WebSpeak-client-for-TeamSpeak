@@ -7,7 +7,7 @@ class FakeNode {
   readonly outputs = new Set<FakeNode>();
   constructor(readonly name: string) {}
   connect(target: FakeNode): FakeNode { this.outputs.add(target); return target; }
-  disconnect(): void { this.outputs.clear(); }
+  disconnect(target?: FakeNode): void { if (target) this.outputs.delete(target); else this.outputs.clear(); }
 }
 class FakeGain extends FakeNode { readonly gain = { value: 1 }; }
 class FakeDestination extends FakeNode {
@@ -18,14 +18,15 @@ class FakeDestination extends FakeNode {
 
 function harness() {
   const gains: FakeGain[] = [];
+  const destinations: FakeDestination[] = [];
   const sources: FakeNode[] = [];
   const context = {
-    createMediaStreamDestination: () => new FakeDestination("destination"),
+    createMediaStreamDestination: () => { const node = new FakeDestination(destinations.length ? "music" : "voice"); destinations.push(node); return node; },
     createMediaStreamSource: (stream: { id: string }) => { const node = new FakeNode(stream.id); sources.push(node); return node; },
     createGain: () => { const node = new FakeGain("gain"); gains.push(node); return node; },
   };
   const stream = (id: string) => ({ id, getAudioTracks: () => [{ readyState: "live" }] });
-  return { context: context as unknown as AudioContext, gains, sources, stream: stream as (id: string) => MediaStream };
+  return { context: context as unknown as AudioContext, gains, sources, destinations, stream: stream as (id: string) => MediaStream };
 }
 
 test("accompaniment goes through its own gain, separate from the microphone", () => {
@@ -59,4 +60,20 @@ test("accompaniment volume defaults to the full source level when not given", ()
   const { context, gains, stream } = harness();
   createWebRtcInput(context, stream("mic"), 1);
   assert.equal(gains[1]!.gain.value, 1);
+});
+
+test("accompaniment moves between the voice and its own track without a gap", () => {
+  const { context, gains, destinations, stream } = harness();
+  const input = createWebRtcInput(context, stream("mic"), 1, 0.7);
+  const [voice, music] = destinations;
+  const accompanimentGain = gains[1]!;
+  assert.equal(music!.channelCount, 2, "music keeps stereo");
+  assert.ok(accompanimentGain.outputs.has(voice!));
+  input.setAccompanimentSeparate(true);
+  assert.deepEqual([...accompanimentGain.outputs], [music], "only on its own track");
+  assert.ok(gains[0]!.outputs.has(voice!), "the microphone stays in the voice");
+  input.setAccompanimentSeparate(false);
+  assert.deepEqual([...accompanimentGain.outputs], [voice]);
+  input.dispose();
+  input.setAccompanimentSeparate(true);
 });

@@ -1,5 +1,9 @@
 export interface WebRtcInput {
   readonly stream: MediaStream;
+  /** Accompaniment alone, for its own track (sent only while routed there). */
+  readonly musicStream: MediaStream;
+  /** Route accompaniment to its own track (true) or into the voice (false). */
+  setAccompanimentSeparate(separate: boolean): void;
   setAccompaniment(stream: MediaStream | null): void;
   setVolume(value: number): void;
   /** Level of the shared application audio (accompaniment), 0..1. */
@@ -11,6 +15,8 @@ export interface WebRtcInput {
 // streams. Keep the sender track alive when accompaniment starts/stops/changes.
 export function createWebRtcInput(context: AudioContext, microphone: MediaStream, volume: number, accompanimentVolume = 1): WebRtcInput {
   let destination: MediaStreamAudioDestinationNode | null = null;
+  let musicDestination: MediaStreamAudioDestinationNode | null = null;
+  let separate = false;
   let microphoneSource: MediaStreamAudioSourceNode | null = null;
   let microphoneGain: GainNode | null = null;
   let accompanimentSource: MediaStreamAudioSourceNode | null = null;
@@ -29,6 +35,11 @@ export function createWebRtcInput(context: AudioContext, microphone: MediaStream
       clean(() => destination!.disconnect());
       for (const track of destination.stream.getTracks()) clean(() => track.stop());
     }
+    if (musicDestination) {
+      clean(() => musicDestination!.disconnect());
+      for (const track of musicDestination.stream.getTracks()) clean(() => track.stop());
+    }
+    musicDestination = null;
     accompanimentSource = null;
     microphoneSource = null;
     microphoneGain = null;
@@ -52,8 +63,19 @@ export function createWebRtcInput(context: AudioContext, microphone: MediaStream
     accompanimentGain = context.createGain();
     accompanimentGain.gain.value = clampLevel(accompanimentVolume);
     accompanimentGain.connect(destination);
+    // Music keeps its stereo image on its own track.
+    musicDestination = context.createMediaStreamDestination();
+    musicDestination.channelCount = 2;
     return {
       stream: destination.stream,
+      musicStream: musicDestination.stream,
+      setAccompanimentSeparate(next) {
+        if (disposed || !accompanimentGain || !destination || !musicDestination || next === separate) return;
+        // Connect the new route before leaving the old one: no gap in the music.
+        accompanimentGain.connect(next ? musicDestination : destination);
+        clean(() => accompanimentGain!.disconnect(next ? destination! : musicDestination!));
+        separate = next;
+      },
       setAccompaniment(stream) {
         if (disposed) {
           if (stream) throw new DOMException("WebRTC input closed", "AbortError");

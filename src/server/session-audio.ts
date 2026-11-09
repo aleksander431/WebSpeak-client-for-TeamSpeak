@@ -28,6 +28,8 @@ export interface SessionAudioOptions {
   isReady(): boolean;
   selfId(): number;
   peer(): Pick<WebRtcAudioSession, "pushTeamSpeakVoice"> | null;
+  /** Clients whose sound this browser already plays itself (its own music client). */
+  ownClientIds?(): readonly number[];
   whisperTargets(): readonly number[] | null;
   sendJson(message: ServerMessage): void;
 }
@@ -157,7 +159,7 @@ export class SessionAudioTransport {
     stats.tsReceiveFirstAt ??= now;
     stats.tsReceiveLastAt = now;
     stats.tsReceiveFrames++;
-    if (data.clientId === this.options.selfId()) return;
+    if (data.clientId === this.options.selfId() || this.options.ownClientIds?.().includes(data.clientId)) return;
     if (!Number.isInteger(data.clientId) || data.clientId < 1 || data.clientId > 65_535
       || !Number.isInteger(data.codec) || data.codec < 0 || data.codec > 255 || !Buffer.isBuffer(data.data)) {
       stats.egressDroppedFrames++;

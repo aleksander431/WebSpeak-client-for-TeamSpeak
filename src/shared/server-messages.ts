@@ -36,6 +36,11 @@ export type ServerMessage =
   | Message<"whisperTargets", { targetIds: number[]; active: boolean }>
   | Message<"webrtcAnswer", { payload: { sdp: SessionDescription } }>
   | Message<"voiceActivity", { clientIds: number[] }>
+  /**
+   * Where the accompaniment goes: on its own track to the session's music
+   * client (`separate`, with that client's id), or mixed into the voice.
+   */
+  | Message<"accompanimentRoute", { separate: boolean; clientId?: number }>
   | Message<"commandCompleted", { requestId: string; chatRef?: string }>
   | Message<"screenShareCompleted", { requestId: string }>
   | Message<"error", Request & { error?: { code?: string; message?: string; recoverable?: boolean }; message?: string }>
@@ -182,6 +187,7 @@ const valid: Record<ServerMessage["type"], (message: RecordValue) => boolean> = 
   whisperTargets: m => arrayOf(m.targetIds, clientId) && boolean(m.active),
   webrtcAnswer: m => isRecord(m.payload) && isSessionDescription(m.payload.sdp, "answer"),
   voiceActivity: m => arrayOf(m.clientIds, clientId),
+  accompanimentRoute: m => boolean(m.separate) && optional(m.clientId, clientId),
   commandCompleted: m => text(m.requestId) && optional(m.chatRef, chatRef),
   screenShareCompleted: m => text(m.requestId),
   error: m => optional(m.message, text) && optional(m.error, v => isRecord(v) && optional(v.code, text) && optional(v.message, text) && optional(v.recoverable, boolean)),

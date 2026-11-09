@@ -17,6 +17,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { ChatStorage } from "./chat-storage.js";
 import { BlockList, isIP } from "node:net";
 import { parseIdentity } from "@honeybbq/teamspeak/client";
+import { AccompanimentRelay, accompanimentNickname } from "./accompaniment-relay.js";
 import { TSClient, type TSClientOptions } from "./ts-client.js";
 import type { Logger as LoggerType } from "../logger.js";
 import { clientConnectionFailureCode, describeTeamSpeakError, normalizeTeamSpeakError } from "../errors.js";
@@ -132,12 +133,19 @@ interface WebClientEntry extends SessionDirectoryState {
   screenPeerId: string;
   /** Bearer token for this session's chat uploads and history reads. */
   chatToken: string;
+  /** Accompaniment: on (from the browser), sent through the music client (`separate`) or mixed into the voice. */
+  accompaniment: { active: boolean; separate: boolean; relay: AccompanimentRelay | null; generation: number; identity: string };
+  /** The server password this session joined with, for its music client. */
+  serverPassword: string;
   /** Push-to-talk gate (desktop client); applied to every WebRTC peer of the session. */
   voiceGateOpen: boolean;
   onChatSent?(scope: "channel" | "server", channelId: string, message: string): string | undefined;
   onChatReact?(ref: string, emoji: string, active: boolean): boolean;
   onChatPin?(ref: string, active: boolean): "pinned" | "unpinned" | "limit" | "unavailable";
   onOwnAvatar?(uid: string, marker: string, avatar: string | null): void;
+  onAccompaniment?(active: boolean): Promise<void>;
+  /** Passwords this session entered per channel id, so its music client can follow. */
+  channelPasswords: Map<string, string>;
 }
 
 export class VoiceBridge {
@@ -316,6 +324,9 @@ export class VoiceBridge {
         lastAudioStatsProbeAt: 0,
         screenPeerId: entryId,
         chatToken: randomBytes(24).toString("base64url"),
+        accompaniment: { active: false, separate: false, relay: null, generation: 0, identity: "" },
+        serverPassword: serverPassword ?? "",
+        channelPasswords: new Map(),
       };
       this.entries.set(entryId, entry!);
       this.chatTokens.set(entry.chatToken, entry);
@@ -335,6 +346,7 @@ export class VoiceBridge {
       const sendJson = (message: ServerMessage) => {
         if (this.entries.get(entryId) === entry && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
       };
+      entry!.onAccompaniment = (active) => this.setAccompaniment(entry!, active, sendJson);
       try {
         entry.audioTransport = new SessionAudioTransport({
           audio: entry.audio, socket: ws, client: tsClient,
@@ -343,6 +355,8 @@ export class VoiceBridge {
           isReady: () => tsReady && session.state === "connected",
           selfId: () => entry!.events?.selfId ?? 0,
           peer: () => entry!.webrtc,
+          // The owner already hears its music locally; its music client's copy would echo.
+          ownClientIds: () => entry!.accompaniment?.relay?.active ? [entry!.accompaniment.relay.clientId] : [],
           whisperTargets: () => entry!.whisperActive ? [...entry!.whisperTargetIds] : null,
           sendJson: message => sendJson(message),
         }, this.dependencies.createEncoder?.() ?? new OpusEncoder(48000, 1));
@@ -901,6 +915,77 @@ export class VoiceBridge {
     return result;
   }
 
+  /**
+   * Accompaniment starts mixed into the voice (heard at once), then moves to
+   * its own TeamSpeak client when the browser sent a separate music track and
+   * that client joined; listeners then get their own volume for it.
+   */
+  private async setAccompaniment(entry: WebClientEntry, active: boolean, sendJson: (message: ServerMessage) => void): Promise<void> {
+    const state = entry.accompaniment;
+    state.active = active;
+    const generation = ++state.generation;
+    if (!active) {
+      const relay = state.relay;
+      state.relay = null;
+      const wasSeparate = state.separate;
+      state.separate = false;
+      await relay?.stop();
+      if (wasSeparate) sendJson({ type: "accompanimentRoute", separate: false });
+      await this.mixAccompaniment(entry, false);
+      return;
+    }
+    if (!state.separate) await this.mixAccompaniment(entry, true);
+    if (state.generation === generation) void this.startAccompanimentRelay(entry, generation, sendJson);
+  }
+
+  private async mixAccompaniment(entry: WebClientEntry, mixed: boolean): Promise<void> {
+    const peer = entry.webrtc;
+    if (!peer || this.entries.get(entry.id) !== entry) return;
+    try { await entry.tsClient.setAccompanimentActive(mixed); } catch { /* the next change retries */ }
+    if (entry.webrtc === peer) peer.setAccompanimentActive(mixed);
+  }
+
+  private async startAccompanimentRelay(entry: WebClientEntry, generation: number, sendJson: (message: ServerMessage) => void): Promise<void> {
+    const state = entry.accompaniment;
+    const peer = entry.webrtc;
+    if (!peer?.hasMusicTrack || state.relay?.active) return;
+    const current = () => state.generation === generation && state.active && entry.webrtc === peer && this.entries.get(entry.id) === entry;
+    const createClient = this.dependencies.createTeamSpeakClient ?? ((options, logger) => new TSClient(options, logger));
+    const relay: AccompanimentRelay = new AccompanimentRelay({
+      create: () => {
+        let identity;
+        try { identity = state.identity ? parseIdentity(state.identity) : undefined; } catch { identity = undefined; }
+        const client = createClient({ target: entry.target, nickname: accompanimentNickname(this.ownNickname(entry)), serverPassword: entry.serverPassword, ...(identity ? { identity } : {}) }, this.logger);
+        // One identity per session, so TeamSpeak does not record a new client every time.
+        try { state.identity ||= client.getIdentityString(); } catch { /* a fresh one next time */ }
+        return client;
+      },
+      ownerChannel: () => entry.tsClient.isConnected() ? entry.tsClient.getChannelId() : 0n,
+      channelPassword: (channelId) => entry.channelPasswords?.get(channelId.toString()),
+      onLive: () => { /* reported below, once the browser may switch */ },
+      onEnded: () => {
+        if (state.relay !== relay) return;
+        state.relay = null;
+        if (!state.separate) return;
+        state.separate = false;
+        // Back to mixing, so the music does not stop for the listeners.
+        sendJson({ type: "accompanimentRoute", separate: false });
+        if (state.active) void this.mixAccompaniment(entry, true);
+      },
+      log: (message, error) => this.logger.info({ entryId: entry.id, err: error instanceof Error ? error.message : String(error ?? "") }, message),
+    });
+    state.relay = relay;
+    const live = await relay.start();
+    if (!live || !current() || state.relay !== relay) {
+      if (state.relay === relay) state.relay = null;
+      if (live) await relay.stop();
+      return;
+    }
+    state.separate = true;
+    sendJson({ type: "accompanimentRoute", separate: true, clientId: relay.clientId });
+    await this.mixAccompaniment(entry, false);
+  }
+
   private ownNickname(entry: WebClientEntry): string {
     return entry.members.get(entry.tsClient.getClientId())?.nickname || entry.nickname;
   }
@@ -939,6 +1024,7 @@ export class VoiceBridge {
     }
     entry.audioTransport?.close();
     entry.audioTransport = null;
+    if (entry.accompaniment) entry.accompaniment.active = false;
     await this.stopWebRtc(entry);
     entry.whisperTargetIds.clear();
     entry.whisperActive = false;
@@ -1030,6 +1116,15 @@ export class VoiceBridge {
     const generation = ++entry.webrtcGeneration;
     const peer = entry.webrtc;
     entry.webrtc = null;
+    // The music track belonged to this peer; a new offer starts mixed again.
+    const music = entry.accompaniment;
+    if (music) {
+      music.generation += 1;
+      music.separate = false;
+      const relay = music.relay;
+      music.relay = null;
+      void relay?.stop();
+    }
     // Enqueue the reset even while an offer is still preparing its first peer.
     // A later offer's input changes are then ordered after this restoration.
     const restoreInput = this.entries.get(entry.id) === entry && entry.tsClient.isConnected()
@@ -1090,6 +1185,9 @@ export class VoiceBridge {
         onVoiceActivity: (clientIds) => {
           if (isCurrentPeer()) sendJson({ type: "voiceActivity", clientIds });
         },
+        onMusicFrame: (data) => {
+          if (isCurrentPeer()) entry.accompaniment.relay?.send(data);
+        },
       });
       entry.webrtc = peer;
       const answer = await peer.createAnswer({ type: offer.type, sdp: offer.sdp });
@@ -1099,6 +1197,10 @@ export class VoiceBridge {
       }
       sendJson({ type: "webrtcAnswer", payload: { sdp: answer } });
       this.logger.info({ entryId: entry.id }, "WebRTC audio negotiation completed");
+      if (entry.accompaniment) {
+        entry.accompaniment.active = offer.accompanimentActive === true;
+        if (entry.accompaniment.active) void this.startAccompanimentRelay(entry, entry.accompaniment.generation, sendJson);
+      }
     } catch (error: unknown) {
       if (entry.webrtc === peer) entry.webrtc = null;
       try { await peer?.close(); } catch { /* best effort */ }

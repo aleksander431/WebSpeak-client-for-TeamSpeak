@@ -36,6 +36,7 @@ const samples: Record<ServerMessage["type"], ServerMessage> = {
   whisperTargets: { type: "whisperTargets", targetIds: [2], active: true },
   webrtcAnswer: { type: "webrtcAnswer", payload: { sdp: { type: "answer", sdp: "v=0\r\n" } } },
   voiceActivity: { type: "voiceActivity", clientIds: [1, 2] },
+  accompanimentRoute: { type: "accompanimentRoute", separate: true, clientId: 42 },
   commandCompleted: { type: "commandCompleted", requestId: "command-1", chatRef: "0123456789abcdef" },
   error: { type: "error", requestId: "command-1", error: { code: "PERMISSION_DENIED", message: "denied", recoverable: false } },
   screenShareCompleted: { type: "screenShareCompleted", requestId: "share-1" },

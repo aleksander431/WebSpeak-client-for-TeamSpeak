@@ -191,6 +191,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Behoben: Ein in WebSpeak gesetzter Avatar verschwand nach dem erneuten Beitreten. TeamSpeak behält das Bild, vergisst aber die Markierung, die es anzeigt; WebSpeak setzt sie jetzt bei jeder Verbindung neu (der Avatar gehört weiter zur Identität: „Identität merken“ eingeschaltet lassen).
 - Desktop-App (neue Desktop-Version nötig): Das Overlay kann nur in Spielen erscheinen — solange ein Programm den Bildschirm füllt (Browser und Videoplayer im Vollbild ausgenommen) oder in Ihrer Liste steht, z. B. dota2.exe. Das ist jetzt Standard; „immer“ gibt es weiterhin.
 - Desktop-App (neue Desktop-Version nötig): Die Einstellungen sind wie bei Discord aufgebaut — links Gruppen (Server und Start, Tastenkürzel, Push-to-Talk und Flüstern, Overlay, Updates) mit einer Suche (Strg+F) über alle Optionen.
+- Die Begleitmusik spielt jetzt als eigener Teilnehmer („Alex 🎵“) in Ihrem Kanal, sodass jeder Zuhörer — in WebSpeak oder der TeamSpeak-App — ihre Lautstärke getrennt von Ihrer Stimme einstellen oder sie stummschalten kann. Kann dieser Teilnehmer nicht beitreten (Server voll, unbekanntes Kanalpasswort), wird die Musik wie bisher in die Stimme gemischt.
 
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 

@@ -57,6 +57,11 @@ export interface WebRtcAudioSessionOptions {
   accompanimentActive?: boolean;
   onVoiceFrame: (data: Buffer, codec: 4 | 5) => void;
   onVoiceActivity: (clientIds: number[]) => void;
+  /**
+   * Opus frames of the browser's separate accompaniment track (its second
+   * audio m-line), forwarded unchanged to the session's music client.
+   */
+  onMusicFrame?: (data: Buffer) => void;
 }
 
 export interface WebRtcAudioStats {
@@ -102,6 +107,9 @@ export class WebRtcAudioSession {
   private readonly memberVolumes = new Map<number, number>();
   private readonly activeSpeakerIds = new Set<number>();
   private readonly opusPayloadTypes = new Set<number>();
+  private readonly musicPayloadTypes = new Set<number>();
+  private readonly onMusicFrame: ((data: Buffer) => void) | null;
+  private musicTransceiverPresent = false;
   private audioTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly activityTimer: ReturnType<typeof setInterval>;
   private encoder: MixerEncoder | null;
@@ -142,6 +150,7 @@ export class WebRtcAudioSession {
     this.logger = options.logger.child({ component: "webrtc-audio", connectionId: options.connectionId });
     this.onVoiceFrame = options.onVoiceFrame;
     this.onVoiceActivity = options.onVoiceActivity;
+    this.onMusicFrame = options.onMusicFrame ?? null;
     this.microphoneMuted = options.microphoneMuted === true;
     this.voiceGateOpen = options.voiceGateOpen !== false;
     this.accompanimentActive = options.accompanimentActive === true;
@@ -195,6 +204,17 @@ export class WebRtcAudioSession {
       this.logger.warn({ err: error instanceof Error ? error.message : String(error) }, "Could not prepare WebRTC output track");
     });
 
+    // The browser's second audio m-line carries accompaniment on its own.
+    this.peer.onRemoteTransceiverAdded.subscribe((transceiver) => {
+      if (transceiver.kind !== "audio") return;
+      transceiver.onTrack.subscribe((track) => {
+        track.onReceiveRtp.subscribe((rtp) => {
+          if (this.closed || !this.onMusicFrame || !this.musicPayloadTypes.has(rtp.header.payloadType)) return;
+          this.onMusicFrame(Buffer.from(rtp.payload));
+        });
+      });
+    });
+
     const createEncoder = options.createEncoder ?? (() => new OpusEncoder(AUDIO_SAMPLE_RATE, 1));
     try {
       this.encoder = createEncoder();
@@ -236,6 +256,12 @@ export class WebRtcAudioSession {
     for (const codec of opus) this.opusPayloadTypes.add(codec.payloadType);
     this.outgoingPayloadType = opus[0]!.payloadType;
     await transceiver.sender.replaceTrack(this.outgoingTrack);
+    const music = this.peer.getTransceivers().filter(candidate => candidate.kind === "audio" && candidate !== transceiver)[0];
+    this.musicPayloadTypes.clear();
+    for (const codec of music?.codecs ?? []) {
+      if (codec.mimeType.toLowerCase() === "audio/opus" && codec.clockRate === AUDIO_SAMPLE_RATE) this.musicPayloadTypes.add(codec.payloadType);
+    }
+    this.musicTransceiverPresent = this.musicPayloadTypes.size > 0;
     const answer = await this.peer.createAnswer();
     await this.peer.setLocalDescription(answer);
     const description = this.peer.localDescription;
@@ -426,8 +452,14 @@ export class WebRtcAudioSession {
     this.voiceGateOpen = open;
   }
 
+  /** Accompaniment is mixed into the voice track (not sent on its own track). */
   setAccompanimentActive(active: boolean): void {
     this.accompanimentActive = active;
+  }
+
+  /** The browser negotiated a separate accompaniment track. */
+  get hasMusicTrack(): boolean {
+    return this.musicTransceiverPresent && this.onMusicFrame !== null;
   }
 
   setMemberVolume(clientId: number, volume: number): void {

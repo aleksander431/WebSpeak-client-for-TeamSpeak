@@ -260,6 +260,8 @@ export function useVoiceWebSocket() {
   let microphoneCapture: MicrophoneCapture | null = null;
   let pendingMicrophoneCapture: AbortController | null = null;
   const accompanimentActive = ref(false);
+  /** The TeamSpeak client that carries this session's accompaniment on its own (0: mixed into the voice). */
+  const accompanimentClientId = ref(0);
   const accompanimentSupported = ref(typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getDisplayMedia));
   const accompanimentErrorCode = ref<AccompanimentErrorCode>("");
   const accompaniment = createAccompaniment({
@@ -268,6 +270,8 @@ export function useVoiceWebSocket() {
     onActive(active) {
       const changed = accompanimentActive.value !== active;
       accompanimentActive.value = active;
+      // A new accompaniment starts in the voice until the gateway's music client is live again.
+      if (!active) { webrtc.setAccompanimentSeparate(false); accompanimentClientId.value = 0; }
       if (changed && webrtc.active) sendCmd("setAccompanimentActive", { active });
     },
     onError: code => { accompanimentErrorCode.value = code; },
@@ -1135,6 +1139,7 @@ export function useVoiceWebSocket() {
     if (!keepRememberedIdentity) identityMaterial.value = "";
     chatAccess.value = null;
     sessionState.reset();
+    accompanimentClientId.value = 0;
     for (const key of Object.keys(volumes)) delete volumes[Number(key)];
   }
 
@@ -1281,6 +1286,13 @@ export function useVoiceWebSocket() {
         // encoder is unavailable): say it instead of dropping frames silently.
         const audioCode = safeClientErrorCode(msg.code) || "AUDIO_ERROR";
         setAudioNotice(audioCode, audioNoticeMessage(audioCode, msg.detail));
+        break;
+      }
+      case "accompanimentRoute": {
+        // The gateway's music client joined (or left): send the music on its own track, or mix it back in.
+        const separate = msg.separate === true && webrtc.setAccompanimentSeparate(true);
+        if (!separate) webrtc.setAccompanimentSeparate(false);
+        accompanimentClientId.value = separate ? msg.clientId ?? 0 : 0;
         break;
       }
       case "voiceActivity":
@@ -1692,6 +1704,7 @@ export function useVoiceWebSocket() {
     whisperActive,
     volumes,
     accompanimentActive,
+    accompanimentClientId,
     accompanimentSupported,
     accompanimentErrorCode,
     setVolume,

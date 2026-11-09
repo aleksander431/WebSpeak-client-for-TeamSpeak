@@ -25,6 +25,10 @@ export interface VoiceCommandContext extends AudioStatsSource {
    * history. Returns the message's reaction reference, if reactions are kept.
    */
   onChatSent?(scope: "channel" | "server", channelId: string, message: string): string | undefined;
+  /** Start or stop accompaniment; the bridge decides between a music client and mixing. */
+  onAccompaniment?(active: boolean): Promise<void>;
+  /** Passwords this session entered per channel id, so its music client can follow. */
+  channelPasswords?: Map<string, string>;
   /** Add or remove this session's reaction; false when the message is not visible to it. */
   onChatReact?(ref: string, emoji: string, active: boolean): boolean;
   /** Pin or unpin; "unavailable" when the message is not visible to this session. */
@@ -77,6 +81,7 @@ export async function handleCommand(
     const channelPassword = typeof command.payload.password === "string" ? command.payload.password : "";
     try {
       await entry.tsClient.switchChannel(BigInt(rawId), channelPassword || undefined);
+      if (channelPassword) entry.channelPasswords?.set(rawId, channelPassword);
     } catch (error: unknown) {
       const rawMessage = error instanceof Error ? error.message : String(error);
       if (/already member/i.test(rawMessage)) {
@@ -179,7 +184,8 @@ export async function handleCommand(
       entry.webrtc?.setVoiceGateOpen(command.payload.open);
     } else if (command.type === "setAccompanimentActive") {
       const peer = entry.webrtc;
-      if (peer) {
+      if (entry.onAccompaniment) await entry.onAccompaniment(command.payload.active);
+      else if (peer) {
         await entry.tsClient.setAccompanimentActive(command.payload.active);
         if (entry.webrtc === peer) peer.setAccompanimentActive(command.payload.active);
       }
