@@ -144,6 +144,7 @@ export function parseScreenShareStream(value: unknown): ScreenShareStreamDescrip
   return {
     streamId: value.streamId, ownerPeerId: value.ownerPeerId,
     source: value.source === "teamspeak" ? "teamspeak" : "browser",
+    ...(value.source !== "teamspeak" && value.kind === "camera" ? { kind: "camera" as const } : {}),
     ...(clientId(value.ownerClientId) ? { ownerClientId: value.ownerClientId } : {}),
     ownerNickname: text(value.ownerNickname) ? value.ownerNickname : "TeamSpeak 用户",
     name: text(value.name) ? value.name : "屏幕共享", audio: value.audio === true,

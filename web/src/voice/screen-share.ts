@@ -2,7 +2,7 @@ import { computed, reactive, ref, shallowRef } from "vue";
 import { parseScreenShareStream, parseScreenShareViewers, type ServerMessage } from "../../../src/shared/server-messages.js";
 import { createHdrCorrection, isHdrCorrectionSupported, type HdrCorrection } from "./hdr-correction.js";
 import { createFrameSampler, HdrCalibrationError, runHdrCalibration, type CalibrationDisplay, type HdrCalibrationCurve, type HdrCalibrationResult } from "./hdr-calibration.js";
-import { normalizeScreenShareIceServers, type ScreenShareIceServer, type ScreenShareClientMessage, type ScreenShareStreamDescription as ScreenShareStream, type ScreenSharePeerSignal as ScreenShareSignal } from "../../../src/shared/screen-share.js";
+import { normalizeScreenShareIceServers, type ScreenShareKind, type ScreenShareIceServer, type ScreenShareClientMessage, type ScreenShareStreamDescription as ScreenShareStream, type ScreenSharePeerSignal as ScreenShareSignal } from "../../../src/shared/screen-share.js";
 
 const SCREEN_SHARE_NEGOTIATION_TIMEOUT_MS = 15_000;
 const SCREEN_SHARE_DIAGNOSTICS_ENABLED = typeof window !== "undefined"
@@ -79,7 +79,28 @@ export interface ScreenShareView {
   media: MediaStream | null;
 }
 
-export function createScreenShareController(transport: ScreenShareTransport) {
+/** How many cameras one browser shows at once in member cards. */
+export const CAMERA_MAX_VIEWS = 12;
+
+/** Camera sender limits: a channel of cameras must not cost screen-share bandwidth. */
+const CAMERA_OUTPUT: ScreenShareOutputSettings = { maxHeight: 720, maxFrameRate: 30, maxBitrate: 1_200_000, priority: "motion" };
+
+export interface ScreenShareControllerOptions {
+  /**
+   * Which streams this controller owns. A screen controller and a camera
+   * controller share one socket and the gateway's peer ids; every stream (and
+   * so every signal, which names its stream) belongs to exactly one of them.
+   */
+  kind?: ScreenShareKind;
+  maxViews?: number;
+}
+
+export function createScreenShareController(transport: ScreenShareTransport, options: ScreenShareControllerOptions = {}) {
+  const kind: ScreenShareKind = options.kind ?? "screen";
+  const maxViews = options.maxViews ?? SCREEN_SHARE_MAX_VIEWS;
+  /** Request ids this controller sent start with this, so an error finds its owner. */
+  const requestPrefix = kind === "camera" ? "camera-" : "screen-";
+  const ownsStream = (stream: ScreenShareStream) => (stream.kind ?? "screen") === kind;
   let screenShareIceServers: RTCIceServer[] = normalizeScreenShareIceServers();
   const screenShareStreams = reactive<ScreenShareStream[]>([]);
   const screenShareActive = ref(false);
@@ -123,6 +144,13 @@ export function createScreenShareController(transport: ScreenShareTransport) {
   const screenSharePeerStreams = new Map<string, MediaStream>();
   const screenSharePeerTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const screenShareLoggedIcePeers = new Set<string>();
+  // Peers are kept by role and remote peer id: the gateway gives a browser one
+  // peer id, so two people watching each other's stream (or cameras) have an
+  // owner connection and a viewer connection to the same remote peer id.
+  const ownerKey = (viewerPeerId: string) => `owner|${viewerPeerId}`;
+  const viewerKey = (ownerPeerId: string) => `viewer|${ownerPeerId}`;
+  /** The remote peer id a connection key names, as used on the wire. */
+  const wireOf = (key: string) => key.slice(key.indexOf("|") + 1);
   let screenShareRequestSequence = 0;
   let screenSharePendingStartId = "";
   let screenShareStartCancelled = false;
@@ -222,7 +250,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       const directFrameRate = screenShareStatsNumber(mediaStats, "framesPerSecond") ?? screenShareStatsNumber(trackStats, "framesPerSecond");
       const directBitrateKbps = screenShareStatsNumber(mediaStats, "bitrate") !== null ? (screenShareStatsNumber(mediaStats, "bitrate") as number) / 1_000 : null;
       return {
-        peerId,
+        peerId: wireOf(peerId),
         role,
         direction: role === "owner" ? "outbound" : "inbound",
         connectionState: peer.connectionState,
@@ -348,7 +376,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     const index = screenShareViews.findIndex(view => view.streamId === streamId);
     if (index < 0) return;
     const [view] = screenShareViews.splice(index, 1);
-    if (screenSharePeerRoles.get(view.peerId) === "viewer") closeScreenSharePeer(view.peerId);
+    closeScreenSharePeer(viewerKey(view.peerId));
     syncFocusedView();
   }
 
@@ -366,7 +394,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
   }
 
   function failScreenSharePeer(peerId: string, message?: string): void {
-    const view = screenSharePeerRoles.get(peerId) === "viewer" ? screenShareViews.find(candidate => candidate.peerId === peerId) : undefined;
+    const view = screenSharePeerRoles.get(peerId) === "viewer" ? screenShareViews.find(candidate => candidate.peerId === wireOf(peerId)) : undefined;
     const viewingStream = view ? screenShareStreams.find((stream) => stream.streamId === view.streamId) : undefined;
     if (view) sendScreenShareMessage({ type: "screenShareLeave", streamId: view.streamId });
     traceScreenShare("peer-failed", {
@@ -419,7 +447,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     // H.264 constrained-baseline profile advertised by browsers. Prefer the
     // universally supported VP8 profile for browser-to-native peers, while
     // keeping the higher-quality codec order for browser-to-browser sharing.
-    preferScreenShareCodecs(peer, role === "owner" && peerId.startsWith("ts-viewer-"));
+    preferScreenShareCodecs(peer, role === "owner" && wireOf(peerId).startsWith("ts-viewer-"));
     peer.onicecandidate = (event) => {
       if (!isCurrentPeer(peerId, peer) || !event.candidate) return;
       const candidate = event.candidate;
@@ -430,7 +458,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       sendScreenShareMessage({
         type: "screenShareSignal",
         streamId,
-        targetPeerId: peerId,
+        targetPeerId: wireOf(peerId),
         signal: {
           kind: "iceCandidate",
           candidate: candidate.candidate,
@@ -446,7 +474,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       const remote = event.streams[0] ?? screenSharePeerStreams.get(peerId) ?? new MediaStream();
       if (!event.streams[0]) remote.addTrack(event.track);
       screenSharePeerStreams.set(peerId, remote);
-      const view = screenShareViews.find(candidate => candidate.streamId === streamId && candidate.peerId === peerId);
+      const view = screenShareViews.find(candidate => candidate.streamId === streamId && candidate.peerId === wireOf(peerId));
       if (view) view.media = remote;
       syncFocusedView();
     };
@@ -556,22 +584,23 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     // Replace only this stream's viewer peer; other watched streams and our own
     // share keep their connections.
     dropView(stream.streamId);
-    if (screenSharePeerRoles.get(stream.ownerPeerId) === "viewer") closeScreenSharePeer(stream.ownerPeerId);
+    const key = viewerKey(stream.ownerPeerId);
+    closeScreenSharePeer(key);
     screenShareViews.push({ streamId: stream.streamId, peerId: stream.ownerPeerId, media: null });
     syncFocusedView(stream.streamId);
     screenShareErrorCode.value = "";
     screenShareError.value = "";
-    const peer = createScreenSharePeer(stream.streamId, stream.ownerPeerId, "viewer");
+    const peer = createScreenSharePeer(stream.streamId, key, "viewer");
     if (stream.source === "teamspeak") {
-      armScreenSharePeerTimer(stream.ownerPeerId);
+      armScreenSharePeerTimer(key);
       return;
     }
     try {
       const offer = await peer.createOffer();
-      if (!isCurrentPeer(stream.ownerPeerId, peer)) return;
+      if (!isCurrentPeer(key, peer)) return;
       await peer.setLocalDescription(offer);
-      if (!isCurrentPeer(stream.ownerPeerId, peer)) return;
-      armScreenSharePeerTimer(stream.ownerPeerId);
+      if (!isCurrentPeer(key, peer)) return;
+      armScreenSharePeerTimer(key);
       sendScreenShareMessage({
         type: "screenShareSignal",
         streamId: stream.streamId,
@@ -579,7 +608,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
         signal: { kind: "offer", sdp: peer.localDescription?.sdp ?? offer.sdp ?? "" },
       });
     } catch {
-      if (isCurrentPeer(stream.ownerPeerId, peer)) failScreenSharePeer(stream.ownerPeerId, "无法创建屏幕共享直连请求，请重试");
+      if (isCurrentPeer(key, peer)) failScreenSharePeer(key, "无法创建屏幕共享直连请求，请重试");
     }
   }
 
@@ -597,14 +626,15 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       return;
     }
     traceScreenShare("native-viewer-request-accepted", { streamId, peerId });
-    closeScreenSharePeer(peerId);
-    const peer = createScreenSharePeer(streamId, peerId, "owner");
+    const key = ownerKey(peerId);
+    closeScreenSharePeer(key);
+    const peer = createScreenSharePeer(streamId, key, "owner");
     try {
       const offer = await peer.createOffer();
-      if (!isCurrentPeer(peerId, peer)) return;
+      if (!isCurrentPeer(key, peer)) return;
       await peer.setLocalDescription(offer);
-      if (!isCurrentPeer(peerId, peer)) return;
-      armScreenSharePeerTimer(peerId);
+      if (!isCurrentPeer(key, peer)) return;
+      armScreenSharePeerTimer(key);
       traceScreenShare("native-viewer-offer-ready", { streamId, peerId });
       sendScreenShareMessage({
         type: "screenShareSignal",
@@ -614,7 +644,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       });
     } catch (error: unknown) {
       traceScreenShare("native-viewer-offer-failed", { streamId, peerId, errorName: error instanceof Error ? error.name : "unknown" });
-      if (isCurrentPeer(peerId, peer)) failScreenSharePeer(peerId, "无法为 TeamSpeak 观看端创建屏幕共享直连");
+      if (isCurrentPeer(key, peer)) failScreenSharePeer(key, "无法为 TeamSpeak 观看端创建屏幕共享直连");
     }
   }
 
@@ -625,21 +655,24 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       traceScreenShare("signal-ignored-stream-not-found", { streamId, peerId: fromPeerId, signalKind: signal.kind });
       return;
     }
+    // A signal about one's own stream comes from a viewer; any other from its owner.
+    const ownStream = screenShareActiveStreamId.value === streamId && stream.ownerPeerId === screenShareLocalPeerId();
+    const key = ownStream ? ownerKey(fromPeerId) : viewerKey(fromPeerId);
     if (signal.kind === "close") {
-      closeScreenSharePeer(fromPeerId);
+      closeScreenSharePeer(key);
       if (screenShareViews.some(view => view.streamId === streamId && view.peerId === fromPeerId)) dropView(streamId);
       return;
     }
     if (signal.kind === "iceCandidate") {
       if (!signal.candidate) return;
-      const peer = screenSharePeers.get(fromPeerId);
+      const peer = screenSharePeers.get(key);
       const candidate: RTCIceCandidateInit = {
         candidate: signal.candidate,
         ...(signal.sdpMid !== undefined ? { sdpMid: signal.sdpMid } : {}),
         ...(signal.sdpMLineIndex !== undefined ? { sdpMLineIndex: signal.sdpMLineIndex } : {}),
       };
       if (!peer?.remoteDescription) {
-        screenSharePendingIce.set(fromPeerId, [...(screenSharePendingIce.get(fromPeerId) ?? []), candidate]);
+        screenSharePendingIce.set(key, [...(screenSharePendingIce.get(key) ?? []), candidate]);
         return;
       }
       try { await peer.addIceCandidate(candidate); } catch { /* stale ICE is not fatal */ }
@@ -647,69 +680,69 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     }
 
     if (stream.source === "teamspeak" && screenShareViews.some(view => view.streamId === streamId) && fromPeerId === stream.ownerPeerId && signal.kind === "offer") {
-      const peer = screenSharePeers.get(fromPeerId) ?? createScreenSharePeer(streamId, fromPeerId, "viewer");
+      const peer = screenSharePeers.get(key) ?? createScreenSharePeer(streamId, key, "viewer");
       if (!signal.sdp) return;
-      armScreenSharePeerTimer(fromPeerId);
+      armScreenSharePeerTimer(key);
       try {
         await peer.setRemoteDescription({ type: "offer", sdp: signal.sdp });
-        if (!isCurrentPeer(fromPeerId, peer)) return;
-        await flushScreenShareCandidates(fromPeerId, peer);
-        if (!isCurrentPeer(fromPeerId, peer)) return;
+        if (!isCurrentPeer(key, peer)) return;
+        await flushScreenShareCandidates(key, peer);
+        if (!isCurrentPeer(key, peer)) return;
         const answer = await peer.createAnswer();
-        if (!isCurrentPeer(fromPeerId, peer)) return;
+        if (!isCurrentPeer(key, peer)) return;
         await peer.setLocalDescription(answer);
-        if (!isCurrentPeer(fromPeerId, peer)) return;
+        if (!isCurrentPeer(key, peer)) return;
         sendScreenShareMessage({ type: "screenShareSignal", streamId, targetPeerId: fromPeerId, signal: { kind: "answer", sdp: answer.sdp ?? "" } });
       } catch {
-        if (isCurrentPeer(fromPeerId, peer)) failScreenSharePeer(fromPeerId, "无法回复 TeamSpeak 屏幕共享的直连请求");
+        if (isCurrentPeer(key, peer)) failScreenSharePeer(key, "无法回复 TeamSpeak 屏幕共享的直连请求");
       }
       return;
     }
 
     if (stream.source === "browser" && screenShareActiveStreamId.value === streamId && stream.ownerPeerId === screenShareLocalPeerId() && fromPeerId.startsWith("ts-viewer-") && signal.kind === "answer") {
-      const peer = screenSharePeers.get(fromPeerId);
+      const peer = screenSharePeers.get(key);
       if (!peer || !signal.sdp) return;
       try {
         await peer.setRemoteDescription({ type: "answer", sdp: signal.sdp });
-        if (!isCurrentPeer(fromPeerId, peer)) return;
-        await flushScreenShareCandidates(fromPeerId, peer);
-        if (!isCurrentPeer(fromPeerId, peer)) return;
+        if (!isCurrentPeer(key, peer)) return;
+        await flushScreenShareCandidates(key, peer);
+        if (!isCurrentPeer(key, peer)) return;
       } catch {
-        if (isCurrentPeer(fromPeerId, peer)) failScreenSharePeer(fromPeerId, "TeamSpeak 观看端无法完成屏幕共享直连协商");
+        if (isCurrentPeer(key, peer)) failScreenSharePeer(key, "TeamSpeak 观看端无法完成屏幕共享直连协商");
       }
       return;
     }
 
     if (stream.source === "browser" && stream.ownerPeerId === fromPeerId && signal.kind === "answer") {
-      const peer = screenSharePeers.get(fromPeerId);
+      const peer = screenSharePeers.get(key);
       if (!peer || !signal.sdp) return;
       try {
         await peer.setRemoteDescription({ type: "answer", sdp: signal.sdp });
-        if (!isCurrentPeer(fromPeerId, peer)) return;
-        await flushScreenShareCandidates(fromPeerId, peer);
-        if (!isCurrentPeer(fromPeerId, peer)) return;
+        if (!isCurrentPeer(key, peer)) return;
+        await flushScreenShareCandidates(key, peer);
+        if (!isCurrentPeer(key, peer)) return;
       } catch {
-        if (isCurrentPeer(fromPeerId, peer)) failScreenSharePeer(fromPeerId, "观看端无法完成屏幕共享直连协商");
+        if (isCurrentPeer(key, peer)) failScreenSharePeer(key, "观看端无法完成屏幕共享直连协商");
       }
       return;
     }
 
     if (screenShareActiveStreamId.value === streamId && stream.ownerPeerId === screenShareLocalPeerId()) {
-      const peer = screenSharePeers.get(fromPeerId) ?? createScreenSharePeer(streamId, fromPeerId, "owner");
+      const peer = screenSharePeers.get(key) ?? createScreenSharePeer(streamId, key, "owner");
       if (signal.kind !== "offer" || !signal.sdp) return;
-      armScreenSharePeerTimer(fromPeerId);
+      armScreenSharePeerTimer(key);
       try {
         await peer.setRemoteDescription({ type: "offer", sdp: signal.sdp });
-        if (!isCurrentPeer(fromPeerId, peer)) return;
-        await flushScreenShareCandidates(fromPeerId, peer);
-        if (!isCurrentPeer(fromPeerId, peer)) return;
+        if (!isCurrentPeer(key, peer)) return;
+        await flushScreenShareCandidates(key, peer);
+        if (!isCurrentPeer(key, peer)) return;
         const answer = await peer.createAnswer();
-        if (!isCurrentPeer(fromPeerId, peer)) return;
+        if (!isCurrentPeer(key, peer)) return;
         await peer.setLocalDescription(answer);
-        if (!isCurrentPeer(fromPeerId, peer)) return;
+        if (!isCurrentPeer(key, peer)) return;
         sendScreenShareMessage({ type: "screenShareSignal", streamId, targetPeerId: fromPeerId, signal: { kind: "answer", sdp: answer.sdp ?? "" } });
       } catch {
-        if (isCurrentPeer(fromPeerId, peer)) failScreenSharePeer(fromPeerId, "共享端无法完成观看者的直连协商");
+        if (isCurrentPeer(key, peer)) failScreenSharePeer(key, "共享端无法完成观看者的直连协商");
       }
     }
   }
@@ -836,6 +869,43 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       screenShareError.value = "当前浏览器不支持屏幕共享";
       return;
     }
+    await startCapture(settings, "我的屏幕", () => navigator.mediaDevices.getDisplayMedia({
+      // Capture the selected surface at its native browser-provided size.
+      // Output resolution/FPS are applied later on each RTCRtpSender so the
+      // user's desktop or application window is never resized or sampled at
+      // the output limit.
+      video: true,
+      // restrictOwnAudio keeps this page's own playback (the channel's
+      // voices) out of captured system audio where the browser supports it
+      // (Chromium 140+); elsewhere it is ignored.
+      audio: audio ? { restrictOwnAudio: true } : false,
+      // These are preferences: when the selected surface is a window, ask
+      // for that window's audio; when it is a monitor, allow system audio.
+      // The browser/OS may still return no audio or ignore the preference.
+      systemAudio: "include",
+      windowAudio: "window",
+      selfBrowserSurface: "exclude",
+    } as unknown as DisplayMediaStreamOptions));
+  }
+
+  /** Turn the camera on (a camera controller only); video without sound, the voice already carries it. */
+  async function startCamera(deviceId = ""): Promise<void> {
+    if (!transport.isOpen() || screenShareActive.value || screenShareStarting.value) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      screenShareErrorCode.value = "CAMERA_UNSUPPORTED";
+      screenShareError.value = "当前浏览器不支持摄像头";
+      return;
+    }
+    await startCapture(CAMERA_OUTPUT, "摄像头", () => navigator.mediaDevices.getUserMedia({
+      video: {
+        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+        width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 },
+      },
+      audio: false,
+    }));
+  }
+
+  async function startCapture(settings: ScreenShareOutputSettings | undefined, name: string, acquire: () => Promise<MediaStream>): Promise<void> {
     screenShareErrorCode.value = "";
     screenShareError.value = "";
     const startGeneration = ++screenShareStartGeneration;
@@ -844,23 +914,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     screenShareOutputSettings = settings ?? null;
     let acquiredStream: MediaStream | null = null;
     try {
-      const stream = acquiredStream = await navigator.mediaDevices.getDisplayMedia({
-        // Capture the selected surface at its native browser-provided size.
-        // Output resolution/FPS are applied later on each RTCRtpSender so the
-        // user's desktop or application window is never resized or sampled at
-        // the output limit.
-        video: true,
-        // restrictOwnAudio keeps this page's own playback (the channel's
-        // voices) out of captured system audio where the browser supports it
-        // (Chromium 140+); elsewhere it is ignored.
-        audio: audio ? { restrictOwnAudio: true } : false,
-        // These are preferences: when the selected surface is a window, ask
-        // for that window's audio; when it is a monitor, allow system audio.
-        // The browser/OS may still return no audio or ignore the preference.
-        systemAudio: "include",
-        windowAudio: "window",
-        selfBrowserSurface: "exclude",
-      } as unknown as DisplayMediaStreamOptions);
+      const stream = acquiredStream = await acquire();
       if (startGeneration !== screenShareStartGeneration || !screenShareStarting.value || screenShareStartCancelled) {
         stream.getTracks().forEach((track) => track.stop());
         return;
@@ -872,11 +926,12 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       screenSharePreviewStream.value = stream;
       if ((settings?.hdrCorrection ?? 0) > 0) startScreenShareHdr(settings!.hdrCorrection!, settings!.hdrCalibration ?? null);
       screenShareRequestSequence = (screenShareRequestSequence + 1) % 1_000_000;
-      screenSharePendingStartId = `screen-start-${screenShareRequestSequence}`;
+      screenSharePendingStartId = `${requestPrefix}start-${screenShareRequestSequence}`;
       for (const track of stream.getTracks()) track.addEventListener("ended", () => {
         if (screenShareLocalStream === stream) stopScreenShare();
       }, { once: true });
-      sendScreenShareMessage({ type: "screenShareStart", requestId: screenSharePendingStartId, audio: stream.getAudioTracks().length > 0, name: "我的屏幕" });
+      sendScreenShareMessage({ type: "screenShareStart", requestId: screenSharePendingStartId, audio: stream.getAudioTracks().length > 0, name,
+        ...(kind === "camera" ? { kind } : {}) });
     } catch (error: unknown) {
       if (acquiredStream && screenShareLocalStream === acquiredStream) disposeScreenShareHdr();
       acquiredStream?.getTracks().forEach(track => track.stop());
@@ -887,7 +942,12 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       screenShareStarting.value = false;
       screenSharePendingStartId = "";
       screenShareStartCancelled = false;
-      if (error instanceof DOMException && error.name === "NotAllowedError") screenShareError.value = "你取消了屏幕共享或浏览器未授予权限";
+      if (kind === "camera") {
+        screenShareErrorCode.value = error instanceof DOMException && error.name === "NotAllowedError" ? "CAMERA_DENIED"
+          : error instanceof DOMException && (error.name === "NotFoundError" || error.name === "OverconstrainedError") ? "CAMERA_NOT_FOUND"
+            : error instanceof DOMException && error.name === "NotReadableError" ? "CAMERA_BUSY" : "CAMERA_FAILED";
+        screenShareError.value = "无法打开摄像头";
+      } else if (error instanceof DOMException && error.name === "NotAllowedError") screenShareError.value = "你取消了屏幕共享或浏览器未授予权限";
       else screenShareError.value = "无法开始屏幕共享，请检查浏览器权限";
     }
   }
@@ -915,12 +975,12 @@ export function createScreenShareController(transport: ScreenShareTransport) {
     screenShareErrorCode.value = "";
     screenShareError.value = "";
     if (screenShareViews.some(view => view.streamId === streamId)) { focusScreenShare(streamId); return; }
-    while (screenShareViews.length >= SCREEN_SHARE_MAX_VIEWS) {
+    while (screenShareViews.length >= maxViews) {
       const oldest = screenShareViews.find(view => view.streamId !== screenShareViewingStreamId.value) ?? screenShareViews[0];
       leaveScreenShare(oldest.streamId);
     }
     screenShareRequestSequence = (screenShareRequestSequence + 1) % 1_000_000;
-    const requestId = `screen-join-${screenShareRequestSequence}`;
+    const requestId = `${requestPrefix}join-${screenShareRequestSequence}`;
     screenShareJoinRequests.set(requestId, streamId);
     if (screenShareJoinRequests.size > 32) screenShareJoinRequests.delete(screenShareJoinRequests.keys().next().value!);
     sendScreenShareMessage({ type: "screenShareJoin", streamId, requestId });
@@ -962,7 +1022,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
 
   function upsertScreenShareStream(raw: unknown): ScreenShareStream | null {
     const stream = parseScreenShareStream(raw);
-    if (!stream) return null;
+    if (!stream || !ownsStream(stream)) return null;
     const index = screenShareStreams.findIndex((candidate) => candidate.streamId === stream.streamId);
     if (index >= 0) screenShareStreams.splice(index, 1, stream);
     else screenShareStreams.push(stream);
@@ -1048,12 +1108,16 @@ export function createScreenShareController(transport: ScreenShareTransport) {
         }
         break;
       case "screenShareViewerLeft":
-        if (typeof msg.viewerPeerId === "string") closeScreenSharePeer(msg.viewerPeerId);
+        if (typeof msg.viewerPeerId === "string" && screenShareStreams.some(stream => stream.streamId === msg.streamId)) closeScreenSharePeer(ownerKey(msg.viewerPeerId));
         break;
       case "screenShareLeft":
         dropView(String(msg.streamId || ""));
         break;
       case "screenShareError":
+        // An error answering a request belongs to the controller that sent it;
+        // one without a request id (signaling) goes to the screen controller,
+        // and to the camera controller only while it is starting.
+        if (typeof msg.requestId === "string" ? !msg.requestId.startsWith(requestPrefix) : kind === "camera" && !screenShareStarting.value) return false;
         screenShareErrorCode.value = typeof msg.code === "string" ? msg.code : "";
         screenShareError.value = String(msg.message || "屏幕共享操作失败");
         if (screenShareStarting.value) {
@@ -1097,6 +1161,7 @@ export function createScreenShareController(transport: ScreenShareTransport) {
       screenShareRemoteVolume,
       screenShareWebRtcStats,
       startScreenShare,
+      startCamera,
       stopScreenShare,
       updateScreenShareOutputSettings,
       measureHdrCalibration,

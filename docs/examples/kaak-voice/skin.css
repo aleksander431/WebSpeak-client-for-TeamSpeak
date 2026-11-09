@@ -2352,7 +2352,7 @@
   background: #303236;
   pointer-events: none;
 }
-[data-ws-plugin-part="kaak-workspace.voice-dock-share"] { grid-column: 1 / 4; grid-row: 1; min-width: 0; }
+[data-ws-plugin-part="kaak-workspace.voice-dock-share"] { grid-column: 1 / 3; grid-row: 1; min-width: 0; }
 [data-ws-plugin-part="kaak-workspace.desktop-room-controls"] { display: contents; }
 [data-ws-plugin-part="kaak-workspace.desktop-room-controls"] .desktop-room-control {
   position: relative;
@@ -2422,6 +2422,21 @@
 }
 [data-ws-plugin-part="kaak-workspace.desktop-room-noise-suppression"][aria-pressed="true"] { color: #fff; background: #6cbf00; }
 [data-ws-plugin-part="kaak-workspace.desktop-room-accompaniment"][aria-pressed="true"] { background: #477f00; box-shadow: inset 0 0 0 1px #9be031; }
+/* Camera: beside the share button, dark while off and green while on. */
+[data-ws-plugin-part="kaak-workspace.desktop-room-camera"] {
+  z-index: 1;
+  grid-column: 3;
+  grid-row: 1;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 9px;
+  color: #d8dde5;
+  background: #303238;
+}
+[data-ws-plugin-part="kaak-workspace.desktop-room-controls"] [data-ws-plugin-part="kaak-workspace.desktop-room-camera"][aria-pressed="true"] { color: #fff; background: #6cbf00; }
+[data-ws-plugin-part="kaak-workspace.desktop-room-controls"] [data-ws-plugin-part="kaak-workspace.desktop-room-camera"][aria-pressed="true"]:hover { color: #fff; background: #7ad600; }
 [data-ws-plugin-part="kaak-workspace.desktop-room-controls"] [data-ws-plugin-part="kaak-workspace.desktop-room-settings"]:hover,
 [data-ws-plugin-part="kaak-workspace.desktop-room-controls"] [data-ws-plugin-part="kaak-workspace.desktop-room-settings"]:focus-visible { color: #eff0f3; background: #303238; }
 [data-ws-plugin-part="kaak-workspace.desktop-room-controls"] .desktop-room-control:hover,
@@ -2546,7 +2561,7 @@
     row-gap: 12px;
   }
   [data-ws-plugin-part="kaak-workspace.voice-dock-actions"]::after { top: 39px; }
-  [data-ws-plugin-part="kaak-workspace.voice-dock-share"] { grid-column: 1 / 4; grid-row: 1; }
+  [data-ws-plugin-part="kaak-workspace.voice-dock-share"] { grid-column: 1 / 3; grid-row: 1; }
   [data-ws-plugin-part="kaak-workspace.voice-dock-share"] .skin-runtime-screen-share-start,
   [data-ws-plugin-part="kaak-workspace.voice-dock-share"] [data-ws-plugin-part="kaak-workspace.screen-share-stop"] {
     min-height: 34px;
@@ -3625,7 +3640,7 @@
   min-width: 0;
 }
 [data-ws-plugin-part="kaak-workspace.voice-dock-actions"]::after { top: 40px; background: #35373c; }
-[data-ws-plugin-part="kaak-workspace.voice-dock-share"] { grid-column: 1 / 4; grid-row: 1; min-width: 0; }
+[data-ws-plugin-part="kaak-workspace.voice-dock-share"] { grid-column: 1 / 3; grid-row: 1; min-width: 0; }
 [data-ws-plugin-part="kaak-workspace.voice-dock-heading"] [data-ws-plugin-part="kaak-workspace.disconnect-control"] { width: 25px; min-width: 25px; height: 25px; min-height: 25px; color: #ff4c49; }
 [data-ws-plugin-part="kaak-workspace.voice-dock-share"] .skin-runtime-screen-share-start,
 [data-ws-plugin-part="kaak-workspace.voice-dock-share"] [data-ws-plugin-part="kaak-workspace.screen-share-stop"] {
@@ -3854,7 +3869,7 @@
   [data-ws-plugin-part="kaak-workspace.voice-dock-heading"] { min-height: 22px; }
   [data-ws-plugin-part="kaak-workspace.voice-dock-actions"] { grid-template-columns: minmax(0, 1fr) 28px 28px 36px; grid-template-rows: 29px 26px; column-gap: 6px; row-gap: 21px; }
   [data-ws-plugin-part="kaak-workspace.voice-dock-actions"]::after { top: 40px; }
-  [data-ws-plugin-part="kaak-workspace.voice-dock-share"] { grid-column: 1 / 4; grid-row: 1; }
+  [data-ws-plugin-part="kaak-workspace.voice-dock-share"] { grid-column: 1 / 3; grid-row: 1; }
   [data-ws-plugin-part="kaak-workspace.voice-dock-share"] .skin-runtime-screen-share-start,
   [data-ws-plugin-part="kaak-workspace.voice-dock-share"] [data-ws-plugin-part="kaak-workspace.screen-share-stop"] { min-height: 29px; height: 29px; padding-inline: 8px; font-size: 12px; }
 }
@@ -4347,6 +4362,8 @@
   }
 
   [data-ws-plugin-part="kaak-workspace.mobile-room-menu"] > button:hover { background: #3a3d43; }
+  [data-ws-plugin-part="kaak-workspace.mobile-room-camera"][aria-pressed="true"] { color: #9be031; }
+  [data-ws-plugin-part="kaak-workspace.mobile-room-camera"][aria-pressed="true"]::after { content: "●"; margin-left: auto; font-size: 10px; }
 
   [data-ws-plugin-part="kaak-workspace.workspace"][data-session-connected="true"]:not([data-mobile-channels="true"]) [data-ws-plugin-part="kaak-workspace.mobile-room-head"] {
     display: block;

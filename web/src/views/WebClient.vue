@@ -746,6 +746,7 @@
                 :show-screen-share="true"
                 :sharing="memberSharingState"
                 :controls="screenShareControls"
+                :camera="memberCamera"
                 :is-speaking="isSpeaking"
                 :avatar-style="avatarStyle"
                 :avatar-initial="avatarInitial"
@@ -788,6 +789,18 @@
                   @click="toggleOutputMute"
                   ><Icon :name="outputMuted ? 'volume-off' : 'volume'" :size="18" /><span>{{ t("speaker") }}</span></button
                 >
+                <button
+                  v-if="cameraSupported"
+                  type="button"
+                  class="mobile-voice-toggle mobile-camera-toggle"
+                  :class="{ active: cameraActive || cameraStarting }"
+                  data-ws-part="voice.mobile-camera-toggle"
+                  :aria-label="cameraActive || cameraStarting ? t('cameraStop') : t('cameraStart')"
+                  :title="cameraActive || cameraStarting ? t('cameraStop') : t('cameraStart')"
+                  :aria-pressed="cameraActive || cameraStarting"
+                  @click="toggleCamera"
+                  ><Icon :name="cameraActive || cameraStarting ? 'video-off' : 'video'" :size="18"
+                /></button>
                 <button type="button" class="mobile-voice-leave" :aria-label="t('exit')" :title="t('exit')" @click="leaveVoiceWorkspace"><Icon name="door" :size="17" /></button
                 >
               </div>
@@ -1278,6 +1291,13 @@ const {
   checkSupport,
   clearError,
   measureVoiceAudioStatus,
+  cameraActive,
+  cameraStarting,
+  cameraErrorCode,
+  cameraSupported,
+  cameraMedia,
+  startCamera,
+  stopCamera,
 } = useVoiceWebSocket();
 const performance = useWebClientPerformance(computed(() => voiceState.connected), measureVoiceAudioStatus);
 
@@ -1620,6 +1640,17 @@ const isWatchingMemberScreen = (member: ChannelMember) => {
   return Boolean(streamId && screenShareViewedStreamIds.value.includes(streamId));
 };
 const toggleMemberScreen = (member: ChannelMember) => screenShareControls.toggleForMember(member);
+/** Camera on or off; a failure is shown as a toast. */
+function toggleCamera(): void {
+  if (!voiceState.connected) return;
+  if (cameraActive.value || cameraStarting.value) stopCamera();
+  else void startCamera();
+}
+const CAMERA_ERROR_KEYS: Record<string, string> = {
+  CAMERA_DENIED: "cameraErrorDenied", CAMERA_NOT_FOUND: "cameraErrorNotFound", CAMERA_BUSY: "cameraErrorBusy", CAMERA_UNSUPPORTED: "cameraErrorUnsupported",
+};
+watch(cameraErrorCode, code => { if (code) showToast(t(CAMERA_ERROR_KEYS[code] ?? "cameraErrorFailed")); });
+const memberCamera = { cameraActive, cameraStarting, cameraMedia, cameraSupported, toggleCamera };
 const memberSharingState = { screenShareActive, screenShareStarting, screenShareViewingStreamId, screenShareViewedStreamIds, screenSharePreviewStream, settingsOpen: screenShareSettingsOpen };
 // Desktop client: global hotkeys and tray actions, and state for the tray icon.
 useDesktopBridge({
@@ -2065,6 +2096,7 @@ const skinPluginContext = computed(() => ({
       active: screenShareActive.value,
       starting: screenShareStarting.value,
       viewing: screenShareViewing.value,
+      cameraActive: cameraActive.value,
     },
     streams: screenShareStreams.map((stream) => ({
       streamId: stream.streamId,
@@ -2144,6 +2176,7 @@ const skinPluginActions = {
   },
   "voice.stopScreenShare": () => { if (screenShareActive.value) stopScreenShare(); },
   "voice.openWhiteboard": () => { if (voiceState.connected) openWhiteboard(); },
+  "voice.toggleCamera": () => toggleCamera(),
   "voice.joinScreenShare": (args: Record<string, string | number | boolean>) => {
     if (!voiceState.connected || typeof args.streamId !== "string") return;
     if (screenShareStreams.some((stream) => stream.streamId === args.streamId)) joinScreenShare(args.streamId);
@@ -2333,6 +2366,7 @@ const skinPluginWidgets = {
     showScreenShare: options?.screenShare !== false,
     sharing: options?.screenShare === false ? undefined : memberSharingState,
     controls: options?.screenShare === false ? undefined : screenShareControls,
+    camera: memberCamera,
     isSpeaking,
     avatarStyle,
     avatarInitial,

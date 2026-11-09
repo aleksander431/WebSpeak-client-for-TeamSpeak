@@ -204,7 +204,7 @@ export default defineComponent({
     }
 
     function interpolate(value: string, context: SafeContext, state: Record<string, Scalar>): string {
-      return value.replace(/\{\{\s*([a-z][a-z0-9]*(?:\.[a-z][a-zA-Z0-9]*){0,5})\s*\}\}/g, (_match, path: string) => {
+      return value.replace(/\{\{\s*([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*){0,5})\s*\}\}/g, (_match, path: string) => {
         const resolved = resolvePath(path, context, state);
         return typeof resolved === "string" || typeof resolved === "number" || typeof resolved === "boolean" ? String(resolved) : "";
       });
@@ -214,7 +214,7 @@ export default defineComponent({
       const args: Record<string, Scalar> = {};
       for (const [key, value] of Object.entries(definition.args)) {
         if (typeof value !== "string") { args[key] = value; continue; }
-        const exact = /^\{\{\s*([a-z][a-z0-9]*(?:\.[a-z][a-zA-Z0-9]*){0,5})\s*\}\}$/.exec(value);
+        const exact = /^\{\{\s*([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*){0,5})\s*\}\}$/.exec(value);
         const resolved = exact ? resolvePath(exact[1], context, state) : interpolate(value, context, state);
         if (typeof resolved === "string" || typeof resolved === "number" || typeof resolved === "boolean") args[key] = resolved;
       }

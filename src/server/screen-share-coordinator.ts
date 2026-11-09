@@ -61,17 +61,20 @@ export class ScreenShareCoordinator {
     }
 
     if (message.type === "screenShareStart") {
-      if ([...this.screenStreams.values()].some((stream) => stream.source === "browser" && stream.ownerEntryId === entry.id)) {
-        sendJson({ type: "screenShareError", requestId: message.requestId, code: "SCREEN_SHARE_ALREADY_ACTIVE", message: "你已经在共享屏幕" });
+      // One screen and one camera per browser; a camera is never published to TeamSpeak.
+      const camera = message.kind === "camera";
+      if ([...this.screenStreams.values()].some((stream) => stream.source === "browser" && stream.ownerEntryId === entry.id && (stream.kind === "camera") === camera)) {
+        sendJson({ type: "screenShareError", requestId: message.requestId, code: "SCREEN_SHARE_ALREADY_ACTIVE", message: camera ? "摄像头已开启" : "你已经在共享屏幕" });
         return;
       }
       const stream: ScreenStreamRecord = {
-        streamId: `screen-${randomUUID()}`,
+        streamId: `${camera ? "camera" : "screen"}-${randomUUID()}`,
         source: "browser",
+        ...(camera ? { kind: "camera" as const } : {}),
         ownerPeerId: entry.screenPeerId,
         ownerClientId: entry.tsClient.getClientId() || undefined,
         ownerNickname: entry.nickname,
-        name: message.name?.trim() || `${entry.nickname} 的屏幕`,
+        name: message.name?.trim() || (camera ? `${entry.nickname} 的摄像头` : `${entry.nickname} 的屏幕`),
         audio: message.audio === true,
         createdAt: Date.now(),
         viewerCount: 0,
@@ -80,7 +83,7 @@ export class ScreenShareCoordinator {
         channelId: entry.tsClient.getChannelId(),
         ownerEntryId: entry.id,
         viewerEntryIds: new Map(),
-        teamSpeakPublisherEntryId: entry.id,
+        ...(camera ? {} : { teamSpeakPublisherEntryId: entry.id }),
         nativeViewerClids: new Set(),
       };
       this.screenStreams.set(screenStreamKey(stream.targetKey, stream.streamId), stream);
@@ -97,7 +100,7 @@ export class ScreenShareCoordinator {
         stream: this.describeScreenStream(stream),
         owner: false,
       }, entry.id);
-      void this.publishBrowserScreenStream(entry, stream);
+      if (!camera) void this.publishBrowserScreenStream(entry, stream);
       return;
     }
 
@@ -243,6 +246,7 @@ export class ScreenShareCoordinator {
     return {
       streamId: stream.streamId,
       source: stream.source,
+      ...(stream.kind === "camera" ? { kind: "camera" as const } : {}),
       ownerPeerId: stream.ownerPeerId,
       ...(typeof stream.ownerClientId === "number" ? { ownerClientId: stream.ownerClientId } : {}),
       ownerNickname: stream.ownerNickname,

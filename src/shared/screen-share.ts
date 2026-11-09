@@ -102,9 +102,16 @@ export interface ScreenShareViewerDescription {
   avatar?: string;
 }
 
+export type ScreenShareKind = "screen" | "camera";
+
 export interface ScreenShareStreamDescription {
   streamId: string;
   source: "browser" | "teamspeak";
+  /**
+   * What a browser stream shows: a shared screen (the default, also for every
+   * TeamSpeak stream) or a camera. A browser may run one of each at once.
+   */
+  kind?: ScreenShareKind;
   ownerPeerId: string;
   /** TeamSpeak client id used to match a stream to the member card. */
   ownerClientId?: number;
@@ -125,6 +132,7 @@ export type ScreenShareClientMessage =
       requestId?: string;
       name?: string;
       audio?: boolean;
+      kind?: ScreenShareKind;
     }
   | {
       type: "screenShareStop";
@@ -176,11 +184,13 @@ export function parseScreenShareMessage(raw: string): ScreenShareMessageParseRes
       const name = value.name === undefined ? undefined : parseName(value.name);
       if (name === false) return invalid("INVALID_SCREEN_SHARE_NAME", "屏幕共享名称无效");
       if (value.audio !== undefined && typeof value.audio !== "boolean") return invalid("INVALID_SCREEN_SHARE_AUDIO", "共享音频选项无效");
+      if (value.kind !== undefined && value.kind !== "screen" && value.kind !== "camera") return invalid("INVALID_SCREEN_SHARE_KIND", "共享类型无效");
       return {
         type: "screenShareStart",
         ...(requestId ? { requestId } : {}),
         ...(name ? { name } : {}),
         ...(value.audio === true ? { audio: true } : {}),
+        ...(value.kind === "camera" ? { kind: "camera" as const } : {}),
       };
     }
     case "screenShareStop":

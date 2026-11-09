@@ -131,7 +131,7 @@ export type SkinPluginAction =
   | "audio.toggleNoiseSuppression" | "audio.toggleAccompaniment"
   | "voice.connect" | "voice.disconnect" | "voice.setAway" | "voice.setWhisperActive"
   | "voice.startScreenShare" | "voice.stopScreenShare" | "voice.joinScreenShare" | "voice.leaveScreenShare"
-  | "voice.openWhiteboard";
+  | "voice.openWhiteboard" | "voice.toggleCamera";
 
 export interface SkinPluginActionDefinition {
   type: SkinPluginAction;
@@ -227,11 +227,11 @@ const PASSIVE_EVENTS = new Set<string>(["focus", "blur", "pointerenter", "pointe
 const ACTIONS = new Set<string>([
   "ui.setState", "ui.toggleState", "session.copyInviteLink", "voice.joinChannel", "favorites.switch", "quickServers.switch", "chat.sendMessage", "chat.togglePanel",
   "voice.toggleMicrophone", "voice.toggleOutputMute", "voice.setOutputVolume", "audio.openSettings", "audio.toggleNoiseSuppression", "audio.toggleAccompaniment", "voice.connect", "voice.disconnect", "voice.setAway", "voice.setWhisperActive",
-  "voice.startScreenShare", "voice.stopScreenShare", "voice.joinScreenShare", "voice.leaveScreenShare", "voice.openWhiteboard",
+  "voice.startScreenShare", "voice.stopScreenShare", "voice.joinScreenShare", "voice.leaveScreenShare", "voice.openWhiteboard", "voice.toggleCamera",
 ]);
 const V3_ACTIONS = new Set<string>([
   "ui.toggleState", "session.copyInviteLink", "chat.togglePanel", "voice.toggleMicrophone", "voice.toggleOutputMute", "voice.setOutputVolume", "audio.openSettings", "audio.toggleNoiseSuppression", "audio.toggleAccompaniment", "voice.connect", "voice.disconnect", "voice.setAway",
-  "voice.setWhisperActive", "voice.startScreenShare", "voice.stopScreenShare", "voice.joinScreenShare", "voice.leaveScreenShare", "voice.openWhiteboard",
+  "voice.setWhisperActive", "voice.startScreenShare", "voice.stopScreenShare", "voice.joinScreenShare", "voice.leaveScreenShare", "voice.openWhiteboard", "voice.toggleCamera",
 ]);
 const PERMISSIONS = new Set<string>(Object.keys(SKIN_PLUGIN_PERMISSIONS));
 const HOST_WIDGETS = new Set<string>(SKIN_PLUGIN_HOST_WIDGETS);
@@ -255,6 +255,7 @@ const ACTION_ARGS: Record<SkinPluginAction, ReadonlySet<string>> = {
   "voice.setAway": new Set(["away", "message"]),
   "voice.setWhisperActive": new Set(["active"]),
   "voice.startScreenShare": new Set([]),
+  "voice.toggleCamera": new Set([]),
   "voice.stopScreenShare": new Set([]),
   "voice.joinScreenShare": new Set(["streamId"]),
   "voice.leaveScreenShare": new Set([]),
@@ -280,6 +281,7 @@ const ACTION_PERMISSION: Record<SkinPluginAction, SkinPluginPermission | null> =
   "voice.setAway": "voice.presence.write",
   "voice.setWhisperActive": "voice.whisper.control",
   "voice.startScreenShare": "voice.screenShare.control",
+  "voice.toggleCamera": "voice.screenShare.control",
   "voice.stopScreenShare": "voice.screenShare.control",
   "voice.joinScreenShare": "voice.screenShare.control",
   "voice.leaveScreenShare": "voice.screenShare.control",
@@ -314,7 +316,7 @@ const SESSION_STATUS_FIELDS = new Set(["connected", "connecting", "connectionSta
 const CONTEXT_FIELDS: Record<string, ReadonlySet<string>> = {
   "chat.status": new Set(["panelOpen", "tab", "tabLabel"]),
   "audio.status": new Set(["microphoneMuted", "outputMuted", "noiseSuppressionEnabled", "accompanimentActive"]),
-  "screenShare.status": new Set(["active", "starting", "viewing"]),
+  "screenShare.status": new Set(["active", "starting", "viewing", "cameraActive"]),
   "whisper.status": new Set(["active", "targetCount"]),
 };
 const COMPONENT_STATE_SCOPE_PATHS = new Set([

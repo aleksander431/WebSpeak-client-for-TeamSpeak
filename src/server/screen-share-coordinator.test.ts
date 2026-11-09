@@ -467,3 +467,25 @@ test("a viewer whose entry disappeared no longer inflates the announced count", 
   assert.equal(after.viewers?.length, 2, "only viewers that still exist are listed");
   assert.equal(after.viewerCount, 2, "the announced count must match the listed viewers");
 });
+
+test("a camera runs beside a screen share, one of each, and is never published to TeamSpeak", async () => {
+  const f = fixture();
+  const owner = f.participant("owner", 1);
+  f.start(owner);
+  await nextTurn();
+  const publishCommands = f.commands.length;
+  f.handle(owner, { type: "screenShareStart", requestId: "cam", kind: "camera" });
+  await nextTurn();
+  const streams = f.list(owner);
+  assert.equal(streams.length, 2);
+  const camera = streams.find(stream => stream.kind === "camera");
+  assert.ok(camera);
+  assert.equal(streams.filter(stream => stream.kind !== "camera").length, 1);
+  assert.equal(f.commands.length, publishCommands);
+  f.handle(owner, { type: "screenShareStart", requestId: "cam2", kind: "camera" });
+  const reply = f.messages.at(-1)?.message;
+  assert.ok(reply?.type === "screenShareError");
+  assert.equal(reply.code, "SCREEN_SHARE_ALREADY_ACTIVE");
+  f.handle(owner, { type: "screenShareStop", streamId: camera.streamId });
+  assert.deepEqual(f.list(owner).map(stream => stream.kind ?? "screen"), ["screen"]);
+});

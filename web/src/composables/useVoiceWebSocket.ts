@@ -12,7 +12,7 @@ import { applySavedMemberVolumes, memberVolumeKeys } from "../voice/member-volum
 import { createAudioDiagnostics, type AudioPermission, type VoiceAudioStatusSample } from "../voice/audio-diagnostics.js";
 export type { AudioPermission, BrowserVoiceAudioStats, VoiceAudioStatusSample } from "../voice/audio-diagnostics.js";
 import type { SinkAudioElement } from "../voice/webrtc-playback.js";
-import { createScreenShareController } from "../voice/screen-share.js";
+import { CAMERA_MAX_VIEWS, createScreenShareController } from "../voice/screen-share.js";
 import { requestMediaBeforeAudioResume } from "../services/microphone-start.js";
 export type { ScreenShareOutputSettings, ScreenShareCaptureStats, ScreenSharePeerStats, ScreenShareWebRtcStats } from "../voice/screen-share.js";
 import { parseServerMessage } from "../../../src/shared/server-messages.js";
@@ -22,7 +22,7 @@ import type { ChatMessage } from "../../../src/shared/voice-models.js";
 import { CHAT_COMMAND_MAX_LENGTH, type ClientCommandPayloads, type ClientCommandType } from "../../../src/shared/client-commands.js";
 export type { ScreenShareStreamDescription as ScreenShareStream, ScreenShareViewerDescription as ScreenShareViewer, ScreenSharePeerSignal as ScreenShareSignal } from "../../../src/shared/screen-share.js";
 export type { ChannelMember, ChannelInfo, ChatMessage, ServerEvent, VoiceAudioBridgeStats } from "../../../src/shared/voice-models.js";
-import { reactive, ref, shallowRef } from "vue";
+import { computed, reactive, ref, shallowRef, watch } from "vue";
 import { loadLocalPreferences, saveLocalPreferences } from "../services/local-persistence.js";
 
 export interface VoiceState {
@@ -276,10 +276,41 @@ export function useVoiceWebSocket() {
     },
     onError: code => { accompanimentErrorCode.value = code; },
   });
-  const screenShare = createScreenShareController({
+  const screenShareTransport = {
     isOpen: () => ws.value?.readyState === WebSocket.OPEN,
-    send: message => ws.value?.send(JSON.stringify(message)),
+    send: (message: Parameters<typeof JSON.stringify>[0]) => ws.value?.send(JSON.stringify(message)),
+  };
+  const screenShare = createScreenShareController(screenShareTransport);
+  // Cameras travel like screen shares, through a controller of their own, and
+  // every camera in the channel is watched automatically for the member cards.
+  const camera = createScreenShareController(screenShareTransport, { kind: "camera", maxViews: CAMERA_MAX_VIEWS });
+  watch(() => camera.api.screenShareStreams.map(stream => stream.streamId), () => {
+    for (const stream of camera.api.screenShareStreams) {
+      if (stream.streamId === camera.api.screenShareActiveStreamId.value || camera.api.screenShareViewedStreamIds.value.includes(stream.streamId)) continue;
+      camera.api.joinScreenShare(stream.streamId);
+    }
   });
+  /** A member's camera picture: one's own capture, or the watched stream. */
+  const cameraMedia = computed(() => {
+    const byClient = new Map<number, MediaStream>();
+    for (const view of camera.api.screenShareViews) {
+      const owner = camera.api.screenShareStreams.find(stream => stream.streamId === view.streamId)?.ownerClientId;
+      if (owner && view.media) byClient.set(owner, view.media);
+    }
+    const own = camera.api.screenSharePreviewStream.value;
+    if (own && state.tsClientId) byClient.set(state.tsClientId, own);
+    return byClient;
+  });
+  const cameraApi = {
+    cameraActive: camera.api.screenShareActive,
+    cameraStarting: camera.api.screenShareStarting,
+    cameraError: camera.api.screenShareError,
+    cameraErrorCode: camera.api.screenShareErrorCode,
+    cameraSupported: typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia),
+    cameraMedia,
+    startCamera: camera.api.startCamera,
+    stopCamera: camera.api.stopScreenShare,
+  };
   // Whiteboard frames share the voice socket but are handled by their own client.
   const whiteboardListeners = new Set<(message: WhiteboardServerMessage) => void>();
   const whiteboard = {
@@ -1156,6 +1187,7 @@ export function useVoiceWebSocket() {
     audioDiagnostics.reset();
     commands.clear(new Error("语音连接已关闭"));
     screenShare.stopTransport(sendScreenStop);
+    camera.stopTransport(sendScreenStop);
     webrtc.stop();
     remotePlayback.clearAll();
     stopMicrophone();
@@ -1172,7 +1204,10 @@ export function useVoiceWebSocket() {
       return;
     }
     const msg = parseServerMessage(raw);
-    if (!msg || screenShare.handleMessage(msg) || sessionState.receive(msg)) return;
+    if (!msg) return;
+    // Both controllers see every sharing message; each keeps only its own streams.
+    const sharing = screenShare.handleMessage(msg);
+    if (camera.handleMessage(msg) || sharing || sessionState.receive(msg)) return;
     switch (msg.type) {
       case "serverInfo":
         serverInfo.value = {
@@ -1200,6 +1235,7 @@ export function useVoiceWebSocket() {
         sendCmd("setMicrophoneMuted", { muted: microphoneMuted.value });
         sendCmd("setVoiceGate", { open: voiceGateOpen() });
         screenShare.setIceServers(msg.screenShareIceServers);
+        camera.setIceServers(msg.screenShareIceServers);
         webRtcStunServer = msg.webRtcStunServer ?? "";
         chatAccess.value = msg.chat ? parseChatSessionAccess(msg.chat) : null;
         sessionState.connected(msg);
@@ -1662,6 +1698,7 @@ export function useVoiceWebSocket() {
 
   return {
     ...screenShare.api,
+    ...cameraApi,
     whiteboard,
     chatAccess,
     ws,

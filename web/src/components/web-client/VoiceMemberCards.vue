@@ -34,7 +34,7 @@
       <div
         :class="[
           'voice-avatar-wrap',
-          { 'screen-share-avatar-wrap': screenShareStreamForMember(member) },
+          { 'screen-share-avatar-wrap': screenShareStreamForMember(member), 'camera-avatar-wrap': cameraFor(member) },
         ]"
         data-ws-part="voice.member.avatar-wrap"
       >
@@ -56,7 +56,24 @@
               :size="18" /></button
         ></div>
         <video
-          v-if="member.isSelf && selfPreviewStream && selfPreviewVisible"
+          v-if="cameraFor(member)"
+          :ref="(element) => bindCamera(element, member)"
+          :class="['member-camera', { mirrored: member.isSelf }]"
+          data-ws-part="voice.member.camera"
+          muted
+          autoplay
+          playsinline
+          disablepictureinpicture
+          role="button"
+          tabindex="0"
+          :aria-label="t('cameraEnlarge')"
+          :title="t('cameraEnlarge')"
+          @click.stop="toggleCameraFullscreen"
+          @keydown.enter.prevent="toggleCameraFullscreen"
+          @keydown.space.prevent="toggleCameraFullscreen"
+        ></video>
+        <video
+          v-else-if="member.isSelf && selfPreviewStream && selfPreviewVisible"
           :ref="bindSelfPreview"
           class="screen-share-self-preview"
           data-ws-part="voice.member.self-preview"
@@ -147,7 +164,7 @@
         isSpeaking(member) ? t("speaking") : member.isSelf ? t("connectedYou") : t("connected")
       }}</span>
       <div
-        v-if="screenShareStreamForMember(member) || (member.isSelf && screenShareStatusEnabled)"
+        v-if="screenShareStreamForMember(member) || (member.isSelf && (screenShareStatusEnabled || cameraEnabled))"
         class="screen-share-card-actions"
         data-ws-part="voice.member.share-actions"
       >
@@ -174,8 +191,36 @@
                 name="settings"
                 :size="13"
             /></button>
+            <button
+              v-if="cameraEnabled"
+              type="button"
+              :class="['screen-share-settings-button', 'camera-toggle-button', { active: cameraOn }]"
+              data-ws-part="voice.member.camera-toggle"
+              :data-ws-state="cameraOn ? 'active' : 'idle'"
+              :aria-pressed="cameraOn"
+              :aria-label="cameraOn ? t('cameraStop') : t('cameraStart')"
+              :title="cameraOn ? t('cameraStop') : t('cameraStart')"
+              @click.stop="camera?.toggleCamera()"
+              ><Icon
+                :name="cameraOn ? 'video-off' : 'video'"
+                :size="13"
+            /></button>
           </div>
         </template>
+        <button
+          v-else-if="member.isSelf && cameraEnabled"
+          type="button"
+          :class="['screen-share-settings-button', 'camera-toggle-button', { active: cameraOn }]"
+          data-ws-part="voice.member.camera-toggle"
+          :data-ws-state="cameraOn ? 'active' : 'idle'"
+          :aria-pressed="cameraOn"
+          :aria-label="cameraOn ? t('cameraStop') : t('cameraStart')"
+          :title="cameraOn ? t('cameraStop') : t('cameraStart')"
+          @click.stop="camera?.toggleCamera()"
+          ><Icon
+            :name="cameraOn ? 'video-off' : 'video'"
+            :size="13"
+        /></button>
         <button
           v-else-if="!member.isSelf"
           type="button"
@@ -224,7 +269,26 @@ const props = withDefaults(defineProps<{
   avatarInitial: (name: string) => string; t: (key: string) => string;
   /** Show the "change avatar" button on one's own card. */
   editAvatar?: boolean;
+  /** Cameras: pictures by TeamSpeak client id and one's own toggle. */
+  camera?: Pick<ReturnType<typeof useVoiceWebSocket>, "cameraActive" | "cameraStarting" | "cameraMedia" | "cameraSupported"> & { toggleCamera: () => void };
 }>(), { showScreenShare: true, editAvatar: false });
+// Phones toggle the camera from the room's control bar; the card stays uncluttered.
+const cameraEnabled = computed(() => Boolean(props.camera?.cameraSupported) && !props.isMobileViewport);
+const cameraOn = computed(() => Boolean(props.camera && (props.camera.cameraActive.value || props.camera.cameraStarting.value)));
+const cameraFor = (member: ChannelMember): MediaStream | null => props.camera?.cameraMedia.value.get(member.id) ?? null;
+function bindCamera(element: unknown, member: ChannelMember): void {
+  if (!(element instanceof HTMLVideoElement)) return;
+  const stream = cameraFor(member);
+  if (element.srcObject !== stream) element.srcObject = stream;
+  if (stream && element.paused) void element.play().catch(() => { /* muted autoplay may still be refused */ });
+}
+/** A camera opens full screen on click, and closes the same way. */
+function toggleCameraFullscreen(event: Event): void {
+  const video = event.currentTarget;
+  if (!(video instanceof HTMLVideoElement)) return;
+  if (document.fullscreenElement === video) void document.exitFullscreen().catch(() => {});
+  else void video.requestFullscreen?.().catch(() => {});
+}
 const screenShareControlsEnabled = computed(() => props.showScreenShare !== false && Boolean(props.controls));
 const screenShareStatusEnabled = computed(() => screenShareControlsEnabled.value && Boolean(props.sharing));
 const screenShareActive = computed(() => screenShareStatusEnabled.value && Boolean(props.sharing?.screenShareActive.value));
@@ -330,6 +394,38 @@ function handleMemberContextMenu(member: ChannelMember, event: MouseEvent): void
     background: var(--accent, #2f8f6f);
   }
   .voice-avatar-edit :deep(svg) { width: 13px; height: 13px; }
+}
+/* A camera replaces the avatar like the sharer's own preview; one's own is mirrored. */
+.voice-avatar-wrap:has(> .member-camera) {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+.voice-avatar-wrap:has(> .member-camera) > .voice-avatar {
+  visibility: hidden;
+}
+.member-camera {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  background: #000;
+  cursor: zoom-in;
+}
+.member-camera.mirrored {
+  transform: scaleX(-1);
+}
+.member-camera:fullscreen {
+  object-fit: contain;
+  border-radius: 0;
+  cursor: zoom-out;
+}
+.camera-toggle-button.active {
+  color: #fff;
+  border-color: var(--accent, #2f8f6f);
+  background: var(--accent, #2f8f6f);
 }
 /* The sharer's own picture replaces the avatar, under the badges and buttons. */
 .voice-avatar-wrap:has(> .screen-share-self-preview) {

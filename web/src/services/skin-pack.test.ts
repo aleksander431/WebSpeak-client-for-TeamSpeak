@@ -486,7 +486,7 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   const file = new File([archive], "kaak-voice.wskin", { type: "application/octet-stream" });
   const skin = await importSkinPack(file);
   assert.equal(skin.id, "community.kaak-voice");
-  assert.equal(skin.version, "3.1.145");
+  assert.equal(skin.version, "3.1.146");
   assert.deepEqual(skin.workspace, { apiVersion: 1, mode: "persistent" });
   assert.equal(skin.minAppVersion, "0.2.8");
   assert.equal(BUILTIN_SKIN_CATALOG.find((entry) => entry.id === skin.id)?.version, skin.version);
@@ -742,7 +742,8 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   assert.doesNotMatch(skin.css, /kaak-workspace\.record-placeholder|kaak-workspace\.recording-label/);
   assert.match(skin.css, /\[data-ws-plugin-part="kaak-workspace\.desktop-room-controls"\] \{ display: contents; \}/);
   assert.match(skin.css, /\[data-ws-plugin-part="kaak-workspace"\]\[data-ws-plugin-surface="voice"\] \.desktop-audio-dock-copy \{ display: none; \}/);
-  assert.match(skin.css, /\[data-ws-plugin-part="kaak-workspace\.voice-dock-share"\] \{ grid-column: 1 \/ 4; grid-row: 1;/);
+  assert.match(skin.css, /\[data-ws-plugin-part="kaak-workspace\.voice-dock-share"\] \{ grid-column: 1 \/ 3; grid-row: 1;/);
+  assert.match(skin.css, /\[data-ws-plugin-part="kaak-workspace\.desktop-room-camera"\] \{[^}]*grid-column: 3;[^}]*grid-row: 1;/, "the camera sits between the share button and accompaniment");
   assert.match(skin.css, /\[data-ws-plugin-part="kaak-workspace\.voice-dock-share"\] \.skin-runtime-screen-share-start \{[\s\S]*?background: #69c000;/);
   assert.match(skin.css, /\[data-ws-plugin-part="kaak-workspace\.desktop-room-settings"\][\s\S]*?grid-column: 1;[\s\S]*?grid-row: 2;[\s\S]*?justify-content: flex-start;[\s\S]*?gap: 8px;/);
   assert.match(skin.css, /desktop-room-controls"\]\s+\[data-ws-plugin-part="kaak-workspace\.desktop-room-settings"\]\s*\{[^}]*justify-self: stretch;[^}]*box-sizing: border-box;[^}]*width: 100%;[^}]*max-width: 100%;[^}]*min-width: 0;/, "the settings control fills its own grid track so its icon and label cannot escape the dock");

@@ -107,6 +107,13 @@
       <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
     </template>
     <path v-else-if="name === 'moon'" d="M20.4 15.2A8.5 8.5 0 0 1 8.8 3.6 8.5 8.5 0 1 0 20.4 15.2Z" />
+    <template v-else-if="name === 'video'">
+      <rect x="3" y="6" width="13" height="12" rx="2" />
+      <path d="m16 10.5 5-3v9l-5-3" />
+    </template>
+    <template v-else-if="name === 'video-off'">
+      <path d="M10.7 6H14a2 2 0 0 1 2 2v3.3l1 1 4-2.8v9M16 16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1M3 3l18 18" />
+    </template>
     <path v-else-if="name === 'monitor'" d="M4 4h16v12H4zM8 20h8M12 16v4" />
     <path v-else-if="name === 'translate'" fill="currentColor" stroke="none" d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.99-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.14 8.44 10 10.47 8 12.1c-1.31-1.08-2.39-2.39-3.2-3.91H2.8c.93 2.07 2.26 3.9 4.05 5.41l-3.74 3.71L4.5 18.7 8 15.2l2.18 2.18.69-2.31zm4.63-6.07h-2L11 22h2l1.12-3h4.75L20 22h2l-4.5-13zm-2.62 8 1.62-4.33L18.12 17h-3.24z" />
     <path v-else-if="name === 'fullscreen'" d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />

@@ -55,6 +55,7 @@
   .mobile-member-controls .mobile-voice-toggle { flex: 1 1 0; min-height: 50px; font-size: 13px; }
   .mobile-member-leave { flex: 0 0 42px; width: 42px; min-height: 42px; align-self: center; padding: 0; color: var(--danger); }
   .mobile-voice-controls .mobile-voice-toggle { flex: 1 1 0; min-height: 44px; }
+  .mobile-voice-controls .mobile-camera-toggle.active { color: #fff; border-color: var(--accent); background: var(--accent); }
   .mobile-voice-controls .mobile-voice-leave { flex: 0 0 42px; width: 42px; min-height: 44px; padding: 0; color: var(--danger); }
   :deep(.app-shell .member-panel.mobile-section-visible) {
     padding-top: calc(18px + env(safe-area-inset-top, 0px));
