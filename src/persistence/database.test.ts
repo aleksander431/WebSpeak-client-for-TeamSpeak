@@ -15,7 +15,7 @@ test("relay voice endpoint is stored by the current database migration", (contex
     rmSync(directory, { recursive: true, force: true });
   });
 
-  assert.equal(DATABASE_SCHEMA_VERSION, 19);
+  assert.equal(DATABASE_SCHEMA_VERSION, 20);
   assert.equal(database.schemaVersion, DATABASE_SCHEMA_VERSION);
   assert.equal(database.getTsAdminSettings().transport, "web");
   assert.equal(database.getTsAdminSettings().enabled, false);
@@ -62,8 +62,29 @@ test("schema 17 adds message references and saved reactions to existing chat his
   old.close();
   const migrated = new WebSpeakDatabase(filename);
   t.after(() => { migrated.close(); rmSync(directory, { recursive: true, force: true }); });
-  assert.equal(migrated.schemaVersion, 19);
+  assert.equal(migrated.schemaVersion, DATABASE_SCHEMA_VERSION);
   assert.equal(migrated.listChatHistory("ts:1", "server", "", 10)[0]?.ref, "", "older messages have no reference");
   migrated.setChatReaction("0123456789abcdef", "👍", "uid:a", "Ann", true, 2);
   assert.deepEqual(migrated.listChatReactions("0123456789abcdef"), [{ emoji: "👍", userKey: "uid:a", userName: "Ann" }]);
+});
+
+test("schema 20 keeps one avatar per identity and server", t => {
+  const directory = mkdtempSync(path.join(tmpdir(), "webspeak-own-avatar-"));
+  const filename = path.join(directory, "test.sqlite");
+  new WebSpeakDatabase(filename).close();
+  const old = new DatabaseSync(filename);
+  old.exec("DROP TABLE own_avatars; PRAGMA user_version = 19;");
+  old.close();
+  const database = new WebSpeakDatabase(filename);
+  t.after(() => { database.close(); rmSync(directory, { recursive: true, force: true }); });
+  assert.equal(database.schemaVersion, 20);
+  assert.equal(database.ownAvatar("ts:1", "uid="), undefined);
+  database.saveOwnAvatar("ts:1", "uid=", new Uint8Array([1, 2, 3]));
+  database.saveOwnAvatar("ts:1", "uid=", new Uint8Array([4, 5]));
+  assert.deepEqual([...database.ownAvatar("ts:1", "uid=") ?? []], [4, 5]);
+  assert.equal(database.ownAvatar("ts:2", "uid="), undefined, "another server keeps its own");
+  database.clearChatStorage();
+  assert.ok(database.ownAvatar("ts:1", "uid="), "clearing chat history keeps avatars");
+  database.deleteOwnAvatar("ts:1", "uid=");
+  assert.equal(database.ownAvatar("ts:1", "uid="), undefined);
 });

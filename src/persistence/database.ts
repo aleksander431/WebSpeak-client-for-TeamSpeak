@@ -16,7 +16,7 @@ export interface EventHistoryRow {
   createdAt: number;
 }
 
-export const DATABASE_SCHEMA_VERSION = 19;
+export const DATABASE_SCHEMA_VERSION = 20;
 export type AccessMode = "fixed" | "open";
 
 export interface PersistedSettings {
@@ -892,6 +892,21 @@ export class WebSpeakDatabase {
     ).run(targetKey, targetKey, Math.max(0, Math.floor(keep)));
   }
 
+  saveOwnAvatar(targetKey: string, uid: string, data: Uint8Array): void {
+    this.database.prepare(
+      "INSERT INTO own_avatars (target_key, uid, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(target_key, uid) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+    ).run(targetKey, uid, data, Date.now());
+  }
+
+  ownAvatar(targetKey: string, uid: string): Uint8Array | undefined {
+    const row = this.database.prepare("SELECT data FROM own_avatars WHERE target_key = ? AND uid = ?").get(targetKey, uid) as { data: Uint8Array } | undefined;
+    return row?.data ? new Uint8Array(row.data) : undefined;
+  }
+
+  deleteOwnAvatar(targetKey: string, uid: string): void {
+    this.database.prepare("DELETE FROM own_avatars WHERE target_key = ? AND uid = ?").run(targetKey, uid);
+  }
+
   clearChatStorage(): void {
     this.transaction(() => {
       this.database.exec("DELETE FROM chat_files; DELETE FROM chat_history; DELETE FROM chat_reactions; DELETE FROM chat_pins; DELETE FROM event_history;");
@@ -1334,6 +1349,23 @@ export class WebSpeakDatabase {
           );
           CREATE INDEX IF NOT EXISTS event_history_target_idx ON event_history(target_key, id);
           PRAGMA user_version = 19;
+        `);
+      });
+      version = 19;
+    }
+    if (version === 19) {
+      this.transaction(() => {
+        // The last avatar each identity uploaded through WebSpeak, per server,
+        // to put back when that server no longer has the file on reconnect.
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS own_avatars (
+            target_key TEXT NOT NULL,
+            uid TEXT NOT NULL,
+            data BLOB NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (target_key, uid)
+          );
+          PRAGMA user_version = 20;
         `);
       });
     }

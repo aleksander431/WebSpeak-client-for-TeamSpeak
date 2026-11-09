@@ -27,7 +27,7 @@ class Stub extends EventEmitter {
   async getServerInfo() { return { name: "Test", iconId: null }; }
   async getServerPresentation() { return { bannerUrl: "", welcomeMessage: "" }; }
   async getServerIcon() { return null; }
-  async restoreOwnAvatar() { return null; }
+  async restoreOwnAvatar() { return { outcome: "stale" as const }; }
   async setInputMuted() {}
   async setAccompanimentActive(active: boolean) { this.accompaniment.push(active); }
   async switchChannel(channel: bigint) { this.moves.push(channel); this.channel = channel; }

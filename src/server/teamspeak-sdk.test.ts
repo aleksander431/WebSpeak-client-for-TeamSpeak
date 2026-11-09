@@ -136,3 +136,14 @@ test("an interrupted welcome rejects connect instead of leaving initialization p
   const sdk = new TeamSpeakSdkClient(identity, "127.0.0.1:9987", "Test", {});
   await assert.rejects(sdk.connect({ signal: AbortSignal.abort(failure) }), error => error === failure);
 });
+
+test("restoring one's avatar waits for one's own entry and leaves an announced avatar alone", async () => {
+  const { sdk, native } = fixture();
+  (native as unknown as { clientID: number }).clientID = 2;
+  assert.deepEqual(await sdk.restoreOwnAvatarFlag(), { outcome: "not-ready" });
+  (native as unknown as { clientID: number }).clientID = 1;
+  let asked = false;
+  assert.deepEqual(await sdk.restoreOwnAvatarFlag(() => { asked = true; return new Uint8Array([1]); }), { outcome: "present", uid });
+  assert.equal(asked, false, "a kept copy is not uploaded over an announced avatar");
+  assert.deepEqual(native.queries, []);
+});

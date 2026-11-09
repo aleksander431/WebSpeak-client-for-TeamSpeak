@@ -97,6 +97,13 @@ export interface ServerInfo {
  * Wire I/O and command execution are provided by the upstream 1.0 client; this
  * class only translates names and shapes that WebSpeak already consumes.
  */
+/** What reconnecting found for this client's own avatar (see restoreOwnAvatarFlag). */
+export type OwnAvatarRestore =
+  | { outcome: "not-ready" | "stale" }
+  | { outcome: "present"; uid: string }
+  | { outcome: "none"; uid: string; detail: string }
+  | { outcome: "restored" | "reuploaded"; uid: string; marker: string; data: Uint8Array };
+
 export class TeamSpeakSdkClient extends EventEmitter implements CommandExecutor {
   private sdkClient: Client | null = null;
   private directoryRevision = -1;
@@ -214,16 +221,26 @@ export class TeamSpeakSdkClient extends EventEmitter implements CommandExecutor 
    * empty and its avatar file is still on the server, announce it again.
    * Resolves with the file and its marker, or null when there is nothing to restore.
    */
-  async restoreOwnAvatarFlag(): Promise<{ uid: string; marker: string; data: Uint8Array } | null> {
+  async restoreOwnAvatarFlag(saved?: (uid: string) => Uint8Array | undefined): Promise<OwnAvatarRestore> {
     const client = this.requireClient();
     const self = this.ownAvatarMarker();
-    if (!self || self.marker) return null;
+    if (!self) return { outcome: "not-ready" };
+    if (self.marker) return { outcome: "present", uid: self.uid };
     let data: Uint8Array | undefined;
-    try { data = await downloadAvatar(client, self.uid); } catch { return null; }
-    if (!data?.length || this.sdkClient !== client) return null;
-    const marker = createHash("md5").update(data).digest("hex");
-    await updateClient(client, { avatar: marker });
-    return { uid: self.uid, marker, data };
+    let missing = "";
+    try { data = await downloadAvatar(client, self.uid); } catch (error: unknown) { missing = error instanceof Error ? error.message : String(error); }
+    if (this.sdkClient !== client) return { outcome: "stale" };
+    if (data?.length) {
+      const marker = createHash("md5").update(data).digest("hex");
+      await updateClient(client, { avatar: marker });
+      return { outcome: "restored", uid: self.uid, marker, data };
+    }
+    // The server lost the file (or never kept it for this identity): upload
+    // the copy the gateway kept from this identity's last upload, if any.
+    const copy = saved?.(self.uid);
+    if (!copy?.length) return { outcome: "none", uid: self.uid, detail: missing || "no avatar file" };
+    const marker = await uploadAvatar(client, copy);
+    return { outcome: "reuploaded", uid: self.uid, marker, data: copy };
   }
 
   /** Delete this client's avatar; false when it had none. */

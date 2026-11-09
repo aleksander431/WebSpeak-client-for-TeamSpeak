@@ -105,6 +105,14 @@ export function toTSChatMessage(msg: TextMessage): TSChatMessage {
   };
 }
 
+/** The result of announcing (or re-uploading) one's avatar after connecting. */
+export type OwnAvatarRestoreResult =
+  | { outcome: "not-ready" | "stale" }
+  | { outcome: "present"; uid: string }
+  | { outcome: "none"; uid: string; detail: string }
+  | { outcome: "failed"; detail: string }
+  | { outcome: "restored" | "reuploaded"; uid: string; marker: string; data: Buffer };
+
 export class TSClient extends EventEmitter {
   private client: TeamSpeakSdkClient | null = null;
   private adapter: TeamSpeakAdapter | null = null;
@@ -497,17 +505,25 @@ export class TSClient extends EventEmitter {
    * but the flag came back empty on connect. Null when there is nothing to
    * restore or the session changed; failures stay optional.
    */
-  async restoreOwnAvatar(): Promise<{ uid: string; marker: string; data: Buffer } | null> {
+  async restoreOwnAvatar(saved?: (uid: string) => Uint8Array | undefined): Promise<OwnAvatarRestoreResult> {
     const client = this.client;
-    if (!client || !this.connected) return null;
+    if (!client || !this.connected) return { outcome: "stale" };
     const generation = this.connectionGeneration;
+    const current = () => this.client === client && this.connected && this.connectionGeneration === generation;
     try {
-      const restored = await client.restoreOwnAvatarFlag();
-      if (!restored || this.client !== client || !this.connected || this.connectionGeneration !== generation) return null;
-      if (restored.data.length > MAX_CLIENT_AVATAR_BYTES) return null;
-      return { uid: restored.uid, marker: restored.marker, data: Buffer.from(restored.data) };
-    } catch {
-      return null;
+      // The own entry can reach the live view a moment after the connection.
+      let restored = await client.restoreOwnAvatarFlag(saved);
+      for (let attempt = 0; restored.outcome === "not-ready" && attempt < 10 && current(); attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (!current()) break;
+        restored = await client.restoreOwnAvatarFlag(saved);
+      }
+      if (!current()) return { outcome: "stale" };
+      if (!("data" in restored)) return restored;
+      if (restored.data.length > MAX_CLIENT_AVATAR_BYTES) return { outcome: "none", uid: restored.uid, detail: "avatar file too large" };
+      return { outcome: restored.outcome, uid: restored.uid, marker: restored.marker, data: Buffer.from(restored.data) };
+    } catch (error: unknown) {
+      return { outcome: "failed", detail: error instanceof Error ? error.message : String(error) };
     }
   }
 

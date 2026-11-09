@@ -155,6 +155,8 @@ export class VoiceBridge {
   private readonly chatTokens = new Map<string, WebClientEntry>();
   private readonly chatReactions: ChatReactionHub;
   private readonly chatPins: ChatPinStore;
+  /** Avatars uploaded through WebSpeak when there is no database (Android). */
+  private readonly ownAvatarCopies = new Map<string, Uint8Array>();
   private readonly screenShares: ScreenShareCoordinator;
   private readonly whiteboards: WhiteboardCoordinator;
   private readonly identityLeases = new IdentityLeaseStore();
@@ -342,7 +344,10 @@ export class VoiceBridge {
       };
       entry.onChatReact = (ref, emoji, active) => this.reactToChat(entry!, ref, emoji, active);
       entry.onChatPin = (ref, active) => this.pinChat(entry!, ref, active);
-      entry.onOwnAvatar = (uid, marker, avatar) => entry!.events?.applyOwnAvatar(uid, marker, avatar);
+      entry.onOwnAvatar = (uid, marker, avatar) => {
+        entry!.events?.applyOwnAvatar(uid, marker, avatar);
+        this.keepOwnAvatar(entry!, uid, avatar);
+      };
       let tsReady = false;
       const sendJson = (message: ServerMessage) => {
         if (this.entries.get(entryId) === entry && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -440,9 +445,13 @@ export class VoiceBridge {
       const restoreOwnAvatar = async () => {
         const current = entry!;
         try {
-          const restored = await current.tsClient.restoreOwnAvatar();
-          if (!restored || this.entries.get(current.id) !== current) return;
-          current.onOwnAvatar?.(restored.uid, restored.marker, avatarDataUrl(restored.data));
+          const targetKey = teamSpeakTargetKey(current.target);
+          const restored = await current.tsClient.restoreOwnAvatar(uid => this.ownAvatarCopy(targetKey, uid));
+          if (this.entries.get(current.id) !== current || restored.outcome === "stale") return;
+          this.logger.info({ entryId: current.id, outcome: restored.outcome, ...("detail" in restored ? { detail: restored.detail } : {}) }, "Own TeamSpeak avatar after connecting");
+          if (restored.outcome === "restored" || restored.outcome === "reuploaded") {
+            current.onOwnAvatar?.(restored.uid, restored.marker, avatarDataUrl(restored.data));
+          }
         } catch {
           // Optional: the generated initial stays.
         }
@@ -1012,6 +1021,32 @@ export class VoiceBridge {
   }
 
   /** A session may react only to messages of its server, and of its current channel. */
+  /** Keep (or forget) the copy of an avatar this identity set through WebSpeak. */
+  private keepOwnAvatar(entry: WebClientEntry, uid: string, avatar: string | null): void {
+    if (!uid) return;
+    const targetKey = teamSpeakTargetKey(entry.target);
+    const data = avatar ? Buffer.from(avatar.slice(avatar.indexOf(",") + 1), "base64") : null;
+    const database = this.options.chatStorage?.database;
+    try {
+      if (database) {
+        if (data?.length) database.saveOwnAvatar(targetKey, uid, data);
+        else database.deleteOwnAvatar(targetKey, uid);
+      } else if (data?.length) this.ownAvatarCopies.set(`${targetKey}\u0000${uid}`, data);
+      else this.ownAvatarCopies.delete(`${targetKey}\u0000${uid}`);
+    } catch (error: unknown) {
+      this.logger.warn({ entryId: entry.id, err: error instanceof Error ? error.message : String(error) }, "Could not keep a copy of the own avatar");
+    }
+  }
+
+  private ownAvatarCopy(targetKey: string, uid: string): Uint8Array | undefined {
+    const database = this.options.chatStorage?.database;
+    try {
+      return database ? database.ownAvatar(targetKey, uid) : this.ownAvatarCopies.get(`${targetKey}\u0000${uid}`);
+    } catch {
+      return undefined;
+    }
+  }
+
   private reactToChat(entry: WebClientEntry, ref: string, emoji: string, active: boolean): boolean {
     const message = this.chatReactions.get(ref);
     const targetKey = teamSpeakTargetKey(entry.target);
