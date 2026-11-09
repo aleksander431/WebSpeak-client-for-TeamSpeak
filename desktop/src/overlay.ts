@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { BrowserWindow, ipcMain, screen } from "electron";
-import { EMPTY_ROSTER, overlayBounds, type OverlayRoster } from "./overlay-state.js";
+import { EMPTY_ROSTER, overlayBounds, overlayWanted, type ForegroundWindow, type OverlayRoster } from "./overlay-state.js";
 import type { OverlaySettings } from "./settings.js";
 
 /**
@@ -15,6 +15,8 @@ export class OverlayController {
   private speaking: number[] = [];
   private size = { width: 0, height: 0 };
   private ready = false;
+  /** The active window, for "only in games"; null while unknown. */
+  private foreground: ForegroundWindow | null = null;
 
   constructor(private readonly staticDir: string, private readonly preload: string) {
     ipcMain.on("overlay:size", (event, width: unknown, height: unknown) => {
@@ -40,6 +42,12 @@ export class OverlayController {
     if (!settings.enabled) { this.destroy(); return; }
     if (!this.window || this.window.isDestroyed()) this.create();
     this.push();
+    this.place();
+  }
+
+  /** The active window changed: show or hide for "only in games". */
+  setForeground(foreground: ForegroundWindow | null): void {
+    this.foreground = foreground;
     this.place();
   }
 
@@ -101,7 +109,7 @@ export class OverlayController {
     const settings = this.settings;
     if (!window || window.isDestroyed() || !settings) return;
     const { width, height } = this.size;
-    if (width < 1 || height < 1) { if (window.isVisible()) window.hide(); return; }
+    if (width < 1 || height < 1 || !overlayWanted(settings, this.foreground)) { if (window.isVisible()) window.hide(); return; }
     const bounds = overlayBounds(screen.getPrimaryDisplay().bounds, settings, width, height);
     window.setBounds(bounds);
     if (!window.isVisible()) window.showInactive();

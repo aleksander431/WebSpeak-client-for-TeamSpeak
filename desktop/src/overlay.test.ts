@@ -10,7 +10,7 @@ test("the overlay is off by default and its settings are bounded", () => {
   assert.equal(DEFAULT_SETTINGS.overlay.enabled, false);
   assert.equal(sanitizeSettings({}).overlay.enabled, false);
   const overlay = sanitizeOverlay({ enabled: true, corner: "bottom-right", scale: 999, opacity: 1, offsetX: -5, offsetY: 40.6, mode: "speaking", showSelf: false, showChannel: "yes" });
-  assert.deepEqual(overlay, { enabled: true, corner: "bottom-right", offsetX: 0, offsetY: 41, scale: 200, opacity: 20, mode: "speaking", showSelf: false, showChannel: true });
+  assert.deepEqual(overlay, { enabled: true, corner: "bottom-right", offsetX: 0, offsetY: 41, scale: 200, opacity: 20, mode: "speaking", showSelf: false, showChannel: true, showWhen: "games", apps: [] });
   assert.equal(sanitizeOverlay({ corner: "middle", mode: "all" }).corner, "top-left");
   assert.equal(sanitizeOverlay({ corner: "middle", mode: "all" }).mode, "channel");
 });
@@ -46,4 +46,25 @@ test("page reports are validated before they reach the overlay", () => {
   assert.equal(parseOverlayRoster({ members: [] }), null);
   assert.deepEqual(parseOverlaySpeaking([3, 3, "4", 70000, 9]), [3, 9]);
   assert.equal(parseOverlaySpeaking("3"), null);
+});
+
+test("the overlay shows only in games when asked: full screen or a listed program, never a browser", async () => {
+  const { overlayWanted } = await import("./overlay-state.js");
+  const games = { enabled: true, showWhen: "games" as const, apps: ["dota2.exe"] };
+  assert.equal(overlayWanted(games, { fullscreen: true, exe: "cs2.exe" }), true);
+  assert.equal(overlayWanted(games, { fullscreen: false, exe: "cs2.exe" }), false);
+  assert.equal(overlayWanted(games, { fullscreen: false, exe: "dota2.exe" }), true, "a listed game counts in a window too");
+  assert.equal(overlayWanted(games, { fullscreen: true, exe: "chrome.exe" }), false, "full-screen video is not a game");
+  assert.equal(overlayWanted(games, { fullscreen: false, exe: "" }), false, "the desktop");
+  assert.equal(overlayWanted(games, null), true, "without the helper it shows as before");
+  assert.equal(overlayWanted({ ...games, showWhen: "always" }, { fullscreen: false, exe: "notepad.exe" }), true);
+  assert.equal(overlayWanted({ ...games, enabled: false }, { fullscreen: true, exe: "cs2.exe" }), false);
+});
+
+test("listed programs are kept as bare lower-case file names", async () => {
+  const { sanitizeOverlay } = await import("./settings.js");
+  const overlay = sanitizeOverlay({ showWhen: "games", apps: ["C:\\Games\\Dota 2\\Dota2.EXE", "cs2", "cs2.exe", "bad/../", 5, "Мой Клиент.exe"] });
+  assert.deepEqual(overlay.apps, ["dota2.exe", "cs2.exe", "мой_клиент.exe"]);
+  assert.equal(sanitizeOverlay({}).showWhen, "games");
+  assert.equal(sanitizeOverlay({ showWhen: "sometimes" }).showWhen, "games");
 });

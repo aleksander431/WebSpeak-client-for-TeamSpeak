@@ -111,6 +111,11 @@ const en = {
   overlayShowSelf: "Include me",
   overlayShowChannel: "Show the channel name",
   overlayFullscreenHint: "It is drawn on the main screen. Games in exclusive full-screen mode hide every overlay; use borderless (windowed full-screen) mode.",
+  overlayShowWhen: "When to show it",
+  overlayShowWhenGames: "only in games (a full-screen program or one from the list)",
+  overlayShowWhenAlways: "always",
+  overlayApps: "Also count these programs as games, even in a window",
+  overlayAppsHint: "File names, one per line: dota2.exe, cs2.exe. Full-screen browsers and video players never count.",
   overlayTray: "In-game overlay",
 };
 
@@ -224,6 +229,11 @@ const ru: Strings = {
   overlayShowSelf: "Показывать меня",
   overlayShowChannel: "Показывать название канала",
   overlayFullscreenHint: "Рисуется на основном мониторе. Игры в эксклюзивном полноэкранном режиме скрывают любые оверлеи — выбери «оконный без рамки» (borderless).",
+  overlayShowWhen: "Когда показывать",
+  overlayShowWhenGames: "только в играх (программа на весь экран или из списка)",
+  overlayShowWhenAlways: "всегда",
+  overlayApps: "Считать играми и эти программы, даже в окне",
+  overlayAppsHint: "Имена файлов, по одному на строку: dota2.exe, cs2.exe. Браузеры и видеоплееры на весь экран не считаются.",
   overlayTray: "Оверлей в играх",
 };
 
@@ -335,6 +345,11 @@ const de: Strings = {
   overlayShowSelf: "Mich anzeigen",
   overlayShowChannel: "Kanalnamen anzeigen",
   overlayFullscreenHint: "Es erscheint auf dem Hauptbildschirm. Spiele im exklusiven Vollbild verbergen jedes Overlay; nutze randloses Fenster (Borderless).",
+  overlayShowWhen: "Wann anzeigen",
+  overlayShowWhenGames: "nur in Spielen (Vollbildprogramm oder aus der Liste)",
+  overlayShowWhenAlways: "immer",
+  overlayApps: "Diese Programme auch im Fenster als Spiele werten",
+  overlayAppsHint: "Dateinamen, einer pro Zeile: dota2.exe, cs2.exe. Browser und Videoplayer im Vollbild zählen nie.",
   overlayTray: "Overlay in Spielen",
 };
 
@@ -446,6 +461,11 @@ const zh: Strings = {
   overlayShowSelf: "显示我自己",
   overlayShowChannel: "显示频道名",
   overlayFullscreenHint: "显示在主显示器上。独占全屏的游戏会遮住所有悬浮窗，请使用无边框窗口模式。",
+  overlayShowWhen: "何时显示",
+  overlayShowWhenGames: "仅在游戏中（全屏程序或列表中的程序）",
+  overlayShowWhenAlways: "始终",
+  overlayApps: "以下程序即使在窗口中也算作游戏",
+  overlayAppsHint: "文件名，每行一个：dota2.exe、cs2.exe。全屏的浏览器和视频播放器不算。",
   overlayTray: "游戏内悬浮窗",
 };
 
@@ -557,6 +577,11 @@ const ja: Strings = {
   overlayShowSelf: "自分を表示",
   overlayShowChannel: "チャンネル名を表示",
   overlayFullscreenHint: "メインディスプレイに表示されます。排他的フルスクリーンのゲームではオーバーレイは隠れるため、ボーダーレス（ウィンドウ化フルスクリーン）を使ってください。",
+  overlayShowWhen: "表示するタイミング",
+  overlayShowWhenGames: "ゲーム中のみ（全画面のプログラムまたはリストのもの）",
+  overlayShowWhenAlways: "常に",
+  overlayApps: "これらのプログラムはウィンドウでもゲームとみなす",
+  overlayAppsHint: "ファイル名を 1 行に 1 つ：dota2.exe、cs2.exe。全画面のブラウザーや動画プレーヤーは含みません。",
   overlayTray: "ゲーム内オーバーレイ",
 };
 

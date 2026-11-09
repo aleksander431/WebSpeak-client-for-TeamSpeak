@@ -236,6 +236,7 @@
     $("overlayScaleValue").textContent = `${$("overlayScale").value}%`;
     $("overlayOpacityValue").textContent = `${$("overlayOpacity").value}%`;
     $("overlayOptions").disabled = !$("overlayEnabled").checked;
+    $("overlayAppsField").hidden = $("overlayShowWhen").value !== "games";
   }
   function fillOverlay(overlay) {
     $("overlayEnabled").checked = overlay.enabled;
@@ -247,6 +248,8 @@
     $("overlayOffsetY").value = String(overlay.offsetY);
     $("overlayShowSelf").checked = overlay.showSelf;
     $("overlayShowChannel").checked = overlay.showChannel;
+    $("overlayShowWhen").value = overlay.showWhen || "games";
+    $("overlayApps").value = (overlay.apps || []).join("\n");
     renderOverlayValues();
   }
   function overlayDraft() {
@@ -255,9 +258,11 @@
       enabled: $("overlayEnabled").checked, corner: $("overlayCorner").value, mode: $("overlayMode").value,
       scale: number("overlayScale"), opacity: number("overlayOpacity"), offsetX: number("overlayOffsetX"), offsetY: number("overlayOffsetY"),
       showSelf: $("overlayShowSelf").checked, showChannel: $("overlayShowChannel").checked,
+      showWhen: $("overlayShowWhen").value,
+      apps: $("overlayApps").value.split(/[\n,;]+/).map((app) => app.trim()).filter(Boolean),
     };
   }
-  for (const id of ["overlayEnabled", "overlayScale", "overlayOpacity"]) $(id).addEventListener("input", renderOverlayValues);
+  for (const id of ["overlayEnabled", "overlayScale", "overlayOpacity", "overlayShowWhen"]) $(id).addEventListener("input", renderOverlayValues);
   // The tray can turn the overlay on or off while this window is open.
   api.onChanged?.((next) => { if (next) { snapshot = { ...next, strings }; $("overlayEnabled").checked = next.settings.overlay.enabled; renderOverlayValues(); } });
 

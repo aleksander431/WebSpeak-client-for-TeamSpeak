@@ -52,6 +52,22 @@ export interface OverlaySettings {
   showSelf: boolean;
   /** Show the channel name above the list. */
   showChannel: boolean;
+  /**
+   * "always", or "games": only while the active window fills its screen (a
+   * game; browsers and video players excluded) or is one of `apps`.
+   */
+  showWhen: "always" | "games";
+  /** Program file names (e.g. "dota2.exe") that count as games, also in a window. */
+  apps: string[];
+}
+
+export const OVERLAY_MAX_APPS = 40;
+/** A program's file name as the helper reports it: lower case, no path. */
+export function normalizeOverlayApp(value: string): string | null {
+  const name = value.trim().replace(/^.*[\\/]/, "").toLowerCase().replace(/ /g, "_");
+  if (!name) return null;
+  const withExe = name.endsWith(".exe") ? name : `${name}.exe`;
+  return /^[\p{L}\p{N}_.()+\-[\]]{1,80}\.exe$/u.test(withExe) ? withExe : null;
 }
 
 export const DEFAULT_OVERLAY: OverlaySettings = Object.freeze({
@@ -64,6 +80,8 @@ export const DEFAULT_OVERLAY: OverlaySettings = Object.freeze({
   mode: "channel",
   showSelf: true,
   showChannel: true,
+  showWhen: "games",
+  apps: [],
 }) as OverlaySettings;
 
 export function sanitizeOverlay(value: unknown, base: OverlaySettings = DEFAULT_OVERLAY): OverlaySettings {
@@ -83,6 +101,10 @@ export function sanitizeOverlay(value: unknown, base: OverlaySettings = DEFAULT_
     mode: input.mode === "channel" || input.mode === "speaking" ? input.mode : base.mode,
     showSelf: bool("showSelf"),
     showChannel: bool("showChannel"),
+    showWhen: input.showWhen === "always" || input.showWhen === "games" ? input.showWhen : base.showWhen,
+    apps: Array.isArray(input.apps)
+      ? [...new Set(input.apps.filter((app): app is string => typeof app === "string").map(normalizeOverlayApp).filter((app): app is string => Boolean(app)))].slice(0, OVERLAY_MAX_APPS)
+      : [...base.apps],
   };
 }
 

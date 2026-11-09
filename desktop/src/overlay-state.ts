@@ -64,3 +64,30 @@ export function overlayBounds(display: { x: number; y: number; width: number; he
     height: Math.round(h),
   };
 }
+
+/** The active window, as the native helper reports it; null while unknown. */
+export interface ForegroundWindow {
+  fullscreen: boolean;
+  /** Program file name, lower case ("" when unknown). */
+  exe: string;
+}
+
+/** Full-screen browsers and video players are not games. */
+export const OVERLAY_NOT_GAMES: ReadonlySet<string> = new Set([
+  "chrome.exe", "msedge.exe", "firefox.exe", "opera.exe", "opera_gx.exe", "brave.exe", "vivaldi.exe", "browser.exe", "yandex.exe",
+  "iexplore.exe", "arc.exe", "thorium.exe", "librewolf.exe", "waterfox.exe",
+  "vlc.exe", "mpc-hc.exe", "mpc-hc64.exe", "mpc-be.exe", "mpc-be64.exe", "potplayermini.exe", "potplayermini64.exe", "mpv.exe",
+  "wmplayer.exe", "video.ui.exe", "microsoft.media.player.exe", "applicationframehost.exe", "powerpnt.exe", "explorer.exe",
+  "webspeak.exe",
+]);
+
+/**
+ * Whether the overlay should be visible now. Without foreground information
+ * (no helper, not Windows) it shows, as before the setting existed.
+ */
+export function overlayWanted(settings: Pick<OverlaySettings, "enabled" | "showWhen" | "apps">, foreground: ForegroundWindow | null): boolean {
+  if (!settings.enabled) return false;
+  if (settings.showWhen === "always" || !foreground) return true;
+  if (foreground.exe && settings.apps.includes(foreground.exe)) return true;
+  return foreground.fullscreen && !OVERLAY_NOT_GAMES.has(foreground.exe);
+}

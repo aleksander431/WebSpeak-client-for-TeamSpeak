@@ -56,6 +56,16 @@
     <p class="hint" data-t="overlayHint"></p>
     <label class="check"><input type="checkbox" id="overlayEnabled"> <span data-t="overlayEnabled"></span></label>
     <fieldset id="overlayOptions" class="overlay-options">
+      <label class="field"><span data-t="overlayShowWhen"></span>
+        <select id="overlayShowWhen">
+          <option value="games" data-t="overlayShowWhenGames"></option>
+          <option value="always" data-t="overlayShowWhenAlways"></option>
+        </select>
+      </label>
+      <label class="field" id="overlayAppsField"><span data-t="overlayApps"></span>
+        <textarea id="overlayApps" rows="3" spellcheck="false" autocomplete="off" placeholder="dota2.exe&#10;cs2.exe"></textarea>
+        <small class="hint" data-t="overlayAppsHint"></small>
+      </label>
       <label class="field"><span data-t="overlayCorner"></span>
         <select id="overlayCorner">
           <option value="top-left" data-t="overlayCornerTopLeft"></option>

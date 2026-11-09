@@ -576,14 +576,21 @@ function registerIpc(): void {
 // ---------------------------------------------------------------- overlay
 
 /** The overlay exists only while it is turned on. */
+/** The native hotkey helper, which also reports the active window for the overlay. */
+let nativeHelper: NativeHotkeys | null = null;
+
 function configureOverlay(): void {
   const options = settings.value.overlay;
+  // "Only in games" needs the active window, which the native helper reports.
+  const watching = options.enabled && options.showWhen === "games" && Boolean(nativeHelper?.watchForeground(true));
+  if (!watching) nativeHelper?.watchForeground(false);
   if (!options.enabled) { overlay?.destroy(); return; }
   if (!overlay) {
     overlay = new OverlayController(STATIC, join(__dirname, "overlay-preload.js"));
     overlay.setRoster(overlayRoster);
     overlay.setSpeaking(overlaySpeaking);
   }
+  if (!watching) overlay.setForeground(null);
   overlay.configure(options);
 }
 
@@ -663,7 +670,9 @@ void app.whenReady().then(() => {
     Boolean(process.env.WEBSPEAK_HOTKEY_HELPER),
     (held, slot) => hotkeys.nativeHold(held, slot),
   );
-  app.on("will-quit", () => nativeHotkeys.stop());
+  nativeHelper = nativeHotkeys;
+  nativeHotkeys.onForeground = (foreground) => overlay?.setForeground(foreground);
+  app.on("will-quit", () => nativeHotkeys.shutdown());
   hotkeys = new HotkeyManager(globalShortcut, (action) => void runWebAction(action, true), undefined, nativeHotkeys, (status) => {
     hotkeyStatus = status;
     settingsWindow?.webContents.send("settings:hotkey-status", status);

@@ -7,7 +7,9 @@
 //   stdin:  set <id> <spec>    spec: [Ctrl+][Alt+][Shift+][Win+]Pause|Mouse4|Mouse5
 //           hold <id> <key>    held keys (push-to-talk, whisper): one key, Ctrl/Alt/Shift, Mouse3/4/5
 //           clear
+//           watch 1|0          report the foreground window (for the overlay)
 //   stdout: ok <id> | taken <id> | invalid <id> | fire <id> | down <id> | up <id>
+//           fg <fullscreen 0|1> <exe name>   when the foreground window changes
 //
 // Keys use RegisterHotKey (the key is taken from other programs, like
 // Electron's own hotkeys). Mouse side buttons use a low-level mouse hook
@@ -16,6 +18,8 @@
 // A hold binding reports press and release through low-level hooks and
 // never swallows the input, so a game still sees its key. Only the bound
 // key is looked at; nothing else is recorded or reported.
+// While watching, only the foreground window's program name (no path) and
+// whether it covers its whole monitor are reported, on change.
 // The helper exits when stdin closes or the parent process ends.
 
 #define WIN32_LEAN_AND_MEAN
@@ -31,6 +35,7 @@ namespace {
 const UINT kCommandMessage = WM_APP + 1;
 const UINT kQuitMessage = WM_APP + 2;
 DWORD g_mainThread = 0;
+DWORD g_parentPid = 0;
 
 struct Binding {
   int id;
@@ -59,6 +64,90 @@ void Emit(const char* kind, int id) {
   printf("%s %d\n", kind, id);
   fflush(stdout);
   LeaveCriticalSection(&g_outputLock);
+}
+
+void EmitForeground(bool fullscreen, const std::string& exe) {
+  EnterCriticalSection(&g_outputLock);
+  printf("fg %d %s\n", fullscreen ? 1 : 0, exe.empty() ? "-" : exe.c_str());
+  fflush(stdout);
+  LeaveCriticalSection(&g_outputLock);
+}
+
+// --- foreground watch (overlay "only in games") ---------------------------
+HWINEVENTHOOK g_foregroundHook = nullptr;
+UINT_PTR g_foregroundTimer = 0;
+std::string g_lastForeground;
+
+std::string Utf8(const wchar_t* text) {
+  const int size = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+  if (size <= 1) return std::string();
+  std::string out(static_cast<size_t>(size - 1), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, text, -1, &out[0], size, nullptr, nullptr);
+  return out;
+}
+
+std::string ProcessName(DWORD pid) {
+  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (!process) return std::string();
+  wchar_t path[MAX_PATH] = {0};
+  DWORD length = MAX_PATH;
+  std::string name;
+  if (QueryFullProcessImageNameW(process, 0, path, &length)) {
+    const wchar_t* base = wcsrchr(path, L'\\');
+    name = Utf8(base ? base + 1 : path);
+    for (char& c : name) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    for (char& c : name) if (c == ' ' || c == '\n' || c == '\r') c = '_';
+  }
+  CloseHandle(process);
+  return name;
+}
+
+void CheckForeground() {
+  HWND window = GetForegroundWindow();
+  bool fullscreen = false;
+  std::string exe;
+  if (window) {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(window, &pid);
+    wchar_t className[64] = {0};
+    GetClassNameW(window, className, 64);
+    // The desktop and the taskbar cover the screen too; WebSpeak itself never counts.
+    const bool shell = wcscmp(className, L"Progman") == 0 || wcscmp(className, L"WorkerW") == 0 || wcscmp(className, L"Shell_TrayWnd") == 0;
+    if (pid && pid != g_parentPid && pid != GetCurrentProcessId() && !shell) {
+      exe = ProcessName(pid);
+      RECT rect;
+      MONITORINFO monitor;
+      ZeroMemory(&monitor, sizeof(monitor));
+      monitor.cbSize = sizeof(monitor);
+      if (GetWindowRect(window, &rect) && GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor)) {
+        fullscreen = rect.left <= monitor.rcMonitor.left && rect.top <= monitor.rcMonitor.top
+          && rect.right >= monitor.rcMonitor.right && rect.bottom >= monitor.rcMonitor.bottom;
+      }
+    }
+  }
+  const std::string state = std::string(fullscreen ? "1 " : "0 ") + exe;
+  if (state == g_lastForeground) return;
+  g_lastForeground = state;
+  EmitForeground(fullscreen, exe);
+}
+
+void CALLBACK ForegroundChanged(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD) {
+  CheckForeground();
+}
+
+void SetWatch(bool on) {
+  if (on && !g_foregroundHook) {
+    g_foregroundHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr, ForegroundChanged, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+    // A window going full screen does not change the foreground: poll too.
+    g_foregroundTimer = SetTimer(nullptr, 0, 1000, nullptr);
+    g_lastForeground.clear();
+    CheckForeground();
+  } else if (!on && g_foregroundHook) {
+    UnhookWinEvent(g_foregroundHook);
+    g_foregroundHook = nullptr;
+    if (g_foregroundTimer) KillTimer(nullptr, g_foregroundTimer);
+    g_foregroundTimer = 0;
+  }
 }
 
 UINT CurrentModifiers() {
@@ -199,6 +288,8 @@ void HandleCommand(char* line) {
   char* end = line + strlen(line);
   while (end > line && (end[-1] == '\n' || end[-1] == '\r' || end[-1] == ' ')) *--end = '\0';
   if (strcmp(line, "clear") == 0) { ClearBindings(); return; }
+  if (strcmp(line, "watch 1") == 0) { SetWatch(true); return; }
+  if (strcmp(line, "watch 0") == 0) { SetWatch(false); return; }
   int id = 0;
   char spec[128] = {0};
   if (sscanf(line, "hold %d %127s", &id, spec) == 2) {
@@ -264,6 +355,7 @@ int wmain(int argc, wchar_t** argv) {
   if (argc < 2) { fputs("usage: webspeak-hotkeys <parent-pid>\n", stderr); return 2; }
   const DWORD parentPid = static_cast<DWORD>(wcstoul(argv[1], nullptr, 10));
   if (parentPid == 0) { fputs("invalid process id\n", stderr); return 2; }
+  g_parentPid = parentPid;
   InitializeCriticalSection(&g_outputLock);
   g_mainThread = GetCurrentThreadId();
   MSG message;
@@ -275,6 +367,7 @@ int wmain(int argc, wchar_t** argv) {
   Emit("ready", 0);
   while (GetMessageW(&message, nullptr, 0, 0) > 0) {
     if (message.message == WM_HOTKEY) Emit("fire", static_cast<int>(message.wParam));
+    else if (message.message == WM_TIMER && g_foregroundTimer && message.wParam == g_foregroundTimer) CheckForeground();
     else if (message.message == kCommandMessage) {
       char* line = reinterpret_cast<char*>(message.lParam);
       HandleCommand(line);
@@ -282,5 +375,6 @@ int wmain(int argc, wchar_t** argv) {
     } else if (message.message == kQuitMessage) break;
   }
   ClearBindings();
+  SetWatch(false);
   return 0;
 }

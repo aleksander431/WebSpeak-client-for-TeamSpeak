@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { HOTKEY_ACTIONS, type HotkeyAction } from "./settings.js";
 import type { HoldSlot, HotkeySlot, HotkeyStatus, NativeHotkeyApi } from "./hotkeys.js";
+import type { ForegroundWindow } from "./overlay-state.js";
 
 const PUSH_TO_TALK_ID = 100;
 const WHISPER_ID = 101;
@@ -13,6 +14,11 @@ const WHISPER_ID = 101;
 export class NativeHotkeys implements NativeHotkeyApi {
   private child: ChildProcess | null = null;
   private buffer = "";
+  /** The overlay wants to know the active window; keeps the helper running. */
+  private watching = false;
+  private hasBindings = false;
+  /** Called with the active window, or null when it can no longer be known. */
+  onForeground: (foreground: ForegroundWindow | null) => void = () => {};
 
   constructor(
     private readonly helperPath: string,
@@ -24,7 +30,12 @@ export class NativeHotkeys implements NativeHotkeyApi {
   ) {}
 
   set(bindings: { action: HotkeyAction; accelerator: string }[], pushToTalk: string | null = null, whisper: string | null = null): boolean {
-    if (!bindings.length && !pushToTalk && !whisper) { this.stop(); return true; }
+    this.hasBindings = Boolean(bindings.length || pushToTalk || whisper);
+    if (!this.hasBindings) {
+      if (!this.watching) { this.stop(); return true; }
+      this.child?.stdin?.writable && this.child.stdin.write("clear\n");
+      return true;
+    }
     if ((process.platform !== "win32" && !this.anyPlatform) || !existsSync(this.helperPath)) return false;
     const child = this.ensure();
     if (!child?.stdin?.writable) return false;
@@ -35,6 +46,32 @@ export class NativeHotkeys implements NativeHotkeyApi {
     if (whisper) lines.push(`hold ${WHISPER_ID} ${whisper}`);
     child.stdin.write(lines.join("\n") + "\n");
     return true;
+  }
+
+  /**
+   * Report the active window to onForeground (for the overlay's "only in
+   * games"). False when the helper cannot run here.
+   */
+  watchForeground(on: boolean): boolean {
+    if (on === this.watching) return on ? Boolean(this.child) : true;
+    this.watching = on;
+    if (!on) {
+      if (this.child?.stdin?.writable) this.child.stdin.write("watch 0\n");
+      if (!this.hasBindings) this.stop();
+      return true;
+    }
+    if ((process.platform !== "win32" && !this.anyPlatform) || !existsSync(this.helperPath)) { this.watching = false; return false; }
+    const child = this.ensure();
+    if (!child?.stdin?.writable) { this.watching = false; return false; }
+    child.stdin.write("watch 1\n");
+    return true;
+  }
+
+  /** Quit the helper (the app ends). */
+  shutdown(): void {
+    this.watching = false;
+    this.hasBindings = false;
+    this.stop();
   }
 
   stop(): void {
@@ -78,6 +115,7 @@ export class NativeHotkeys implements NativeHotkeyApi {
       for (const action of HOTKEY_ACTIONS) this.onResult(action, "unsupported");
       this.onResult("ptt", "unsupported");
       this.onResult("whisper", "unsupported");
+      if (this.watching) { this.watching = false; this.onForeground(null); }
     });
     child.stdin!.on("error", () => { /* helper gone; exit handler reports it */ });
     return child;
@@ -85,6 +123,12 @@ export class NativeHotkeys implements NativeHotkeyApi {
 
   private handle(line: string): void {
     const [kind, idText] = line.split(" ");
+    if (kind === "fg") {
+      if (!this.watching) return;
+      const exe = line.split(" ").slice(2).join(" ");
+      this.onForeground({ fullscreen: idText === "1", exe: exe === "-" ? "" : exe.toLowerCase() });
+      return;
+    }
     const hold: HoldSlot | null = Number(idText) === PUSH_TO_TALK_ID ? "ptt" : Number(idText) === WHISPER_ID ? "whisper" : null;
     if (hold) {
       if (kind === "down" || kind === "up") this.onHold(kind === "down", hold);
