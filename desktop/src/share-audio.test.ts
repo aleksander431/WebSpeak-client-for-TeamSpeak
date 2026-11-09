@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ShareAudioTracker, windowHandleOf } from "./system-audio.js";
+import { ShareAudioTracker, windowHandleOf } from "./share-audio.js";
 
 test("a window source names its handle; screens have none", () => {
   assert.equal(windowHandleOf("window:132456:0"), "132456");
