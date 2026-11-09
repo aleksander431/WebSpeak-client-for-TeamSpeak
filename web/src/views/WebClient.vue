@@ -66,9 +66,11 @@
       :nickname="nickname"
       :error="voiceConnectionError"
       :can-connect="canRequestVoiceConnection"
+      :preview-channels="disconnectedPreview"
       :t="t"
       @update:nickname="nickname = $event"
       @connect="requestVoiceConnection"
+      @pick-channel="rejoinIntoChannel"
     />
     <!-- Connection / welcome screen -->
     <section
@@ -1800,7 +1802,15 @@ const showVoiceShell = computed(() => Boolean(
   || favoriteSwitchPending.value || favoriteSwitchFailed.value,
 ));
 // Who is on the server, shown on the join page while not in a room.
-const { preview: serverPreview } = useServerPreview(computed(() => initialized.value && accessMode.value === "fixed" && !showVoiceShell.value));
+// Also on the disconnected room, where a click rejoins straight into a channel.
+const { preview: serverPreview } = useServerPreview(computed(() => initialized.value && accessMode.value === "fixed" && !voiceState.connected));
+const disconnectedPreview = computed(() => serverPreview.value?.available && !voiceState.connected ? serverPreview.value.channels : null);
+function rejoinIntoChannel(path: string): void {
+  if (!path || voiceState.connected || voiceState.connecting) return;
+  channel.value = path;
+  if (recoveryStatus.pending) { recoveryRejoining = false; backgroundRecovery?.cancel(); }
+  requestVoiceConnection();
+}
 
 const favoriteSwitchLabel = computed(() => quickServers.value.find((server) =>
   isQuickServerTarget(server),
@@ -2414,7 +2424,9 @@ const skinPluginWidgets = {
     canConnect: canRequestVoiceConnection.value || (recoveryStatus.pending && !voiceState.connecting),
     ...(recoveryText.value ? { recovery: `${t("connectionLostTitle")}. ${recoveryText.value}` } : {}),
     t,
+    previewChannels: disconnectedPreview.value,
     onConnect: () => recoveryStatus.pending ? rejoinNow() : requestVoiceConnection(),
+    onPickChannel: rejoinIntoChannel,
   }),
   "voice.connection-controls": () => h("div", { class: "ws-plugin-connection-controls", role: "toolbar", "aria-label": t("desktopAudioControls") }, [
     h("button", { type: "button", "aria-label": t("copyInvite"), title: t("copyInvite"), onClick: doShare }, [h(Icon, { name: "share", size: 18 })]),

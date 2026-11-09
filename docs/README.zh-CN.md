@@ -201,7 +201,7 @@ relay.example.com {
 
 ### [v0.5.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.2) · 2026-11-09
 
-- 加入页面：允许加入的浏览器（开启审批时为已批准的设备）可以看到服务器上现在有谁、在哪个频道；点击频道会填入频道栏。列表来自已连接的 WebSpeak 用户；没有人连接时，来自管理面板中可选的 ServerQuery 访问。
+- 加入页面：允许加入的浏览器（开启审批时为已批准的设备）可以看到服务器上现在有谁、在哪个频道；点击频道会填入频道栏。断开连接的房间中，「立即重连」下方也会显示同样的列表，点击即可直接重连到该频道。列表来自已连接的 WebSpeak 用户；没有人连接时，来自管理面板中可选的 ServerQuery 访问。
 
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 

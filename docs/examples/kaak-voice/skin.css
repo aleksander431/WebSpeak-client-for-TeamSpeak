@@ -4650,7 +4650,7 @@
   font: inherit;
   font-size: 14px;
 }
-[data-ws-plugin-part="kaak-workspace.connection-status"] button {
+[data-ws-plugin-part="kaak-workspace.connection-status"] [data-ws-part="voice.connection-status.reconnect"] {
   justify-content: center;
   min-width: 0;
   min-height: 44px;
@@ -4663,9 +4663,9 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
-[data-ws-plugin-part="kaak-workspace.connection-status"] button:hover:not(:disabled) { background: var(--skin-kaak-accent-hover); }
+[data-ws-plugin-part="kaak-workspace.connection-status"] [data-ws-part="voice.connection-status.reconnect"]:hover:not(:disabled) { background: var(--skin-kaak-accent-hover); }
 [data-ws-plugin-part="kaak-workspace.connection-status"] input:focus-visible,
-[data-ws-plugin-part="kaak-workspace.connection-status"] button:focus-visible { outline: 2px solid #a8ed50; outline-offset: 3px; }
+[data-ws-plugin-part="kaak-workspace.connection-status"] [data-ws-part="voice.connection-status.reconnect"]:focus-visible { outline: 2px solid #a8ed50; outline-offset: 3px; }
 @media (max-width: 820px) {
   [data-ws-plugin-part="kaak-workspace.connection-status"] { margin: 10px 4px; }
 }
@@ -5068,4 +5068,5 @@
 
 /* Who is on the server, on the join card. */
 [data-ws-part="home.server-preview"] { --skin-server-preview-accent: var(--skin-kaak-accent); }
+[data-ws-plugin-part="kaak-workspace.connection-status"] [data-ws-part="home.server-preview"] { color: var(--skin-kaak-text); font-size: 12px; }
 [data-ws-part="home.server-preview"] .server-preview-initial { color: #10200a; }

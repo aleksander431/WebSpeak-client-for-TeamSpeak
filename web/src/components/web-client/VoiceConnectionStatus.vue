@@ -25,11 +25,21 @@
       data-ws-part="voice.connection-status.reconnect"
       @click="$emit('connect')"
     ><Icon v-if="connecting" name="refresh" :size="16" />{{ t('reconnectNow') }}</button>
+    <ServerPreviewPanel
+      v-if="previewChannels && !connecting"
+      class="voice-connection-status-preview"
+      :channels="previewChannels"
+      selected=""
+      :t="t"
+      @select="path => $emit('pickChannel', path)"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import Icon from "../Icon.vue";
+import ServerPreviewPanel from "./ServerPreviewPanel.vue";
+import type { ServerPreviewChannel } from "../../../../src/shared/server-preview.js";
 
 defineProps<{
   connected: boolean;
@@ -39,7 +49,16 @@ defineProps<{
   canConnect: boolean;
   /** Automatic rejoin in progress: what it is doing; the button then retries at once. */
   recovery?: string;
-  t: (key: string) => string;
+  /** Who is on the server (approved browsers only); a click rejoins straight into that channel. */
+  previewChannels?: readonly ServerPreviewChannel[] | null;
+  t: (key: string, variables?: Record<string, string | number>) => string;
 }>();
-defineEmits<{ connect: []; 'update:nickname': [value: string] }>();
+defineEmits<{ connect: []; 'update:nickname': [value: string]; pickChannel: [path: string] }>();
 </script>
+
+<style scoped>
+.voice-connection-status-preview {
+  margin-top: 10px;
+  text-align: left;
+}
+</style>
