@@ -17,6 +17,9 @@
   let selected = null;
 
   function render() {
+    // The sound option depends on what is shared: a window shares only its program's sound.
+    const choice = sources.find((item) => item.id === selected);
+    document.getElementById("audio-label").textContent = (choice ? choice.kind : kind) === "window" ? (strings.audioWindow || strings.audio) : strings.audio;
     for (const tab of document.querySelectorAll("[role=tab]")) tab.setAttribute("aria-selected", String(tab.dataset.kind === kind));
     grid.replaceChildren();
     for (const source of sources.filter((item) => item.kind === kind)) {

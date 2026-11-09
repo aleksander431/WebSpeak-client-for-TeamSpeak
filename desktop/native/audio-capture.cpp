@@ -1,15 +1,18 @@
 // WebSpeak system-audio helper (Windows 10 2004+).
 //
-// Captures everything the PC plays EXCEPT the audio of one process tree
-// (WebSpeak itself, so voices from the channel stay out of a screen share),
-// using WASAPI process loopback. Writes 48 kHz stereo signed 16-bit PCM to
-// stdout until stdout closes or the excluded process exits.
+// Uses WASAPI process loopback. For a screen it captures everything the PC
+// plays EXCEPT the audio of one process tree (WebSpeak itself, so voices from
+// the channel stay out of the share). For a window it captures ONLY the
+// process tree that owns that window (a game, a browser, a player).
+// Writes 48 kHz stereo signed 16-bit PCM to stdout until stdout closes, the
+// WebSpeak process exits or (for a window) the window's process exits.
 //
-//   webspeak-audio-capture.exe <pid>          capture
-//   webspeak-audio-capture.exe <pid> --probe  only check that it is supported
+//   webspeak-audio-capture.exe <pid>                 everything but <pid>'s tree
+//   webspeak-audio-capture.exe <pid> --window <hwnd> only the tree owning <hwnd>
+//   webspeak-audio-capture.exe <pid> --probe         only check that it is supported
 //
 // Exit codes: 0 done, 2 bad arguments, 3 process loopback unsupported,
-// 4 capture failed.
+// 4 capture failed, 5 the window or its process is gone.
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -119,18 +122,32 @@ static int Fail(int code, const char* what, HRESULT hr) {
 }
 
 int wmain(int argc, wchar_t** argv) {
-  if (argc < 2) return Fail(2, "usage: webspeak-audio-capture <pid> [--probe]", E_INVALIDARG);
+  if (argc < 2) return Fail(2, "usage: webspeak-audio-capture <pid> [--probe | --window <hwnd>]", E_INVALIDARG);
   const DWORD pid = static_cast<DWORD>(wcstoul(argv[1], nullptr, 10));
   const bool probe = argc > 2 && wcscmp(argv[2], L"--probe") == 0;
   if (pid == 0) return Fail(2, "invalid process id", E_INVALIDARG);
+
+  // A shared window: capture only the process that owns it (and its children,
+  // e.g. a browser's audio service).
+  DWORD target = pid;
+  PROCESS_LOOPBACK_MODE mode = PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE;
+  if (argc > 3 && wcscmp(argv[2], L"--window") == 0) {
+    const HWND window = reinterpret_cast<HWND>(static_cast<ULONG_PTR>(_wcstoui64(argv[3], nullptr, 10)));
+    DWORD owner = 0;
+    if (!window || !IsWindow(window) || !GetWindowThreadProcessId(window, &owner) || owner == 0) {
+      return Fail(5, "the shared window is gone", E_INVALIDARG);
+    }
+    target = owner;
+    mode = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+  }
 
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   if (FAILED(hr)) return Fail(4, "CoInitializeEx failed", hr);
 
   AUDIOCLIENT_ACTIVATION_PARAMS params = {};
   params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
-  params.ProcessLoopbackParams.TargetProcessId = pid;
-  params.ProcessLoopbackParams.ProcessLoopbackMode = PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE;
+  params.ProcessLoopbackParams.TargetProcessId = target;
+  params.ProcessLoopbackParams.ProcessLoopbackMode = mode;
   PROPVARIANT activation = {};
   activation.vt = VT_BLOB;
   activation.blob.cbSize = sizeof(params);
@@ -179,11 +196,14 @@ int wmain(int argc, wchar_t** argv) {
 
   _setmode(_fileno(stdout), _O_BINARY);
   HANDLE parent = OpenProcess(SYNCHRONIZE, FALSE, pid);
+  // When the shared window's program closes there is nothing left to capture.
+  HANDLE source = target != pid ? OpenProcess(SYNCHRONIZE, FALSE, target) : nullptr;
   static BYTE silence[48000 * 4 / 10];  // 100 ms of zeros
   bool running = true;
   while (running) {
     WaitForSingleObject(ready, 200);
     if (parent && WaitForSingleObject(parent, 0) == WAIT_OBJECT_0) break;
+    if (source && WaitForSingleObject(source, 0) == WAIT_OBJECT_0) break;
     UINT32 packet = 0;
     while (running && SUCCEEDED(capture->GetNextPacketSize(&packet)) && packet > 0) {
       BYTE* data = nullptr;
@@ -210,6 +230,7 @@ int wmain(int argc, wchar_t** argv) {
   capture->Release();
   client->Release();
   if (parent) CloseHandle(parent);
+  if (source) CloseHandle(source);
   CloseHandle(ready);
   CoUninitialize();
   return 0;

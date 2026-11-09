@@ -8,11 +8,18 @@ import { BrowserWindow, ipcMain, type WebFrameMain } from "electron";
  *
  * Chromium's "loopback" audio is everything the PC plays, so viewers would
  * also hear the channel's voices. On Windows 10 2004+ a small helper
- * (native/audio-capture.cpp) captures everything except this process tree
- * with WASAPI process loopback. Its PCM is played in a hidden, muted window
- * whose frame audio Electron can attach to the screen share as its audio
- * track. That window belongs to WebSpeak, so the helper never hears it back.
+ * (native/audio-capture.cpp) uses WASAPI process loopback: for a screen it
+ * captures everything except this process tree, for a window only the program
+ * that owns that window. Its PCM is played in a hidden, muted window whose
+ * frame audio Electron can attach to the screen share as its audio track. That
+ * window belongs to WebSpeak, so the helper never hears it back.
  */
+
+/** The window handle in a desktopCapturer id ("window:<hwnd>:<n>"), or null for a screen. */
+export function windowHandleOf(sourceId: string): string | null {
+  const match = /^window:(\d+):/.exec(sourceId);
+  return match && match[1] !== "0" ? match[1]! : null;
+}
 
 type Probe = "unknown" | "supported" | "unsupported";
 
@@ -60,7 +67,7 @@ export class SystemAudio {
    * Start capturing and return the frame whose audio carries it, or null
    * when it could not start (the caller then falls back to plain loopback).
    */
-  async start(): Promise<WebFrameMain | null> {
+  async start(windowHandle: string | null = null): Promise<WebFrameMain | null> {
     this.stop();
     if (!(await this.detect())) return null;
     const generation = ++this.generation;
@@ -93,7 +100,8 @@ export class SystemAudio {
     void window.loadFile(join(this.staticDir, "system-audio.html"));
     if (!(await ready) || generation !== this.generation) { if (generation === this.generation) this.stop(); return null; }
 
-    const helper = spawn(this.helperPath, [String(process.pid)], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const args = windowHandle ? [String(process.pid), "--window", windowHandle] : [String(process.pid)];
+    const helper = spawn(this.helperPath, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     this.helper = helper;
     helper.stdout!.on("data", (chunk: Buffer) => {
       if (this.window === window && !window.isDestroyed()) window.webContents.send("system-audio:chunk", new Uint8Array(chunk));

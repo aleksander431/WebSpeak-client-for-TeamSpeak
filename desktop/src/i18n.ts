@@ -2,6 +2,7 @@
 
 const en = {
   pickerAudioClean: "Share the PC's sound, without the voices from WebSpeak",
+  pickerAudioWindow: "Share this window's sound (only its program, without other sounds)",
   setupTitle: "Welcome to WebSpeak",
   setupBody: "Enter the address of your WebSpeak server. You only need to do this once; it can be changed later in Settings.",
   setupPlaceholder: "webspeak.example.com",
@@ -117,6 +118,7 @@ type Strings = typeof en;
 
 const ru: Strings = {
   pickerAudioClean: "Транслировать звук компьютера (без голосов из WebSpeak)",
+  pickerAudioWindow: "Транслировать звук этого окна (только его программа, без остальных звуков)",
   setupTitle: "Добро пожаловать в WebSpeak",
   setupBody: "Укажите адрес вашего сервера WebSpeak. Это нужно сделать один раз, потом адрес можно поменять в настройках.",
   setupPlaceholder: "webspeak.example.com",
@@ -227,6 +229,7 @@ const ru: Strings = {
 
 const de: Strings = {
   pickerAudioClean: "Ton des PCs teilen, ohne die Stimmen aus WebSpeak",
+  pickerAudioWindow: "Ton dieses Fensters teilen (nur sein Programm, ohne andere Töne)",
   setupTitle: "Willkommen bei WebSpeak",
   setupBody: "Gib die Adresse deines WebSpeak-Servers ein. Das ist nur einmal nötig; später kannst du sie in den Einstellungen ändern.",
   setupPlaceholder: "webspeak.example.com",
@@ -337,6 +340,7 @@ const de: Strings = {
 
 const zh: Strings = {
   pickerAudioClean: "共享电脑声音（不包含 WebSpeak 中的语音）",
+  pickerAudioWindow: "共享此窗口的声音（仅该程序，不含其他声音）",
   setupTitle: "欢迎使用 WebSpeak",
   setupBody: "请输入你的 WebSpeak 服务器地址。只需设置一次，之后可在设置中更改。",
   setupPlaceholder: "webspeak.example.com",
@@ -447,6 +451,7 @@ const zh: Strings = {
 
 const ja: Strings = {
   pickerAudioClean: "PC の音を共有する（WebSpeak の音声は含まない）",
+  pickerAudioWindow: "このウィンドウの音を共有する（そのアプリのみ、他の音は含まない）",
   setupTitle: "WebSpeak へようこそ",
   setupBody: "WebSpeak サーバーのアドレスを入力してください。設定は一度だけで、後から設定画面で変更できます。",
   setupPlaceholder: "webspeak.example.com",

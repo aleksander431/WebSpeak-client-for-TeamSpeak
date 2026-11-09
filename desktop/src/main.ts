@@ -22,7 +22,7 @@ import { HotkeyManager, type HotkeyStatusMap } from "./hotkeys.js";
 import { createTranslator } from "./i18n.js";
 import { SettingsStore, normalizeServerUrl, type DesktopSettings, type HotkeyAction } from "./settings.js";
 import { parseWebClientState, type WebClientState } from "./state.js";
-import { SystemAudio } from "./system-audio.js";
+import { SystemAudio, windowHandleOf } from "./system-audio.js";
 import { NativeHotkeys } from "./native-hotkeys.js";
 import { OverlayController } from "./overlay.js";
 import { EMPTY_ROSTER, parseOverlayRoster, parseOverlaySpeaking, type OverlayRoster } from "./overlay-state.js";
@@ -243,14 +243,19 @@ function configureSession(target: Session): void {
       systemAudio.stop();
       if (!choice) { callback({}); return; }
       if (!choice.audio) { callback({ video: choice.source }); return; }
-      // Prefer system sound without WebSpeak's voices; plain loopback otherwise.
-      const frame = await systemAudio.start();
+      // A window shares only its own program's sound; a screen shares the PC's
+      // sound without WebSpeak's voices. Plain loopback (everything) is the last resort.
+      const windowHandle = windowHandleOf(choice.source.id);
+      const frame = await systemAudio.start(windowHandle);
       if (frame) {
         if (systemAudioWatchdog) clearTimeout(systemAudioWatchdog);
         systemAudioWatchdog = setTimeout(() => { if (!webState.streaming) systemAudio.stop(); }, 30_000);
         callback({ video: choice.source, audio: frame });
         return;
       }
+      // The helper works on this PC but not for this window (e.g. it closed):
+      // no sound rather than everything the PC plays.
+      if (windowHandle && systemAudio.supported) { callback({ video: choice.source }); return; }
       callback({ video: choice.source, audio: "loopback" });
     }).catch(() => callback({}));
   });
@@ -316,7 +321,9 @@ async function chooseDisplaySource(direct: boolean): Promise<{ source: DesktopCa
 
 function pickerStrings() {
   const audio = systemAudio.supported ? t("pickerAudioClean") : t("pickerAudio");
-  return { title: t("pickerTitle"), screens: t("pickerScreens"), windows: t("pickerWindows"), audio, share: t("pickerShare"), cancel: t("cancel") };
+  // With the helper a window shares only its own program's sound.
+  const audioWindow = systemAudio.supported ? t("pickerAudioWindow") : audio;
+  return { title: t("pickerTitle"), screens: t("pickerScreens"), windows: t("pickerWindows"), audio, audioWindow, share: t("pickerShare"), cancel: t("cancel") };
 }
 
 // ----------------------------------------------------------- web actions
