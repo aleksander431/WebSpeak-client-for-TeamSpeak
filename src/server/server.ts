@@ -13,6 +13,8 @@ import type { AdminService } from "../admin/admin-service.js";
 import { AdminSessionStore } from "../admin/admin-session.js";
 import { isSafeOpenTargetForPrefill, resolveSafeOpenTarget, TeamSpeakTargetResolutionError } from "../security/open-target-policy.js";
 import { parseIdentity } from "@honeybbq/teamspeak/client";
+import { ServerPreviewService } from "./server-preview.js";
+import type { ServerPreview } from "../shared/server-preview.js";
 import { JoinRateLimiter } from "./join-rate-limit.js";
 import type { ConfiguredAccelerationRelay } from "./acceleration-relay.js";
 import { createVoiceGatewayAuthHeaders, type DelegatedVoiceSession } from "./voice-gateway-auth.js";
@@ -64,6 +66,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
   const voiceBridge = new VoiceBridge(options.voiceBridgeOptions, logger);
   const adminSessions = new AdminSessionStore();
   const joinRateLimiter = new JoinRateLimiter();
+  const previewRateLimiter = new JoinRateLimiter();
   const trustedProxies = createTrustedProxies(options.voiceBridgeOptions.trustedProxies);
   const clientIp = (request: express.Request): string => resolveClientIp(request, trustedProxies);
 
@@ -163,6 +166,38 @@ export function createWebServer(options: WebServerOptions): WebServer {
       status: status === "unknown" ? "none" : status,
       ...(nickname ? deviceAccess.nicknameState(token, nickname) : {}),
     });
+  });
+
+  // Who is on the server before joining: only for browsers that may join
+  // (approved devices when approval is on), and only for the fixed server.
+  const serverPreview = new ServerPreviewService({
+    fixed: () => options.adminService.getConnectionPolicy().accessMode === "fixed",
+    live: async () => voiceBridge.liveDirectory(await resolveTeamSpeakTarget(options.adminService.getConnectionPolicy().defaultTarget)),
+    query: () => options.adminService.getTsAdminPreview(),
+  });
+  app.get("/api/server-preview", async (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    if (!options.adminService.isInitialized()) {
+      response.json({ available: false, reason: "unavailable" } satisfies ServerPreview);
+      return;
+    }
+    const deviceAccess = options.adminService.deviceAccess;
+    if (deviceAccess.isRequired()) {
+      const token = readCookie(request.header("cookie"), DEVICE_COOKIE_NAME);
+      if (!isDeviceToken(token) || deviceAccess.status(token) !== "approved") {
+        response.json({ available: false, reason: "approval-required" } satisfies ServerPreview);
+        return;
+      }
+    }
+    if (!previewRateLimiter.allow(clientIp(request))) {
+      response.status(429).json({ available: false, reason: "unavailable" } satisfies ServerPreview);
+      return;
+    }
+    try {
+      response.json(await serverPreview.read());
+    } catch {
+      response.json({ available: false, reason: "unavailable" } satisfies ServerPreview);
+    }
   });
 
   // Password-protected nicknames: the owner sets a password from an approved

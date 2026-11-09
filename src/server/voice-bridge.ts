@@ -21,6 +21,7 @@ import { TSClient, type TSClientOptions } from "./ts-client.js";
 import type { Logger as LoggerType } from "../logger.js";
 import { clientConnectionFailureCode, describeTeamSpeakError, normalizeTeamSpeakError } from "../errors.js";
 import { formatTeamSpeakTarget, teamSpeakTargetKey, type TeamSpeakTarget } from "../domain/teamspeak-target.js";
+import type { ServerPreviewChannel } from "../shared/server-preview.js";
 import { JoinTicketStore, type JoinTicketPayload } from "./join-ticket.js";
 import { IdentityLeaseStore } from "./identity-lease.js";
 import { SessionManager, type ManagedSession, type SessionTeardownReason } from "./session-manager.js";
@@ -819,6 +820,27 @@ export class VoiceBridge {
 
   private async teardown(entryId: string, reason: SessionTeardownReason): Promise<void> {
     await this.sessionManager.teardown(entryId, reason);
+  }
+
+  /**
+   * The channel list a connected session on this server currently sees, for
+   * the join page. Nicknames and states only; null when nobody is connected.
+   */
+  liveDirectory(target: TeamSpeakTarget): ServerPreviewChannel[] | null {
+    const key = teamSpeakTargetKey(target);
+    for (const entry of this.entries.values()) {
+      if (entry.session.state !== "connected" || teamSpeakTargetKey(entry.target) !== key || !entry.channelTree.length) continue;
+      return entry.channelTree.map(channel => ({
+        id: channel.id,
+        parentID: channel.parentID,
+        ...(channel.order === undefined ? {} : { order: channel.order }),
+        name: channel.name,
+        ...(channel.passwordProtected ? { passwordProtected: true } : {}),
+        ...(channel.isPermanent ? { isPermanent: true } : {}),
+        members: (channel.members ?? []).map(member => ({ nickname: member.nickname, away: member.away === true, inputMuted: member.inputMuted === true, outputMuted: member.outputMuted === true })),
+      }));
+    }
+    return null;
   }
 
   /** The connected session a chat token belongs to, with its current channel. */

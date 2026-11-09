@@ -14,6 +14,7 @@ import type { TsAdminAction, TsAdminSettingsInput } from "../shared/admin-inputs
 import { resolveTeamSpeakTarget } from "../server/teamspeak-alias.js";
 import { AdminInputError } from "./admin-errors.js";
 import { webQueryFetch } from "./webquery-fetch.js";
+import type { ServerPreviewChannel } from "../shared/server-preview.js";
 
 const PASSWORD_PURPOSE = "webspeak:ts-admin-query-password:v1";
 const API_KEY_PURPOSE = "webspeak:ts-admin-webquery-api-key:v1";
@@ -105,6 +106,22 @@ export class TsAdminService {
         bansErrorCode: bans.status === "fulfilled" ? null : classifyError(bans.reason, "TS_ADMIN_READ_FAILED"),
         observedAt: new Date().toISOString(),
       };
+    }, undefined, "TS_ADMIN_READ_FAILED");
+  }
+
+  /**
+   * Channels and who is in them, for the join page. Null when query access is
+   * not set up; read-only, unaudited (it runs on page views) and nicknames only.
+   */
+  async preview(): Promise<ServerPreviewChannel[] | null> {
+    if (this.policy().mode !== "fixed" || !this.database.getTsAdminSettings().enabled) return null;
+    return this.withClient(async (client, options, assertCurrent) => {
+      const [channels, clients] = await Promise.all([
+        listChannels(client, options),
+        listClients(client, { ...options, away: true, voice: true }),
+      ]);
+      assertCurrent();
+      return projectPreview(channels, clients);
     }, undefined, "TS_ADMIN_READ_FAILED");
   }
 
@@ -299,4 +316,28 @@ function classifyError(error: unknown, fallback: string): string {
     error = error.cause;
   }
   return fallback;
+}
+
+type PreviewChannel = { id: unknown; parentID?: unknown; order?: unknown; name: string; hasPassword?: boolean | undefined; isPermanent?: boolean | undefined };
+type PreviewClient = { channelID: unknown; nickname: string; type: number; isAway: boolean; isInputMuted?: boolean | undefined; isOutputMuted?: boolean | undefined };
+
+/** Voice clients only (query clients are invisible in TeamSpeak too). */
+export function projectPreview(channels: readonly PreviewChannel[], clients: readonly PreviewClient[]): ServerPreviewChannel[] {
+  const members = new Map<string, ServerPreviewChannel["members"]>();
+  for (const entry of clients) {
+    if (entry.type !== 0) continue;
+    const id = String(entry.channelID);
+    const list = members.get(id) ?? [];
+    list.push({ nickname: entry.nickname, away: entry.isAway, inputMuted: entry.isInputMuted ?? false, outputMuted: entry.isOutputMuted ?? false });
+    members.set(id, list);
+  }
+  return channels.map(channel => ({
+    id: String(channel.id),
+    parentID: channel.parentID === undefined ? "0" : String(channel.parentID),
+    ...(channel.order === undefined ? {} : { order: String(channel.order) }),
+    name: channel.name,
+    ...(channel.hasPassword ? { passwordProtected: true } : {}),
+    ...(channel.isPermanent ? { isPermanent: true } : {}),
+    members: members.get(String(channel.id)) ?? [],
+  }));
 }

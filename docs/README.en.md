@@ -195,6 +195,10 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
+### [v0.5.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.2) · 2026-11-09
+
+- Join page: browsers that may join (approved devices, when approval is on) see who is on the server now, by channel; a click on a channel puts it into the channel field. The list comes from a connected WebSpeak user or, when nobody is connected, from the optional ServerQuery access in the admin panel.
+
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 
 - Fix: detaching a stream did nothing in the desktop app; it now opens the system mini player there, and a refused window shows a message instead of failing silently.

@@ -185,6 +185,14 @@
       />
     </div>
 
+    <ServerPreviewPanel
+      v-if="accessMode === 'fixed' && serverPreview?.available"
+      :channels="serverPreview.channels"
+      :selected="channel"
+      :t="t"
+      @select="channel = $event"
+    />
+
     <details
       class="identity-options"
       data-ws-part="home.identity"
@@ -252,6 +260,8 @@
 
 <script setup lang="ts">
 import Icon from "../Icon.vue";
+import ServerPreviewPanel from "./ServerPreviewPanel.vue";
+import type { ServerPreview } from "../../../../src/shared/server-preview.js";
 import type { QuickServer } from "../../services/quick-servers.js";
 
 const serverHost = defineModel<string>("serverHost", { required: true });
@@ -273,6 +283,8 @@ defineProps<{
   hasIdentity: boolean;
   connecting: boolean;
   joinDisabled: boolean;
+  /** Who is on the fixed server, for approved browsers. */
+  serverPreview?: ServerPreview | null;
   t: (key: string, variables?: Record<string, string | number>) => string;
 }>();
 

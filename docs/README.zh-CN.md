@@ -199,6 +199,10 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
+### [v0.5.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.2) · 2026-11-09
+
+- 加入页面：允许加入的浏览器（开启审批时为已批准的设备）可以看到服务器上现在有谁、在哪个频道；点击频道会填入频道栏。列表来自已连接的 WebSpeak 用户；没有人连接时，来自管理面板中可选的 ServerQuery 访问。
+
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 
 - 修复：桌面客户端中分离直播没有反应；现在会打开系统迷你播放器，窗口无法打开时会显示提示。

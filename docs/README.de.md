@@ -185,6 +185,10 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v0.5.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.2) · 2026-11-09
+
+- Anmeldeseite: Browser, die beitreten dürfen (freigegebene Geräte, wenn die Freigabe aktiv ist), sehen, wer gerade in welchen Kanälen auf dem Server ist; ein Klick auf einen Kanal trägt ihn ins Kanalfeld ein. Die Liste kommt von einem verbundenen WebSpeak-Nutzer oder, wenn niemand verbunden ist, über den optionalen ServerQuery-Zugang im Admin-Bereich.
+
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 
 - Behoben: Das Lösen eines Streams tat in der Desktop-App nichts; dort öffnet sich jetzt der System-Miniplayer, und ein verweigertes Fenster meldet sich statt still zu scheitern.

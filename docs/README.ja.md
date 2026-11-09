@@ -159,6 +159,10 @@ npm start
 
 <a id="latest-release-notes"></a>
 
+### [v0.5.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.2) · 2026-11-09
+
+- 参加ページ：参加が許可されたブラウザ（承認が有効な場合は承認済みデバイス）は、いまサーバーの各チャンネルに誰がいるかを見られます。チャンネルをクリックするとチャンネル欄に入ります。一覧は接続中の WebSpeak ユーザーから、誰もいない場合は管理パネルの ServerQuery アクセス（設定時）から取得します。
+
 ### [v0.5.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.1) · 2026-11-09
 
 - 修正：デスクトップアプリで配信の切り離しが何も起きなかった問題。システムのミニプレーヤーで開くようになり、開けない場合はメッセージを表示します。

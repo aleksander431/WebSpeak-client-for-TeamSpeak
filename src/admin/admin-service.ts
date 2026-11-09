@@ -334,6 +334,7 @@ export class AdminService {
   getTsAdminSettings() { return this.tsAdmin.settings(); }
   saveTsAdminSettings(input: TsAdminSettingsInput): void { this.tsAdmin.save(input); }
   getTsAdminOverview() { return this.tsAdmin.overview(); }
+  getTsAdminPreview() { return this.tsAdmin.preview(); }
   runTsAdminAction(input: unknown) { return this.tsAdmin.action(input); }
 
   getManagedInvite(token: string): { target: string; channel: string } | null {

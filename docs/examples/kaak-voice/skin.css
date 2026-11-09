@@ -5065,3 +5065,7 @@
   font-size: 19px;
 }
 [data-ws-plugin-part="kaak-workspace.identity-online"] { z-index: 1; pointer-events: none; }
+
+/* Who is on the server, on the join card. */
+[data-ws-part="home.server-preview"] { --skin-server-preview-accent: var(--skin-kaak-accent); }
+[data-ws-part="home.server-preview"] .server-preview-initial { color: #10200a; }

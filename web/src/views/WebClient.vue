@@ -261,6 +261,7 @@
             :identity-export-busy="identityExportBusy"
             :has-identity="Boolean(identityMaterial)"
             :connecting="voiceState.connecting"
+            :server-preview="serverPreview"
             :join-disabled="
               !canJoin || serverConfigLoading || !identityReady || voiceState.connecting
             "
@@ -1136,6 +1137,7 @@ import LanguageSwitcher from "../components/LanguageSwitcher.vue";
 import SkinSwitcher, { type SkinOption } from "../components/SkinSwitcher.vue";
 import { useWebClientChat } from "../composables/useWebClientChat.js";
 import { useWebClientAudioControls } from "../composables/useWebClientAudioControls.js";
+import { useServerPreview } from "../composables/useServerPreview.js";
 import { useWebClientChannels, type TreeChannel } from "../composables/useWebClientChannels.js";
 import { useWebClientConnection } from "../composables/useWebClientConnection.js";
 import { useDeviceApproval } from "../composables/useDeviceApproval.js";
@@ -1797,6 +1799,9 @@ const showVoiceShell = computed(() => Boolean(
   voiceState.connected || voiceState.reconnecting || voiceState.reconnectFailed
   || favoriteSwitchPending.value || favoriteSwitchFailed.value,
 ));
+// Who is on the server, shown on the join page while not in a room.
+const { preview: serverPreview } = useServerPreview(computed(() => initialized.value && accessMode.value === "fixed" && !showVoiceShell.value));
+
 const favoriteSwitchLabel = computed(() => quickServers.value.find((server) =>
   isQuickServerTarget(server),
 )?.label ?? currentServerTarget());
@@ -2215,6 +2220,7 @@ const skinPluginWidgets = {
     hasIdentity: Boolean(identityMaterial.value),
     connecting: voiceState.connecting,
     joinDisabled: !canJoin.value || serverConfigLoading.value || !identityReady.value || voiceState.connecting,
+    serverPreview: serverPreview.value,
     t,
     onConnect: doConnect,
     onDisconnect: doDisconnect,
