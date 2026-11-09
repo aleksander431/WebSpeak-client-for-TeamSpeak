@@ -201,6 +201,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - Automatisches Neuverbinden: Bricht die Verbindung wegen des Netzwerks oder eines Serverneustarts ab, tritt WebSpeak selbst wieder bei (auf allen Geräten, auch minimiert) und kehrt in deinen Kanal zurück. Der Raum zeigt einen Countdown mit „Jetzt neu verbinden“; versucht wird etwa fünf Minuten lang, nach Kick oder Bann nicht.
 - Behoben: Ein Privatchat konnte doppelt erscheinen (ein Tab von der eingehenden Nachricht, einer beim Antworten), wenn der Server Mitglieder ohne eindeutige ID listet; jetzt ist es eine Unterhaltung, und Senden an solche Mitglieder funktioniert.
 - Behoben (Desktop-App, neue Desktop-Version nötig): Beim Teilen eines Fensters wird nur noch der Ton seines Programms übertragen, nicht alles, was der PC abspielt; die Tonoption in der Auswahl sagt das.
+- Behoben (Desktop-App und Server): Die Begleitmusik bricht nicht mehr nach etwa 30 Sekunden von selbst ab und läuft weiter, während Sie eine Bildschirmfreigabe starten oder beenden.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

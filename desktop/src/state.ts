@@ -6,6 +6,8 @@ export interface WebClientState {
   streaming: boolean;
   /** Older server pages do not send it. */
   speaking: boolean;
+  /** Sharing program sound as accompaniment. Older server pages do not send it. */
+  accompaniment: boolean;
 }
 
 export function parseWebClientState(value: unknown): WebClientState | null {
@@ -19,5 +21,6 @@ export function parseWebClientState(value: unknown): WebClientState | null {
     soundMuted: input.soundMuted as boolean,
     streaming: input.streaming as boolean,
     speaking: input.speaking === true,
+    accompaniment: input.accompaniment === true,
   };
 }

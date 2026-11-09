@@ -23,11 +23,91 @@ export function windowHandleOf(sourceId: string): string | null {
 
 type Probe = "unknown" | "supported" | "unsupported";
 
+/** One running capture: its frame carries the sound; stop() releases the helper and window. */
+export interface SystemAudioCapture {
+  readonly frame: WebFrameMain;
+  stop(): void;
+}
+
+export type ShareKind = "stream" | "accompaniment";
+
+export interface ShareActivity {
+  streaming: boolean;
+  /** Older pages do not report it. */
+  accompaniment: boolean;
+}
+
+interface TrackerTimers {
+  setTimeout(callback: () => void, ms: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
+/**
+ * Ties each capture to the share that uses it. The display-media handler
+ * cannot tell a screen share from an accompaniment request, so a new capture
+ * waits for the page to report which share just started; it then lives as
+ * long as that share. A capture no share claims within the grace period (the
+ * page never used it) is released.
+ */
+export class ShareAudioTracker<C extends { stop(): void }> {
+  private entries: Array<{ capture: C; kind: ShareKind | null; timer: unknown }> = [];
+  private last: ShareActivity = { streaming: false, accompaniment: false };
+
+  constructor(
+    private readonly graceMs = 30_000,
+    private readonly timers: TrackerTimers = { setTimeout: (callback, ms) => setTimeout(callback, ms), clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout) },
+  ) {}
+
+  get size(): number {
+    return this.entries.length;
+  }
+
+  add(capture: C): void {
+    const entry: { capture: C; kind: ShareKind | null; timer: unknown } = { capture, kind: null, timer: null };
+    entry.timer = this.timers.setTimeout(() => { if (entry.kind === null) this.remove(entry); }, this.graceMs);
+    this.entries.push(entry);
+  }
+
+  update(activity: ShareActivity): void {
+    for (const kind of ["stream", "accompaniment"] as const) {
+      const key = kind === "stream" ? "streaming" : "accompaniment";
+      const was = this.last[key];
+      const now = activity[key];
+      if (!was && now) {
+        // The share that just started uses the newest capture nobody claimed.
+        const entry = [...this.entries].reverse().find((item) => item.kind === null);
+        if (entry) { entry.kind = kind; this.timers.clearTimeout(entry.timer); entry.timer = null; }
+      } else if (was && !now) {
+        for (const entry of this.entries.filter((item) => item.kind === kind)) this.remove(entry);
+      }
+    }
+    this.last = { ...activity };
+  }
+
+  /** The page went away: nothing uses any capture any more. */
+  reset(): void {
+    for (const entry of [...this.entries]) this.remove(entry);
+    this.last = { streaming: false, accompaniment: false };
+  }
+
+  private remove(entry: { capture: C; kind: ShareKind | null; timer: unknown }): void {
+    const index = this.entries.indexOf(entry);
+    if (index < 0) return;
+    this.entries.splice(index, 1);
+    if (entry.timer !== null) this.timers.clearTimeout(entry.timer);
+    try { entry.capture.stop(); } catch { /* already gone */ }
+  }
+
+  /** A capture whose helper exited on its own. */
+  forget(capture: C): void {
+    const entry = this.entries.find((item) => item.capture === capture);
+    if (entry) this.remove(entry);
+  }
+}
+
 export class SystemAudio {
   private probe: Probe = "unknown";
-  private window: BrowserWindow | null = null;
-  private helper: ChildProcess | null = null;
-  private generation = 0;
+  private readonly captures = new Set<SystemAudioCapture>();
 
   constructor(
     private readonly helperPath: string,
@@ -42,7 +122,7 @@ export class SystemAudio {
   }
 
   get active(): boolean {
-    return this.helper !== null;
+    return this.captures.size > 0;
   }
 
   /** Check once whether the helper exists and process loopback works on this PC. */
@@ -64,13 +144,14 @@ export class SystemAudio {
   }
 
   /**
-   * Start capturing and return the frame whose audio carries it, or null
-   * when it could not start (the caller then falls back to plain loopback).
+   * Start a capture and return it, or null when it could not start (the caller
+   * then falls back). Several captures may run at once, e.g. a screen share and
+   * an accompaniment; onEnded runs when the helper exits on its own.
    */
-  async start(windowHandle: string | null = null): Promise<WebFrameMain | null> {
-    this.stop();
+  async start(windowHandle: string | null = null, onEnded: (capture: SystemAudioCapture) => void = () => {}): Promise<SystemAudioCapture | null> {
     if (!(await this.detect())) return null;
-    const generation = ++this.generation;
+    let stopped = false;
+    let helper: ChildProcess | null = null;
     const window = new BrowserWindow({
       show: false,
       width: 200,
@@ -84,13 +165,23 @@ export class SystemAudio {
         autoplayPolicy: "no-user-gesture-required",
       },
     });
-    this.window = window;
+    const capture: SystemAudioCapture = {
+      frame: window.webContents.mainFrame,
+      stop: () => {
+        if (stopped) return;
+        stopped = true;
+        this.captures.delete(capture);
+        if (helper && helper.exitCode === null) helper.kill();
+        if (!window.isDestroyed()) window.destroy();
+      },
+    };
+    this.captures.add(capture);
     // Viewers get the sound through the capture; the sharer already hears it.
     window.webContents.setAudioMuted(true);
     const ready = new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => { ipcMain.removeListener("system-audio:ready", onReady); resolve(false); }, 5000);
       const onReady = (event: Electron.IpcMainEvent) => {
-        if (event.sender !== window.webContents) return;
+        if (window.isDestroyed() || event.sender !== window.webContents) return;
         clearTimeout(timer);
         ipcMain.removeListener("system-audio:ready", onReady);
         resolve(true);
@@ -98,40 +189,32 @@ export class SystemAudio {
       ipcMain.on("system-audio:ready", onReady);
     });
     void window.loadFile(join(this.staticDir, "system-audio.html"));
-    if (!(await ready) || generation !== this.generation) { if (generation === this.generation) this.stop(); return null; }
+    if (!(await ready) || stopped) { capture.stop(); return null; }
 
     const args = windowHandle ? [String(process.pid), "--window", windowHandle] : [String(process.pid)];
-    const helper = spawn(this.helperPath, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-    this.helper = helper;
-    helper.stdout!.on("data", (chunk: Buffer) => {
-      if (this.window === window && !window.isDestroyed()) window.webContents.send("system-audio:chunk", new Uint8Array(chunk));
+    const child = spawn(this.helperPath, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    helper = child;
+    child.stdout!.on("data", (chunk: Buffer) => {
+      if (!stopped && !window.isDestroyed()) window.webContents.send("system-audio:chunk", new Uint8Array(chunk));
     });
-    helper.stderr!.on("data", (chunk: Buffer) => this.log(chunk.toString().trim()));
+    child.stderr!.on("data", (chunk: Buffer) => this.log(chunk.toString().trim()));
     const started = await new Promise<boolean>((resolve) => {
       // Silence produces no data, so a helper still running after a moment counts as started.
       const timer = setTimeout(() => resolve(true), 800);
-      helper.once("error", () => { clearTimeout(timer); resolve(false); });
-      helper.once("exit", (code) => {
+      child.once("error", () => { clearTimeout(timer); resolve(false); });
+      child.once("exit", (code) => {
         clearTimeout(timer);
         if (code === 3) this.probe = "unsupported";
         resolve(false);
       });
     });
-    if (!started || generation !== this.generation) {
-      if (generation === this.generation) this.stop();
-      return null;
-    }
-    helper.once("exit", () => { if (this.helper === helper) this.stop(); });
-    return window.webContents.mainFrame;
+    if (!started || stopped) { capture.stop(); return null; }
+    child.once("exit", () => { if (!stopped) { capture.stop(); onEnded(capture); } });
+    return capture;
   }
 
+  /** Release every capture (the app quits). */
   stop(): void {
-    this.generation++;
-    const helper = this.helper;
-    this.helper = null;
-    if (helper && helper.exitCode === null) helper.kill();
-    const window = this.window;
-    this.window = null;
-    if (window && !window.isDestroyed()) window.destroy();
+    for (const capture of [...this.captures]) capture.stop();
   }
 }

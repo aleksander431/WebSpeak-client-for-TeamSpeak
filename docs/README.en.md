@@ -211,6 +211,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - Auto-reconnect: if the connection drops because of the network or a server restart, WebSpeak rejoins by itself (on every device, also minimised) and returns to your channel. The room shows a countdown with "reconnect now"; it keeps trying for about five minutes and stops on a kick or ban.
 - Fix: a private chat could open twice (one tab from the incoming message, one from replying) with members the server lists without a unique id; it is now one conversation, and sending to such members works.
 - Fix (desktop app, needs the new desktop version): sharing a window now sends only that window's program's sound, not everything the PC plays; the picker's sound option says so.
+- Fix (desktop app and server): accompaniment no longer stops by itself after about 30 seconds, and it keeps running while you start or stop a screen share.
 
 ### [v0.4.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.4.3) · 2026-11-03
 

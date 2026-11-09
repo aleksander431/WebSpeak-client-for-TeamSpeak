@@ -22,7 +22,7 @@ import { HotkeyManager, type HotkeyStatusMap } from "./hotkeys.js";
 import { createTranslator } from "./i18n.js";
 import { SettingsStore, normalizeServerUrl, type DesktopSettings, type HotkeyAction } from "./settings.js";
 import { parseWebClientState, type WebClientState } from "./state.js";
-import { SystemAudio, windowHandleOf } from "./system-audio.js";
+import { ShareAudioTracker, SystemAudio, windowHandleOf, type SystemAudioCapture } from "./system-audio.js";
 import { NativeHotkeys } from "./native-hotkeys.js";
 import { OverlayController } from "./overlay.js";
 import { EMPTY_ROSTER, parseOverlayRoster, parseOverlaySpeaking, type OverlayRoster } from "./overlay-state.js";
@@ -58,7 +58,7 @@ let hotkeys: HotkeyManager;
 let hotkeyStatus: HotkeyStatusMap = { mic: "off", sound: "off", stream: "off", ptt: "off", whisper: "off" };
 /** Push-to-talk mode last told to the page; null until the page has been told after a load. */
 let pagePushToTalkMode: boolean | null = null;
-let webState: WebClientState = { connected: false, micMuted: false, soundMuted: false, streaming: false, speaking: false };
+let webState: WebClientState = { connected: false, micMuted: false, soundMuted: false, streaming: false, speaking: false, accompaniment: false };
 let quitting = false;
 let updateState: { status: "idle" | "checking" | "downloading" | "ready" | "error" | "current"; version?: string } = { status: "idle" };
 let manualUpdateCheck = false;
@@ -69,8 +69,8 @@ let overlay: OverlayController | null = null;
 /** The page's latest report, kept while the overlay is off so turning it on shows the channel at once. */
 let overlayRoster: OverlayRoster = EMPTY_ROSTER;
 let overlaySpeaking: number[] = [];
-/** Stops the clean system sound if the page never actually starts sharing. */
-let systemAudioWatchdog: NodeJS.Timeout | null = null;
+/** Each clean system-sound capture lives as long as the share (screen or accompaniment) using it. */
+const shareAudio = new ShareAudioTracker<SystemAudioCapture>();
 // The locale is only known once the app is ready.
 let translator = createTranslator("en");
 const t: typeof translator.t = (key, variables) => translator.t(key, variables);
@@ -193,7 +193,9 @@ function createMainWindow(): BrowserWindow {
 }
 
 function loadServer(window: BrowserWindow): void {
-  webState = { connected: false, micMuted: false, soundMuted: false, streaming: false, speaking: false };
+  webState = { connected: false, micMuted: false, soundMuted: false, streaming: false, speaking: false, accompaniment: false };
+  // A reloaded page shares nothing any more.
+  shareAudio.reset();
   overlayRoster = EMPTY_ROSTER;
   overlaySpeaking = [];
   overlay?.reset();
@@ -240,17 +242,15 @@ function configureSession(target: Session): void {
     directScreenRequest = false;
     if (!isServerUrl(request.securityOrigin || request.frame?.url || "")) { callback({}); return; }
     void chooseDisplaySource(direct).then(async (choice) => {
-      systemAudio.stop();
       if (!choice) { callback({}); return; }
       if (!choice.audio) { callback({ video: choice.source }); return; }
       // A window shares only its own program's sound; a screen shares the PC's
       // sound without WebSpeak's voices. Plain loopback (everything) is the last resort.
       const windowHandle = windowHandleOf(choice.source.id);
-      const frame = await systemAudio.start(windowHandle);
-      if (frame) {
-        if (systemAudioWatchdog) clearTimeout(systemAudioWatchdog);
-        systemAudioWatchdog = setTimeout(() => { if (!webState.streaming) systemAudio.stop(); }, 30_000);
-        callback({ video: choice.source, audio: frame });
+      const capture = await systemAudio.start(windowHandle, (ended) => shareAudio.forget(ended));
+      if (capture) {
+        shareAudio.add(capture);
+        callback({ video: choice.source, audio: capture.frame });
         return;
       }
       // The helper works on this PC but not for this window (e.g. it closed):
@@ -512,8 +512,8 @@ function registerIpc(): void {
     if (!parsed) return;
     // The page reports its state as soon as it is ready; a fresh page has not been told about push-to-talk.
     if (pagePushToTalkMode === null) syncPushToTalkMode(true);
-    // The share ended: release the clean system-sound capture.
-    if (webState.streaming && !parsed.streaming) systemAudio.stop();
+    // A share started or ended: claim or release its clean system-sound capture.
+    shareAudio.update({ streaming: parsed.streaming, accompaniment: parsed.accompaniment });
     const onlySpeakingChanged = webState.connected === parsed.connected && webState.micMuted === parsed.micMuted
       && webState.soundMuted === parsed.soundMuted && webState.streaming === parsed.streaming;
     webState = parsed;

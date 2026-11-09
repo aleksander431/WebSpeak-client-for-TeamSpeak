@@ -34,6 +34,8 @@ export interface DesktopState {
   streaming: boolean;
   /** You are talking right now (voice activity on an unmuted microphone). */
   speaking?: boolean;
+  /** Sharing program sound as accompaniment (the shell keeps its clean capture running). */
+  accompaniment?: boolean;
 }
 
 export interface DesktopBridgeOptions {

@@ -1613,6 +1613,7 @@ useDesktopBridge({
     micMuted: microphoneMuted.value,
     soundMuted: outputMuted.value,
     streaming: screenShareActive.value,
+    accompaniment: accompanimentActive.value,
     speaking: voiceState.connected && !microphoneMuted.value && speakingIds.has(voiceState.tsClientId),
   }),
   toggleMicrophone: () => toggleMicrophone(),
