@@ -448,7 +448,11 @@ export class VoiceBridge {
           const targetKey = teamSpeakTargetKey(current.target);
           const restored = await current.tsClient.restoreOwnAvatar(uid => this.ownAvatarCopy(targetKey, uid));
           if (this.entries.get(current.id) !== current || restored.outcome === "stale") return;
-          this.logger.info({ entryId: current.id, outcome: restored.outcome, ...("detail" in restored ? { detail: restored.detail } : {}) }, "Own TeamSpeak avatar after connecting");
+          this.logger.info({
+            entryId: current.id, outcome: restored.outcome,
+            ...("uid" in restored ? { uid: restored.uid, keptCopy: Boolean(this.ownAvatarCopy(targetKey, restored.uid)) } : {}),
+            ...("detail" in restored ? { detail: restored.detail } : {}),
+          }, "Own TeamSpeak avatar after connecting");
           if (restored.outcome === "restored" || restored.outcome === "reuploaded") {
             current.onOwnAvatar?.(restored.uid, restored.marker, avatarDataUrl(restored.data));
           }
@@ -1023,7 +1027,10 @@ export class VoiceBridge {
   /** A session may react only to messages of its server, and of its current channel. */
   /** Keep (or forget) the copy of an avatar this identity set through WebSpeak. */
   private keepOwnAvatar(entry: WebClientEntry, uid: string, avatar: string | null): void {
-    if (!uid) return;
+    if (!uid) {
+      this.logger.warn({ entryId: entry.id }, "Own avatar changed without a known unique id; no copy kept");
+      return;
+    }
     const targetKey = teamSpeakTargetKey(entry.target);
     const data = avatar ? Buffer.from(avatar.slice(avatar.indexOf(",") + 1), "base64") : null;
     const database = this.options.chatStorage?.database;
@@ -1033,6 +1040,7 @@ export class VoiceBridge {
         else database.deleteOwnAvatar(targetKey, uid);
       } else if (data?.length) this.ownAvatarCopies.set(`${targetKey}\u0000${uid}`, data);
       else this.ownAvatarCopies.delete(`${targetKey}\u0000${uid}`);
+      this.logger.info({ entryId: entry.id, uid, kept: Boolean(data?.length), stored: database ? "database" : "memory" }, "Own avatar copy updated");
     } catch (error: unknown) {
       this.logger.warn({ entryId: entry.id, err: error instanceof Error ? error.message : String(error) }, "Could not keep a copy of the own avatar");
     }
