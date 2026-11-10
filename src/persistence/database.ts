@@ -16,7 +16,7 @@ export interface EventHistoryRow {
   createdAt: number;
 }
 
-export const DATABASE_SCHEMA_VERSION = 20;
+export const DATABASE_SCHEMA_VERSION = 21;
 export type AccessMode = "fixed" | "open";
 
 export interface PersistedSettings {
@@ -643,6 +643,19 @@ export class WebSpeakDatabase {
         "UPDATE access_accounts SET failed_attempts = failed_attempts + 1, locked_until = ? WHERE id = ?",
       ).run(lockedUntil, id);
     }
+  }
+
+  getAccountIdentity(id: string): string | null {
+    const row = this.database.prepare("SELECT identity_encrypted FROM access_accounts WHERE id = ?").get(id) as { identity_encrypted: string | null } | undefined;
+    return row?.identity_encrypted || null;
+  }
+
+  /** Store the account's identity only when it has none yet; returns whether it was stored. */
+  setAccountIdentityIfMissing(id: string, encrypted: string): boolean {
+    const result = this.database.prepare(
+      "UPDATE access_accounts SET identity_encrypted = ? WHERE id = ? AND (identity_encrypted IS NULL OR identity_encrypted = '')",
+    ).run(encrypted, id) as { changes?: number | bigint };
+    return Number(result.changes ?? 0) === 1;
   }
 
   resetAccountFailures(id: string): void {
@@ -1367,6 +1380,18 @@ export class WebSpeakDatabase {
           );
           PRAGMA user_version = 20;
         `);
+      });
+      version = 20;
+    }
+    if (version === 20) {
+      this.transaction(() => {
+        // The TeamSpeak identity that goes with a password-protected nickname,
+        // encrypted with the master key, handed to browsers that sign in.
+        const columns = this.database.prepare("PRAGMA table_info(access_accounts)").all() as Array<{ name: string }>;
+        if (!columns.some(column => column.name === "identity_encrypted")) {
+          this.database.exec("ALTER TABLE access_accounts ADD COLUMN identity_encrypted TEXT;");
+        }
+        this.database.exec("PRAGMA user_version = 21;");
       });
     }
   }

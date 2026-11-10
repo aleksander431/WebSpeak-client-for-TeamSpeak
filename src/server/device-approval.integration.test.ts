@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { AdminService } from "../admin/admin-service.js";
 import type { Logger } from "../logger.js";
+import { generateIdentitySync } from "@honeybbq/teamspeak/client";
 import { WebSpeakDatabase } from "../persistence/database.js";
 import { DEVICE_COOKIE_NAME, MAX_PENDING_DEVICE_REQUESTS } from "../security/device-access.js";
 import { JoinTicketStore } from "./join-ticket.js";
@@ -125,8 +126,8 @@ test("an approved owner protects a nickname with a password and uses it on anoth
       headers: { origin, "content-type": "application/json", ...(cookie ? { cookie } : {}) },
       body: JSON.stringify(body),
     });
-    const result = await response.json() as { code?: string };
-    return { status: response.status, code: result.code, cookie: deviceCookie(response) };
+    const result = await response.json() as { code?: string; identity?: string };
+    return { status: response.status, code: result.code, identity: result.identity, cookie: deviceCookie(response) };
   };
   const state = async (cookie: string, nickname: string) => (await (await fetch(`${origin}/api/access-status?nickname=${encodeURIComponent(nickname)}`, { headers: { cookie } })).json() as { status: string; account?: string; canCreate?: boolean });
 
@@ -142,7 +143,12 @@ test("an approved owner protects a nickname with a password and uses it on anoth
   assert.equal((await post("/api/account/setup", { nickname: "Petya", password: "petya-pass" }, laptop)).status, 200);
   assert.equal((await post("/api/account/setup", { nickname: "Other", password: "petya-pass" }, laptop)).code, "DEVICE_HAS_ACCOUNT");
   assert.equal((await state(laptop, "petya")).account, "linked", "nicknames are matched case-insensitively");
-  assert.equal((await post("/api/join-ticket", { nickname: "Petya" }, laptop)).status, 201);
+  // The laptop's identity becomes the nickname's on its next join; a later
+  // different identity from a linked browser does not replace it.
+  const laptopIdentity = generateIdentitySync(8).export();
+  assert.equal((await post("/api/join-ticket", { nickname: "Petya", identity: laptopIdentity }, laptop)).status, 201);
+  assert.equal((await post("/api/join-ticket", { nickname: "Petya", identity: generateIdentitySync(8).export() }, laptop)).status, 201);
+  assert.notEqual(database.getAccountIdentity(service.deviceAccess.list().accounts[0]!.id), laptopIdentity, "kept encrypted, not in plain text");
 
   // A new phone using the protected nickname is asked for the password, not queued.
   const before = service.deviceAccess.list().devices.length;
@@ -152,7 +158,9 @@ test("an approved owner protects a nickname with a password and uses it on anoth
   const phone = phoneTry.cookie;
   assert.equal((await state(phone, "Petya")).account, "other");
   assert.equal((await post("/api/account/sign-in", { nickname: "Petya", password: "wrong-pass" }, phone)).code, "ACCOUNT_PASSWORD_INVALID");
-  assert.equal((await post("/api/account/sign-in", { nickname: "Petya", password: "petya-pass" }, phone)).status, 200);
+  const signedIn = await post("/api/account/sign-in", { nickname: "Petya", password: "petya-pass" }, phone);
+  assert.equal(signedIn.status, 200);
+  assert.equal(signedIn.identity, laptopIdentity, "the phone receives the laptop's identity, so it is the same TeamSpeak client");
   assert.equal((await post("/api/join-ticket", { nickname: "Petya" }, phone)).status, 201);
   assert.equal((await state(phone, "Petya")).status, "approved");
   // Another approved browser that is not linked to the account cannot use the nickname either.

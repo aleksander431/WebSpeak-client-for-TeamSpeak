@@ -1811,6 +1811,13 @@ const deviceApproval = useDeviceApproval({
   connected: computed(() => voiceState.connected),
   approvalRequired: deviceApprovalRequired,
   onAccountCreated: () => showToast(t("accountCreatedToast")),
+  identity: computed(() => rememberIdentity.value ? identityMaterial.value : ""),
+  // The nickname's identity, kept by the gateway: this device becomes the same
+  // TeamSpeak client (avatar, groups, private history) as the others.
+  onAccountIdentity: (identity) => {
+    rememberIdentity.value = true;
+    identityMaterial.value = identity;
+  },
 });
 
 const voiceWorkspace = useVoiceWorkspace({

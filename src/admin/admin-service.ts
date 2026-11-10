@@ -44,6 +44,8 @@ export interface ManagedInviteView {
 
 type ProbeFunction = typeof probeTeamSpeak;
 
+const ACCOUNT_IDENTITY_PURPOSE = "webspeak:account-identity:v1";
+
 export class AdminService {
   private readonly tsAdmin: TsAdminService;
   /** Administrator approval of individual browsers before they may join. */
@@ -57,7 +59,10 @@ export class AdminService {
     private readonly version = "0.1.0",
     tsAdminClientFactory?: TsAdminQueryClientFactory,
   ) {
-    this.deviceAccess = new DeviceAccessService(database);
+    this.deviceAccess = new DeviceAccessService(database, {
+      seal: identity => encryptSecret(identity, masterSecret, ACCOUNT_IDENTITY_PURPOSE),
+      open: sealed => decryptSecret(sealed, masterSecret, ACCOUNT_IDENTITY_PURPOSE),
+    });
     this.tsAdmin = new TsAdminService(database, masterSecret, logger, () => {
       const settings = database.getSettings();
       return { mode: settings.accessMode, target: settings.tsTarget || formatTeamSpeakTarget({ host: settings.tsHost, port: settings.tsPort }) };

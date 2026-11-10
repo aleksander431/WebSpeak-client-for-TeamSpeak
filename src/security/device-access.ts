@@ -27,7 +27,14 @@ export function nicknameKey(nickname: string): string {
 /** How a nickname relates to this browser. */
 export type NicknameAccountState = "none" | "linked" | "other";
 
-export type AccountResult = { ok: true } | { ok: false; code: string };
+/** A successful sign-in may hand back the TeamSpeak identity kept for the nickname. */
+export type AccountResult = { ok: true; identity?: string } | { ok: false; code: string };
+
+/** Seals the identity kept for a password-protected nickname (the master key in production). */
+export interface AccountIdentityBox {
+  seal(identity: string): string;
+  open(sealed: string): string;
+}
 
 export interface AccessAccountView {
   id: string;
@@ -74,7 +81,35 @@ function hashDeviceToken(token: string): string {
 }
 
 export class DeviceAccessService {
-  constructor(private readonly database: WebSpeakDatabase) {}
+  constructor(private readonly database: WebSpeakDatabase, private readonly identityBox?: AccountIdentityBox) {}
+
+  /**
+   * Keep the identity a linked browser joins with as its nickname's identity,
+   * when the nickname has none yet; browsers that sign in with the password
+   * then receive it, so every device is the same TeamSpeak client (avatar,
+   * groups, private history). An identity already kept is never replaced here.
+   */
+  rememberAccountIdentity(token: string, nickname: string, identity: string): boolean {
+    if (!this.identityBox || !identity || !this.isRequired() || !isDeviceToken(token)) return false;
+    const account = this.database.getAccessAccountByKey(nicknameKey(nickname));
+    if (!account) return false;
+    const device = this.database.getDeviceAccess(hashDeviceToken(token));
+    if (device?.status !== "approved" || device.accountId !== account.id) return false;
+    if (this.database.getAccountIdentity(account.id)) return false;
+    try {
+      const stored = this.database.setAccountIdentityIfMissing(account.id, this.identityBox.seal(identity));
+      if (stored) this.database.addAudit("ACCESS_ACCOUNT_IDENTITY_SAVED", { id: account.id });
+      return stored;
+    } catch {
+      return false;
+    }
+  }
+
+  private accountIdentity(accountId: string): string | undefined {
+    const sealed = this.database.getAccountIdentity(accountId);
+    if (!sealed || !this.identityBox) return undefined;
+    try { return this.identityBox.open(sealed) || undefined; } catch { return undefined; }
+  }
 
   isRequired(): boolean {
     return this.database.getMeta(REQUIRED_META_KEY) === "1";
@@ -158,7 +193,7 @@ export class DeviceAccessService {
   }
 
   /** Protect the nickname of an approved browser with a password. */
-  async createAccount(token: string, nickname: string, password: string): Promise<AccountResult> {
+  async createAccount(token: string, nickname: string, password: string, identity = ""): Promise<AccountResult> {
     if (!this.isRequired()) return { ok: false, code: "APPROVAL_NOT_REQUIRED" };
     const passwordError = validateAccountPassword(password);
     if (passwordError) return { ok: false, code: passwordError };
@@ -175,6 +210,7 @@ export class DeviceAccessService {
       return { ok: false, code: "ACCOUNT_EXISTS" };
     }
     this.database.addAudit("ACCESS_ACCOUNT_CREATED", { id, nickname: displayName });
+    if (identity) this.rememberAccountIdentity(token, displayName, identity);
     return { ok: true };
   }
 
@@ -214,7 +250,8 @@ export class DeviceAccessService {
     }
     this.database.recordAccountLogin(account.id, true, null);
     this.database.addAudit("ACCESS_ACCOUNT_SIGNED_IN", { id: account.id });
-    return { ok: true };
+    const identity = this.accountIdentity(account.id);
+    return identity ? { ok: true, identity } : { ok: true };
   }
 
   /** Remove a nickname's password; its browsers stay approved but are no longer linked. */

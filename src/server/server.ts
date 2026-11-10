@@ -216,16 +216,21 @@ export function createWebServer(options: WebServerOptions): WebServer {
       const body = isRecord(request.body) ? request.body : {};
       const nickname = typeof body.nickname === "string" ? body.nickname.slice(0, 30) : "";
       const password = typeof body.password === "string" ? body.password.slice(0, 1024) : "";
+      // Setting the password from a browser also keeps its identity for the nickname.
+      let identity = "";
+      if (action === "setup" && typeof body.identity === "string" && body.identity.length <= 8192) {
+        try { parseIdentity(body.identity); identity = body.identity; } catch { /* Kept on the next join instead. */ }
+      }
       const deviceAccess = options.adminService.deviceAccess;
       const token = ensureDeviceToken(request, response);
       const result = action === "setup"
-        ? await deviceAccess.createAccount(token, nickname, password)
+        ? await deviceAccess.createAccount(token, nickname, password, identity)
         : await deviceAccess.signIn(token, nickname, password, {
           clientIp: resolveClientIp(request, trustedProxies),
           userAgent: request.header("user-agent") ?? "",
         });
       if (result.ok) {
-        response.json({ ok: true });
+        response.json(result.identity ? { ok: true, identity: result.identity } : { ok: true });
         return;
       }
       const status = result.code === "ACCOUNT_LOCKED" ? 429
@@ -330,6 +335,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
         }
         return;
       }
+      if (identity) options.adminService.deviceAccess.rememberAccountIdentity(deviceToken, nickname, identity);
     }
 
     const policy = options.adminService.getConnectionPolicy();

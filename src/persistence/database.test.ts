@@ -15,7 +15,7 @@ test("relay voice endpoint is stored by the current database migration", (contex
     rmSync(directory, { recursive: true, force: true });
   });
 
-  assert.equal(DATABASE_SCHEMA_VERSION, 20);
+  assert.equal(DATABASE_SCHEMA_VERSION, 21);
   assert.equal(database.schemaVersion, DATABASE_SCHEMA_VERSION);
   assert.equal(database.getTsAdminSettings().transport, "web");
   assert.equal(database.getTsAdminSettings().enabled, false);
@@ -77,7 +77,7 @@ test("schema 20 keeps one avatar per identity and server", t => {
   old.close();
   const database = new WebSpeakDatabase(filename);
   t.after(() => { database.close(); rmSync(directory, { recursive: true, force: true }); });
-  assert.equal(database.schemaVersion, 20);
+  assert.equal(database.schemaVersion, DATABASE_SCHEMA_VERSION);
   assert.equal(database.ownAvatar("ts:1", "uid="), undefined);
   database.saveOwnAvatar("ts:1", "uid=", new Uint8Array([1, 2, 3]));
   database.saveOwnAvatar("ts:1", "uid=", new Uint8Array([4, 5]));

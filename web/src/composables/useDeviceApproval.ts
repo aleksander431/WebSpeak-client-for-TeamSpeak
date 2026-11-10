@@ -24,6 +24,10 @@ interface Options {
   approvalRequired: Readonly<Ref<boolean>>;
   /** Shown after a password was created. */
   onAccountCreated?(): void;
+  /** This browser's remembered identity, kept with a new password for the nickname. */
+  identity?: Readonly<Ref<string>>;
+  /** Signing in returned the nickname's identity: use it before joining. */
+  onAccountIdentity?(identity: string): void;
   fetch?: typeof fetch;
 }
 
@@ -113,14 +117,18 @@ export function useDeviceApproval(options: Options) {
     const { mode, nickname } = accountDialog;
     accountDialog.busy = true; accountDialog.errorCode = "";
     let code = "";
+    let identity = "";
     try {
       const response = await fetcher(`/api/account/${mode === "create" ? "setup" : "sign-in"}`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ nickname, password }),
+        body: JSON.stringify({ nickname, password, ...(mode === "create" && options.identity?.value ? { identity: options.identity.value } : {}) }),
       });
       const body: unknown = await response.json().catch(() => null);
       if (!response.ok) code = body && typeof body === "object" && "code" in body && typeof body.code === "string" ? body.code : "REQUEST_FAILED";
+      else if (mode === "sign-in" && body && typeof body === "object" && "identity" in body && typeof body.identity === "string" && body.identity.length <= 8192) {
+        identity = body.identity;
+      }
     } catch {
       code = "REQUEST_FAILED";
     }
@@ -129,7 +137,10 @@ export function useDeviceApproval(options: Options) {
     if (code) { accountDialog.errorCode = code; return; }
     Object.assign(accountDialog, { open: false, errorCode: "" });
     if (mode === "create") options.onAccountCreated?.();
-    else options.retry();
+    else {
+      if (identity) options.onAccountIdentity?.(identity);
+      options.retry();
+    }
   }
 
   // A protected nickname on a browser that is not linked to it: ask for its password.
