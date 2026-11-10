@@ -335,7 +335,13 @@ export function createWebServer(options: WebServerOptions): WebServer {
         }
         return;
       }
-      if (identity) options.adminService.deviceAccess.rememberAccountIdentity(deviceToken, nickname, identity);
+      // A browser that remembers identities joins a protected nickname as the
+      // nickname's one identity; the connected message hands it to the page.
+      if (identity || body.rememberIdentity === true) {
+        const joinIdentity = options.adminService.deviceAccess.identityForJoin(deviceToken, nickname, identity ?? "") || undefined;
+        if (joinIdentity !== identity) logger.info({ nickname }, "Linked browser joins as the protected nickname's kept identity");
+        identity = joinIdentity;
+      }
     }
 
     const policy = options.adminService.getConnectionPolicy();

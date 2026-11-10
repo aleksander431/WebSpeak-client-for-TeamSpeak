@@ -105,6 +105,22 @@ export class DeviceAccessService {
     }
   }
 
+  /**
+   * The identity a linked browser joins its protected nickname with: the
+   * nickname's kept identity when there is one (so a browser linked before the
+   * identity was kept converges on it), otherwise its own, which then becomes
+   * the kept one.
+   */
+  identityForJoin(token: string, nickname: string, identity: string): string {
+    this.rememberAccountIdentity(token, nickname, identity);
+    if (!this.identityBox || !this.isRequired() || !isDeviceToken(token)) return identity;
+    const account = this.database.getAccessAccountByKey(nicknameKey(nickname));
+    if (!account) return identity;
+    const device = this.database.getDeviceAccess(hashDeviceToken(token));
+    if (device?.status !== "approved" || device.accountId !== account.id) return identity;
+    return this.accountIdentity(account.id) ?? identity;
+  }
+
   private accountIdentity(accountId: string): string | undefined {
     const sealed = this.database.getAccountIdentity(accountId);
     if (!sealed || !this.identityBox) return undefined;

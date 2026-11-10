@@ -149,6 +149,8 @@ test("an approved owner protects a nickname with a password and uses it on anoth
   assert.equal((await post("/api/join-ticket", { nickname: "Petya", identity: laptopIdentity }, laptop)).status, 201);
   assert.equal((await post("/api/join-ticket", { nickname: "Petya", identity: generateIdentitySync(8).export() }, laptop)).status, 201);
   assert.notEqual(database.getAccountIdentity(service.deviceAccess.list().accounts[0]!.id), laptopIdentity, "kept encrypted, not in plain text");
+  assert.equal(service.deviceAccess.identityForJoin(laptop.split(";")[0]!.split("=")[1]!, "Petya", generateIdentitySync(8).export()), laptopIdentity,
+    "a linked browser with another identity joins as the kept one");
 
   // A new phone using the protected nickname is asked for the password, not queued.
   const before = service.deviceAccess.list().devices.length;
