@@ -2719,7 +2719,11 @@ onMounted(() => {
   });
   void restoreIdentity(async () => {
     const stored = await loadStoredIdentity();
-    return stored && localStorage.getItem("webspeak:remember-identity") === "1" ? stored.privateMaterial : null;
+    // "Remember" is on unless the visitor turned it off; the flag is only
+    // written when the checkbox changes, so an unset flag means on, exactly as
+    // the checkbox shows it. Requiring "1" here gave every page load a new
+    // identity (and with it no avatar, groups or private history).
+    return stored && localStorage.getItem("webspeak:remember-identity") !== "0" ? stored.privateMaterial : null;
   }).finally(() => {
     identityReady.value = true;
   });
