@@ -153,6 +153,7 @@
             <RouterLink to="/admin/access" active-class="active" class="admin-nav-access"><Icon name="lock" :size="18" /><span class="admin-nav-label">{{ tr('deviceAccessNav') }}</span><span v-if="adminDeviceAccess.access.pendingCount > 0" class="admin-nav-badge" :aria-label="tr('devicePendingBadge', { count: adminDeviceAccess.access.pendingCount })">{{ adminDeviceAccess.access.pendingCount }}</span></RouterLink>
             <RouterLink to="/admin/chat" active-class="active"><Icon name="paperclip" :size="18" />{{ tr('chatStorageNav') }}</RouterLink>
             <RouterLink to="/admin/skins" active-class="active"><Icon name="compass" :size="18" />{{ tr('skinLibrary') }}</RouterLink>
+            <RouterLink to="/admin/adventures" active-class="active"><Icon name="dice" :size="18" />{{ tr('adventuresNav') }}</RouterLink>
           </div>
           <div class="admin-nav-group">
             <span class="admin-nav-heading">{{ tr('adminTsGroup') }}<span class="admin-optional">{{ tr('adminOptional') }}</span></span>
@@ -246,6 +247,11 @@
         <AdminChatStorage
           v-else-if="route.path === '/admin/chat'"
           :model="adminChatStorage"
+          :i18n="i18n"
+        />
+        <AdminAdventures
+          v-else-if="route.path === '/admin/adventures'"
+          :model="adminAdventures"
           :i18n="i18n"
         />
         <AdminSkins
@@ -414,6 +420,7 @@ import AdminSkins from "../components/admin/AdminSkins.vue";
 import AdminTsAdmin from "../components/admin/AdminTsAdmin.vue";
 import AdminDeviceAccess from "../components/admin/AdminDeviceAccess.vue";
 import AdminChatStorage from "../components/admin/AdminChatStorage.vue";
+import AdminAdventures from "../components/admin/AdminAdventures.vue";
 import LanguageSwitcher from "../components/LanguageSwitcher.vue";
 import { createAdminRequests } from "../services/admin-requests.js";
 import { useAdminServerSettings } from "../composables/useAdminServerSettings.js";
@@ -422,6 +429,7 @@ import { useAdminSkins } from "../composables/useAdminSkins.js";
 import { useAdminTsAdmin } from "../composables/useAdminTsAdmin.js";
 import { useAdminDeviceAccess } from "../composables/useAdminDeviceAccess.js";
 import { useAdminChatStorage } from "../composables/useAdminChatStorage.js";
+import { useAdminAdventures } from "../composables/useAdminAdventures.js";
 import { splitTeamSpeakTarget } from "../services/teamspeak-target.js";
 import type { SiteLanguage } from "../../../src/site-copy.js";
 import { applyTheme, getStoredTheme, isDarkTheme, nextTheme, saveTheme, type ThemeMode } from "../services/theme.js";
@@ -479,9 +487,10 @@ const adminDeviceAccess = useAdminDeviceAccess({
 });
 const { load: loadDeviceAccess } = adminDeviceAccess;
 const adminChatStorage = useAdminChatStorage({ api: adminApi, errorMessage, errorText, tr });
+const adminAdventures = useAdminAdventures({ api: adminApi, errorMessage, errorText, tr });
 
 const passwordStrength = computed(() => Math.min(100, Math.max(8, newPassword.value.length * 5 + (/[\s\W]/.test(newPassword.value) ? 15 : 0))));
-const currentPageTitle = computed(() => route.path === "/admin/server" ? tr('adminInstanceSettings') : route.path === "/admin/operations" ? tr('adminInstanceOperations') : route.path === "/admin/access" ? tr('deviceAccessTitle') : route.path === "/admin/chat" ? tr('chatStorageTitle') : route.path === "/admin/skins" ? tr('skinLibrary') : route.path === "/admin/ts-admin" ? tr('tsAdminTitle') : tr('overview'));
+const currentPageTitle = computed(() => route.path === "/admin/server" ? tr('adminInstanceSettings') : route.path === "/admin/operations" ? tr('adminInstanceOperations') : route.path === "/admin/access" ? tr('deviceAccessTitle') : route.path === "/admin/chat" ? tr('chatStorageTitle') : route.path === "/admin/adventures" ? tr('adventuresTitle') : route.path === "/admin/skins" ? tr('skinLibrary') : route.path === "/admin/ts-admin" ? tr('tsAdminTitle') : tr('overview'));
 const targetStatusText = computed(() => overview.teamSpeak.status === "reachable" ? tr('reachable') : overview.teamSpeak.status === "unreachable" ? tr('unreachable') : tr('notTested'));
 const webrtcPortRangeText = computed(() => `${serverForm.webRtcUdpStart}–${serverForm.webRtcUdpEnd}`);
 

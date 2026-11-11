@@ -146,6 +146,14 @@ export function createAdminApi(options: AdminApiOptions) {
         return (await decode(response, adminResponses.uploadedSkin)).skin;
       });
     },
+    adventures: (signal?: AbortSignal) => request("/adventures", adminResponses.adventures, "GET", undefined, true, signal),
+    deleteAdventure: (id: string, signal?: AbortSignal) => request(`/adventures/${encodeURIComponent(id)}`, adminResponses.adventures, "DELETE", {}, true, signal),
+    uploadAdventure(file: File, signal?: AbortSignal) {
+      return execute(signal, async context => {
+        const response = await transport(context, "/adventures", { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: file });
+        return decode(response, adminResponses.adventures);
+      });
+    },
     backup: (signal?: AbortSignal) => execute(signal, async context => (await transport(context, "/backup", { headers: { accept: "application/octet-stream" } })).blob()),
     dismissLegacyNotice: (signal?: AbortSignal) => request("/legacy-import/dismiss", adminResponses.ok, "POST", {}, true, signal),
   };

@@ -1,3 +1,4 @@
+import { ADVENTURE_ARCHIVE_LIMIT_BYTES, AdventureLibrary, AdventureLibraryError } from "./adventure-library.js";
 import { Router, raw as expressRaw, type NextFunction, type Request, type Response } from "express";
 import { existsSync, readFileSync } from "node:fs";
 import type { Logger } from "../logger.js";
@@ -38,6 +39,7 @@ export interface AdminRouterOptions {
   version?: string;
   logFile?: string;
   skinRegistry?: SkinRegistry;
+  adventureLibrary?: AdventureLibrary;
   skinStore?: SkinStore;
   startedAt: number;
   /** Client address, honouring trusted reverse proxies. Defaults to the socket peer. */
@@ -266,6 +268,50 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
         response.status(error.code === "SKIN_BUILTIN_PROTECTED" ? 409 : 400).json({ ok: false, code: error.code, message: error.message });
         return;
       }
+      sendAdminError(response, error);
+    }
+  });
+
+  // ---- D&D adventure packages ----
+  let adventureMutation: Promise<unknown> = Promise.resolve();
+  const mutateAdventures = <T>(run: () => Promise<T>): Promise<T> => {
+    const next = adventureMutation.then(run, run);
+    adventureMutation = next.catch(() => undefined);
+    return next;
+  };
+
+  router.get("/adventures", (_request, response) => {
+    response.json({ adventures: options.adventureLibrary?.catalog() ?? [], limitBytes: ADVENTURE_ARCHIVE_LIMIT_BYTES });
+  });
+
+  router.put("/adventures", requireSameOriginBinary, requireCsrf(options.sessions), expressRaw({ type: "application/octet-stream", limit: ADVENTURE_ARCHIVE_LIMIT_BYTES }), async (request, response) => {
+    try {
+      const library = options.adventureLibrary;
+      if (!library || !Buffer.isBuffer(request.body)) throw new AdventureLibraryError("Adventure storage is unavailable.", "ADVENTURE_STORAGE_UNAVAILABLE");
+      const bytes = request.body;
+      const adventure = await mutateAdventures(() => library.install(bytes));
+      options.service.database.addAudit("ADMIN_ADVENTURE_INSTALLED", { id: adventure.id, title: adventure.title });
+      response.status(201).json({ ok: true, adventures: library.catalog() });
+    } catch (error: unknown) {
+      if (error instanceof AdventureLibraryError) {
+        response.status(error.code === "ADVENTURE_LIMIT" || error.code === "ADVENTURE_ID_RESERVED" ? 409 : 400).json({ ok: false, code: error.code, message: error.message });
+        return;
+      }
+      sendAdminError(response, error);
+    }
+  });
+
+  router.delete("/adventures/:id", requireSameOrigin, requireCsrf(options.sessions), async (request, response) => {
+    const id = typeof request.params.id === "string" ? request.params.id : "";
+    try {
+      const library = options.adventureLibrary;
+      if (!library || !await mutateAdventures(() => library.remove(id))) {
+        response.status(404).json({ ok: false, code: "ADVENTURE_NOT_FOUND" });
+        return;
+      }
+      options.service.database.addAudit("ADMIN_ADVENTURE_REMOVED", { id });
+      response.json({ ok: true, adventures: library.catalog() });
+    } catch (error: unknown) {
       sendAdminError(response, error);
     }
   });

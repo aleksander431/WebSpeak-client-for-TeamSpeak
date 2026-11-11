@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createAccelerationRelayServer } from "./server/acceleration-relay.js";
 import { normalizeScreenShareIceServers, type ScreenShareIceServer } from "./server/screen-share.js";
 import { SkinRegistry } from "./admin/skin-registry.js";
+import { AdventureLibrary } from "./admin/adventure-library.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -54,6 +55,9 @@ async function main() {
   const chatStorage = new ChatStorage(database, path.join(DATA_DIR, "chat-files"));
   await chatStorage.initialize();
 
+  const adventureLibrary = new AdventureLibrary(path.join(DATA_DIR, "adventures"));
+  await adventureLibrary.load((message, details) => logger.warn(details, message));
+
   const webServer = createWebServer({
     port: APP_PORT,
     version: APP_VERSION,
@@ -73,9 +77,11 @@ async function main() {
       accelerationName: () => adminService.getAccelerationRelayName(),
       whiteboardStore: new SqliteWhiteboardStore(database),
       chatStorage,
+      adventures: adventureLibrary,
     },
     adminService,
     skinRegistry: new SkinRegistry(path.join(DATA_DIR, "skins")),
+    adventureLibrary,
     logger,
     nextVisitorNumber: () => database.nextVisitorNumber(),
     visitorCount: () => database.getVisitorCount(),

@@ -1,3 +1,5 @@
+import { BUILT_IN_ADVENTURES } from "../shared/tabletop-adventures.js";
+import type { AdventureSummary } from "../shared/tabletop.js";
 import { SessionAudioTransport } from "./session-audio.js";
 import { SessionEventCoordinator, type SessionDirectoryState } from "./session-events.js";
 import { ScreenShareCoordinator } from "./screen-share-coordinator.js";
@@ -62,6 +64,8 @@ function publicFailureDetail(error: ReturnType<typeof normalizeTeamSpeakError>):
 }
 
 export interface VoiceBridgeOptions {
+  /** Adventures uploaded by the administrator, beside the built-in ones. */
+  adventures?: { list(): AdventureSummary[]; has(id: string): boolean };
   joinTickets: JoinTicketStore;
   webRtc?: WebRtcAudioOptions | (() => WebRtcAudioOptions);
   screenShareIceServers?: ScreenShareIceServer[] | (() => ScreenShareIceServer[]);
@@ -218,6 +222,8 @@ export class VoiceBridge {
       logger: { warn: (message, details) => this.logger.warn(details ?? {}, message) },
     });
     this.tabletops = new TabletopCoordinator({
+      adventures: () => [...BUILT_IN_ADVENTURES, ...(options.adventures?.list() ?? [])],
+      isCustomAdventure: id => options.adventures?.has(id) ?? false,
       send: (entryId, message) => {
         const entry = this.entries.get(entryId);
         if (entry?.ws.readyState !== WebSocket.OPEN) return;

@@ -3,6 +3,7 @@ import { tsAdminCopy } from "./ts-admin.js";
 import { skinStoreCopy } from "./skin-store.js";
 import { deviceAccessCopy } from "./device-access.js";
 import { chatStorageCopy } from "./chat-storage.js";
+import { adventuresAdminCopy } from "./adventures-admin.js";
 
 export const copy = {
   zh: {
@@ -11,6 +12,7 @@ export const copy = {
     ...skinStoreCopy.zh,
     ...deviceAccessCopy.zh,
     ...chatStorageCopy.zh,
+  ...adventuresAdminCopy.zh,
     uptimeText: "已运行 {{hours}} 小时 {{minutes}} 分钟",
     ageSeconds: "{{seconds}} 秒",
     ageMinutes: "{{minutes}} 分钟",
@@ -354,6 +356,7 @@ export const copy = {
   ...skinStoreCopy.en,
   ...deviceAccessCopy.en,
   ...chatStorageCopy.en,
+  ...adventuresAdminCopy.en,
     uptimeText: "Up {{hours}}h {{minutes}}m",
     ageSeconds: "{{seconds}}s",
     ageMinutes: "{{minutes}}m",
@@ -1035,6 +1038,7 @@ export const germanCopy = {
   ...skinStoreCopy.de,
   ...deviceAccessCopy.de,
   ...chatStorageCopy.de,
+  ...adventuresAdminCopy.de,
 } as const satisfies Record<AdminTranslationKey, string>;
 
 export const russianCopy = {
@@ -1379,6 +1383,7 @@ export const russianCopy = {
   ...skinStoreCopy.ru,
   ...deviceAccessCopy.ru,
   ...chatStorageCopy.ru,
+  ...adventuresAdminCopy.ru,
 } as const satisfies Record<AdminTranslationKey, string>;
 
 export const japaneseCopy = {
@@ -1723,6 +1728,7 @@ export const japaneseCopy = {
   ...skinStoreCopy.ja,
   ...deviceAccessCopy.ja,
   ...chatStorageCopy.ja,
+  ...adventuresAdminCopy.ja,
 } as const satisfies Record<AdminTranslationKey, string>;
 
 export type AdminTranslationKey = keyof typeof copy.zh;

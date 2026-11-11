@@ -101,6 +101,8 @@ const chatStorageUsage = object({ usedBytes: number, fileBytes: number, fileCoun
 const chatStorage = object({ settings: chatStorageSettings, usage: chatStorageUsage });
 const deviceAccess = object({ required: boolean, pendingCount: number, devices: array(deviceAccessDevice), accounts: array(accessAccount) });
 const savedTsAdminSettings = object({ ok: choice(true), settings: tsAdminSettings });
+const adventure = object({ id: text, title: text, summary: text, scenes: number, heroes: number, tracks: number, installedAt: text, bytes: number });
+const adventures = object({ adventures: array(adventure), limitBytes: optional(number) });
 const sessionStatus = object({ authenticated: boolean, mustChangePassword: optional(boolean), csrfToken: optional(text) });
 
 export const adminResponses = {
@@ -130,6 +132,7 @@ export const adminResponses = {
   tsAdminOverview,
   deviceAccess,
   chatStorage,
+  adventures,
   defaultSkin: object({ ok: choice(true), defaultSkinId: text }),
   updatedSkin: object({ ok: choice(true), skin, defaultSkinId: text }),
   uploadedSkin: object({ ok: choice(true), skin }),

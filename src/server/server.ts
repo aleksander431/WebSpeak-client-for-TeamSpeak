@@ -1,3 +1,4 @@
+import type { AdventureLibrary } from "../admin/adventure-library.js";
 import express from "express";
 import { createServer as createHttpsServer } from "node:https";
 import { createServer as createHttpServer } from "node:http";
@@ -34,6 +35,7 @@ export interface WebServerOptions {
   voiceBridgeOptions: VoiceBridgeOptions;
   adminService: AdminService;
   skinRegistry?: SkinRegistry;
+  adventureLibrary?: AdventureLibrary;
   logger: Logger;
   nextVisitorNumber?: () => number;
   visitorCount?: () => number;
@@ -277,6 +279,22 @@ export function createWebServer(options: WebServerOptions): WebServer {
     response.send(preview.bytes);
   });
 
+  // Pictures and music of uploaded adventures (only files their adventure.json names).
+  app.get("/api/adventures/:id/files/*file", (request, response) => {
+    const id = typeof request.params.id === "string" ? request.params.id : "";
+    const parts = (request.params as { file?: string | string[] }).file;
+    const file = Array.isArray(parts) ? parts.join("/") : parts ?? "";
+    const found = options.adventureLibrary?.file(id, file);
+    if (!found) {
+      response.status(404).end();
+      return;
+    }
+    response.sendFile(found.path, {
+      headers: { "Content-Type": found.mimeType, "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=3600" },
+      dotfiles: "deny",
+    }, error => { if (error && !response.headersSent) response.status(404).end(); });
+  });
+
   app.post("/api/join-ticket", async (request, response) => {
     response.setHeader("Cache-Control", "no-store");
     if (!request.is("application/json") || !isSameOrigin(request)) {
@@ -446,6 +464,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
     getSessionSummaries: () => voiceBridge.getSessionSummaries(),
     terminateSession: (id) => voiceBridge.terminateSession(id),
     skinRegistry: options.skinRegistry,
+    adventureLibrary: options.adventureLibrary,
     version: options.version,
     logFile: options.logFile,
     startedAt,

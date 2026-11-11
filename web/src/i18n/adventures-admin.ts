@@ -1,0 +1,98 @@
+const zh = {
+  adventuresNav: "D&D 冒险",
+  adventuresTitle: "D&D 冒险",
+  adventuresLead: "频道里的游戏桌除了内置冒险，还可以使用你上传的冒险包：一个包含 adventure.json 以及其中引用的图片和音乐的 ZIP 文件。格式说明见仓库中的 docs/DND_ADVENTURES.md。",
+  adventuresUpload: "上传冒险包（.zip）",
+  adventuresUploading: "正在上传…",
+  adventuresEmpty: "还没有上传的冒险。内置冒险始终可用。",
+  adventuresStats: "{{scenes}} 个场景 · {{heroes}} 名英雄 · {{tracks}} 首音乐 · {{size}}",
+  adventuresRemove: "删除",
+  adventuresRemoveConfirm: "再次点击确认删除",
+  adventuresInstalled: "冒险“{{title}}”已安装",
+  adventuresRemoved: "冒险已删除",
+  adventuresInvalid: "冒险包有问题",
+  adventuresLimit: "单个冒险包最大 {{size}}。",
+  adventuresProxyNote: "如果网站位于 nginx 之后，请把 client_max_body_size 设为不小于冒险包大小。",
+  adventureInstalledEvent: "已安装 D&D 冒险",
+  adventureRemovedEvent: "已删除 D&D 冒险",
+};
+
+type Keys = keyof typeof zh;
+
+const en = {
+  adventuresNav: "D&D adventures",
+  adventuresTitle: "D&D adventures",
+  adventuresLead: "Besides the built-in adventure, channel game tables can play adventures you upload: a ZIP with adventure.json and the pictures and music it names. The format is described in docs/DND_ADVENTURES.md in the repository.",
+  adventuresUpload: "Upload an adventure (.zip)",
+  adventuresUploading: "Uploading…",
+  adventuresEmpty: "No adventures uploaded yet. The built-in one is always available.",
+  adventuresStats: "{{scenes}} scenes · {{heroes}} heroes · {{tracks}} tracks · {{size}}",
+  adventuresRemove: "Remove",
+  adventuresRemoveConfirm: "Click again to remove",
+  adventuresInstalled: "Adventure “{{title}}” installed",
+  adventuresRemoved: "Adventure removed",
+  adventuresInvalid: "The adventure package has a problem",
+  adventuresLimit: "A package may be up to {{size}}.",
+  adventuresProxyNote: "Behind nginx, set client_max_body_size at least as large as the package.",
+  adventureInstalledEvent: "D&D adventure installed",
+  adventureRemovedEvent: "D&D adventure removed",
+} as const satisfies Record<Keys, string>;
+
+const de = {
+  adventuresNav: "D&D-Abenteuer",
+  adventuresTitle: "D&D-Abenteuer",
+  adventuresLead: "Neben dem eingebauten Abenteuer können Spieltische in Kanälen hochgeladene Abenteuer spielen: ein ZIP mit adventure.json und den darin genannten Bildern und Musikstücken. Das Format beschreibt docs/DND_ADVENTURES.md im Repository.",
+  adventuresUpload: "Abenteuer hochladen (.zip)",
+  adventuresUploading: "Wird hochgeladen…",
+  adventuresEmpty: "Noch keine hochgeladenen Abenteuer. Das eingebaute ist immer verfügbar.",
+  adventuresStats: "{{scenes}} Szenen · {{heroes}} Helden · {{tracks}} Musikstücke · {{size}}",
+  adventuresRemove: "Entfernen",
+  adventuresRemoveConfirm: "Zum Entfernen erneut klicken",
+  adventuresInstalled: "Abenteuer „{{title}}“ installiert",
+  adventuresRemoved: "Abenteuer entfernt",
+  adventuresInvalid: "Das Abenteuerpaket hat ein Problem",
+  adventuresLimit: "Ein Paket darf bis zu {{size}} groß sein.",
+  adventuresProxyNote: "Hinter nginx muss client_max_body_size mindestens so groß wie das Paket sein.",
+  adventureInstalledEvent: "D&D-Abenteuer installiert",
+  adventureRemovedEvent: "D&D-Abenteuer entfernt",
+} as const satisfies Record<Keys, string>;
+
+const ru = {
+  adventuresNav: "Приключения D&D",
+  adventuresTitle: "Приключения D&D",
+  adventuresLead: "Кроме встроенного приключения, игровые столы в каналах могут играть ваши: ZIP-пакет с adventure.json и картинками и музыкой, которые в нём упомянуты. Формат описан в docs/DND_ADVENTURES.md в репозитории.",
+  adventuresUpload: "Загрузить приключение (.zip)",
+  adventuresUploading: "Загружается…",
+  adventuresEmpty: "Своих приключений пока нет. Встроенное доступно всегда.",
+  adventuresStats: "сцен: {{scenes}} · героев: {{heroes}} · треков: {{tracks}} · {{size}}",
+  adventuresRemove: "Удалить",
+  adventuresRemoveConfirm: "Нажмите ещё раз, чтобы удалить",
+  adventuresInstalled: "Приключение «{{title}}» установлено",
+  adventuresRemoved: "Приключение удалено",
+  adventuresInvalid: "С пакетом приключения что-то не так",
+  adventuresLimit: "Размер пакета — до {{size}}.",
+  adventuresProxyNote: "Если сайт за nginx, client_max_body_size должен быть не меньше размера пакета.",
+  adventureInstalledEvent: "Установлено приключение D&D",
+  adventureRemovedEvent: "Удалено приключение D&D",
+} as const satisfies Record<Keys, string>;
+
+const ja = {
+  adventuresNav: "D&D アドベンチャー",
+  adventuresTitle: "D&D アドベンチャー",
+  adventuresLead: "チャンネルのゲームテーブルでは、内蔵アドベンチャーのほかにアップロードしたアドベンチャーも遊べます。adventure.json と、その中で指定した画像・音楽を含む ZIP です。形式はリポジトリの docs/DND_ADVENTURES.md を参照してください。",
+  adventuresUpload: "アドベンチャーをアップロード（.zip）",
+  adventuresUploading: "アップロード中…",
+  adventuresEmpty: "アップロードしたアドベンチャーはまだありません。内蔵のものはいつでも使えます。",
+  adventuresStats: "シーン {{scenes}} · ヒーロー {{heroes}} · 曲 {{tracks}} · {{size}}",
+  adventuresRemove: "削除",
+  adventuresRemoveConfirm: "もう一度クリックして削除",
+  adventuresInstalled: "アドベンチャー「{{title}}」をインストールしました",
+  adventuresRemoved: "アドベンチャーを削除しました",
+  adventuresInvalid: "アドベンチャーパッケージに問題があります",
+  adventuresLimit: "パッケージは {{size}} までです。",
+  adventuresProxyNote: "nginx の背後にある場合は、client_max_body_size をパッケージ以上の大きさに設定してください。",
+  adventureInstalledEvent: "D&D アドベンチャーをインストール",
+  adventureRemovedEvent: "D&D アドベンチャーを削除",
+} as const satisfies Record<Keys, string>;
+
+export const adventuresAdminCopy = { zh, en, de, ru, ja };

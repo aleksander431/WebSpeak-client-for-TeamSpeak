@@ -83,7 +83,7 @@
         <span>
           <strong>{{ selected.name }}</strong>
           <span class="gmap-muted">
-            <template v-if="selectedMonster">{{ x.cr }} {{ selectedMonster.cr }} · {{ x.ac }} {{ selectedMonster.ac }} · {{ selectedMonster.speed }} {{ x.feet }}</template>
+            <template v-if="selectedMonster && role === 'gm'">{{ x.cr }} {{ selectedMonster.cr }} · {{ x.ac }} {{ selectedMonster.ac }} · {{ selectedMonster.speed }} {{ x.feet }}</template>
             <template v-else-if="selectedHero">{{ selectedHero.cls }} · {{ x.ac }} {{ selectedHero.ac }}</template>
             <template v-if="selected.condition"> · {{ selected.condition === 'down' ? x.down : x.bloodied }}</template>
           </span>
@@ -119,8 +119,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { formatModifier, type MapView, type SceneMap, type SeatView, type TableRole, type TokenView } from "../../../../src/shared/tabletop.js";
-import { findHero, findMonster } from "../../../../src/shared/tabletop-adventures.js";
+import { formatModifier, type AdventureSummary, type MapView, type SceneMap, type SeatView, type TableRole, type TokenView } from "../../../../src/shared/tabletop.js";
 import type { GameClient } from "../../game/game-client.js";
 import type { DndText } from "../../game/dnd-text.js";
 
@@ -128,7 +127,7 @@ const props = defineProps<{
   client: GameClient;
   map: MapView;
   sceneMap: SceneMap;
-  adventureId: string | null;
+  adventure: AdventureSummary | null;
   role: TableRole;
   youKey: string;
   seats: SeatView[];
@@ -470,20 +469,20 @@ const selectedId = computed<string | null>({
   set: value => emit("update:selectedId", value),
 });
 const selected = computed(() => props.map.tokens.find(token => token.id === selectedId.value) ?? null);
-const selectedMonster = computed(() => selected.value?.kind === "monster" ? findMonster(props.adventureId, selected.value.monsterId) : undefined);
-const selectedHero = computed(() => selected.value?.kind === "hero" ? findHero(props.adventureId, selected.value.heroId) : undefined);
+const selectedMonster = computed(() => selected.value?.kind === "monster" ? props.adventure?.monsters.find(monster => monster.id === selected.value?.monsterId) : undefined);
+const selectedHero = computed(() => selected.value?.kind === "hero" ? props.adventure?.heroes.find(hero => hero.id === selected.value?.heroId) : undefined);
 
 function canMove(token: TokenView): boolean {
   return props.role === "gm" || (props.role === "player" && token.kind === "hero" && token.seatKey === props.youKey);
 }
 
 function portraitOf(token: TokenView): string | undefined {
-  return token.kind === "hero" ? findHero(props.adventureId, token.heroId)?.portrait : findMonster(props.adventureId, token.monsterId)?.portrait;
+  return token.kind === "hero" ? props.adventure?.heroes.find(hero => hero.id === token.heroId)?.portrait : props.adventure?.monsters.find(monster => monster.id === token.monsterId)?.portrait;
 }
 
 function heroHp(token: TokenView): { hp: number; max: number } | null {
   const seat = props.seats.find(candidate => candidate.key === token.seatKey);
-  const hero = findHero(props.adventureId, token.heroId);
+  const hero = props.adventure?.heroes.find(hero => hero.id === token.heroId);
   return seat && hero && seat.hp !== null ? { hp: seat.hp, max: hero.maxHp } : null;
 }
 

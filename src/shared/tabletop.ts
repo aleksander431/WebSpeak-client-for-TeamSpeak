@@ -56,12 +56,37 @@ export interface SceneMap {
   spawn: Array<[number, number]>;
 }
 
+/** A monster the adventure places on a map the first time the scene opens. */
+export interface EncounterToken {
+  monsterId: string;
+  x: number;
+  y: number;
+  /** Kept from players until the game master shows it. */
+  hidden?: boolean;
+}
+
 export interface AdventureScene {
   id: string;
   title: string;
   /** A picture for story scenes (shown when there is no map). */
   art?: string;
   map?: SceneMap;
+  /** Text the game master reads aloud (and may show to everyone). */
+  intro?: string;
+  /** Game master only: secrets, checks and what happens next. */
+  notes?: string;
+  /** Track id from the adventure's music list. */
+  music?: string;
+  encounter?: EncounterToken[];
+  /** Map areas already lit on the first visit: [x, y, width, height] in cells. */
+  reveal?: Array<[number, number, number, number]>;
+}
+
+export interface MusicTrack {
+  id: string;
+  title: string;
+  /** Path under the site root, e.g. "/dnd/solgard-bell/music-tavern.ogg". */
+  file: string;
 }
 
 export interface MonsterSheet {
@@ -88,10 +113,14 @@ export interface AdventureSummary {
   scenes: AdventureScene[];
   heroes: HeroSheet[];
   monsters: MonsterSheet[];
+  music?: MusicTrack[];
+  /** Played during combat when music follows the scenes. */
+  combatMusic?: string;
 }
 
 export const MAX_PLAYERS = 6;
 export const MAX_MAP_TOKENS = 60;
+export const MAX_NARRATION_LENGTH = 2000;
 export const MAX_MAP_CELLS = 64 * 64;
 export const ROLL_LOG_SIZE = 40;
 
@@ -252,6 +281,23 @@ export interface TokenView {
   hidden?: boolean;
 }
 
+export interface MusicView {
+  trackId: string;
+  title: string;
+  url: string;
+  /** How long the track has been playing on the gateway's clock when this view was made. */
+  elapsedMs: number;
+  /** True while the music follows scenes and combat by itself. */
+  auto: boolean;
+}
+
+export interface NarrationView {
+  id: string;
+  title: string;
+  text: string;
+  art?: string;
+}
+
 export interface CombatantView {
   id: string;
   tokenId: string;
@@ -296,6 +342,12 @@ export interface TableView {
   /** The current scene's map, if it has one. */
   map: MapView | null;
   combat: CombatView | null;
+  /** null when silent; `auto` still tells whether it follows the scenes. */
+  music: MusicView | null;
+  musicAuto: boolean;
+  narration: NarrationView | null;
+  /** Adventures the game master may choose from. */
+  adventures: Array<{ id: string; title: string; summary: string; level: number; length: string; custom: boolean }>;
 }
 
 export type GameClientMessage =
@@ -325,13 +377,21 @@ export type GameClientMessage =
   | { type: "gameCombatNext" }
   | { type: "gameCombatPrev" }
   | { type: "gameCombatRollAll" }
-  | { type: "gameApply"; rollId: string; half: boolean };
+  | { type: "gameApply"; rollId: string; half: boolean }
+  /** Game master: a track (null for silence) instead of the scene's own, or back to following the scenes. */
+  | { type: "gameMusic"; trackId: string | null }
+  | { type: "gameMusicAuto" }
+  /** Game master: show text to everyone (the scene's intro when omitted). */
+  | { type: "gameNarrate"; text?: string }
+  | { type: "gameNarrationClose" };
 
 export type GameServerMessage =
   | { type: "gameState"; table: TableView | null }
   | { type: "gameRolled"; roll: RollView }
   | { type: "gameError"; code: string }
-  | { type: "gamePinged"; by: string; x: number; y: number; gm: boolean };
+  | { type: "gamePinged"; by: string; x: number; y: number; gm: boolean }
+  /** The chosen adventure as this viewer may see it; sent before the state that needs it. */
+  | { type: "gameAdventureData"; adventure: AdventureSummary };
 
 // ---- Parsers ---------------------------------------------------------------
 
@@ -423,6 +483,13 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
     case "gameCombatNext": return { type: "gameCombatNext" };
     case "gameCombatPrev": return { type: "gameCombatPrev" };
     case "gameCombatRollAll": return { type: "gameCombatRollAll" };
+    case "gameMusic":
+      return raw.trackId === null || shortId(raw.trackId) ? { type: "gameMusic", trackId: raw.trackId as string | null } : invalid;
+    case "gameMusicAuto": return { type: "gameMusicAuto" };
+    case "gameNarrate":
+      if (raw.text === undefined) return { type: "gameNarrate" };
+      return typeof raw.text === "string" && raw.text.trim().length > 0 && raw.text.length <= MAX_NARRATION_LENGTH ? { type: "gameNarrate", text: raw.text.trim() } : invalid;
+    case "gameNarrationClose": return { type: "gameNarrationClose" };
     case "gameApply": return shortId(raw.rollId) && typeof raw.half === "boolean" ? { type: "gameApply", rollId: raw.rollId, half: raw.half } : invalid;
     default: return invalid;
   }
@@ -434,6 +501,10 @@ export function parseGameServerMessage(raw: unknown): GameServerMessage | null {
   if (raw.type === "gameState" && (raw.table === null || isObject(raw.table))) return raw as unknown as GameServerMessage;
   if (raw.type === "gameRolled" && isObject(raw.roll)) return raw as unknown as GameServerMessage;
   if (raw.type === "gameError" && typeof raw.code === "string") return { type: "gameError", code: raw.code };
+  if (raw.type === "gameAdventureData" && isObject(raw.adventure) && typeof raw.adventure.id === "string"
+    && Array.isArray(raw.adventure.scenes) && Array.isArray(raw.adventure.heroes) && Array.isArray(raw.adventure.monsters)) {
+    return raw as unknown as GameServerMessage;
+  }
   if (raw.type === "gamePinged" && typeof raw.by === "string" && typeof raw.x === "number" && typeof raw.y === "number") {
     return { type: "gamePinged", by: raw.by, x: raw.x, y: raw.y, gm: raw.gm === true };
   }

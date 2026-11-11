@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { TabletopCoordinator, type TableParticipant } from "./tabletop-coordinator.js";
-import { parseDiceExpression, parseGameClientMessage, skillBonus, type GameClientMessage, type GameServerMessage, type TableView } from "../shared/tabletop.js";
+import { parseDiceExpression, parseGameClientMessage, skillBonus, type AdventureSummary, type GameClientMessage, type GameServerMessage, type TableView } from "../shared/tabletop.js";
 import { BUILT_IN_ADVENTURES, findHero } from "../shared/tabletop-adventures.js";
 
-function fixture(dice: number[] = []) {
+/** The built-in adventure without its prepared encounters, music and lit areas: the older tests set maps up by hand. */
+const BARE_ADVENTURES = BUILT_IN_ADVENTURES.map(adventure => ({
+  ...adventure,
+  combatMusic: undefined,
+  scenes: adventure.scenes.map(({ encounter: _encounter, reveal: _reveal, music: _music, ...scene }) => scene),
+}));
+
+function fixture(dice: number[] = [], adventures: readonly AdventureSummary[] = BARE_ADVENTURES) {
   const sent: Array<{ entryId: string; message: GameServerMessage }> = [];
   let now = 1_000;
   let id = 0;
@@ -13,6 +20,7 @@ function fixture(dice: number[] = []) {
     rollDie: sides => Math.min(sides, dice.shift() ?? 10),
     now: () => (now += 1000),
     randomId: () => `id${++id}`,
+    adventures: () => adventures,
   });
   const person = (entryId: string, nickname: string, tableKey: string | null = "ts#1"): TableParticipant => ({ entryId, nickname, seatKey: `uid:${nickname}`, tableKey });
   const send = (who: TableParticipant, message: GameClientMessage) => coordinator.handleMessage(who, message);
@@ -302,4 +310,64 @@ test("combat: initiative, turns, attacks against a target, damage in one click, 
 
   f.send(gm, { type: "gameScene", index: 3 });
   assert.equal(f.state("a").combat, null, "a fight belongs to its map");
+});
+
+test("story: prepared encounters, lit areas, narration and music that follows scenes and combat", () => {
+  const f = fixture([], BUILT_IN_ADVENTURES);
+  const gm = f.person("a", "Alex");
+  const sasha = f.person("b", "Sasha");
+  for (const who of [gm, sasha]) f.send(who, { type: "gameOpen" });
+  f.send(gm, { type: "gameSeat", role: "gm" });
+  f.send(gm, { type: "gameAdventure", adventureId: "solgard-bell" });
+  f.send(sasha, { type: "gameSeat", role: "player" });
+  f.send(sasha, { type: "gameHero", heroId: "ilva" });
+  f.send(sasha, { type: "gameReady", ready: true });
+  assert.equal(f.state("a").music, null, "the lobby is silent");
+  const data = (entryId: string) => {
+    const last = f.sent.filter(item => item.entryId === entryId && item.message.type === "gameAdventureData").at(-1)?.message;
+    assert.ok(last?.type === "gameAdventureData");
+    return last.adventure;
+  };
+  assert.match(data("a").scenes[2]!.notes ?? "", /скелета/, "the game master gets the notes");
+  assert.equal(data("b").scenes[2]!.notes, undefined, "players do not");
+  assert.equal(data("b").scenes[2]!.encounter, undefined);
+  assert.equal(f.sent.filter(item => item.entryId === "b" && item.message.type === "gameAdventureData").length, 1, "sent once, not with every state");
+  f.send(gm, { type: "gameStart" });
+  assert.equal(f.state("b").music!.trackId, "tavern");
+  assert.equal(f.state("b").musicAuto, true);
+
+  f.send(sasha, { type: "gameNarrate" });
+  assert.equal(f.lastError("b"), "GM_ONLY");
+  f.send(gm, { type: "gameNarrate" });
+  const narration = f.state("b").narration!;
+  assert.equal(narration.title, "Таверна «Ржавый якорь»");
+  assert.match(narration.text, /^Дождь третий день/);
+  f.send(gm, { type: "gameNarrate", text: "Дверь со скрипом открывается." });
+  assert.equal(f.state("b").narration!.text, "Дверь со скрипом открывается.");
+
+  f.send(gm, { type: "gameScene", index: 2 });
+  assert.equal(f.state("b").narration, null, "a new scene clears the narration");
+  assert.equal(f.state("b").music!.trackId, "catacombs");
+  const gmMap = f.state("a").map!;
+  assert.deepEqual(gmMap.tokens.filter(token => token.kind === "monster").map(token => [token.name, token.hidden ?? false]),
+    [["Скелет 1", false], ["Скелет 2", false], ["Скелет 3", false], ["Гигантская крыса 1", true], ["Гигантская крыса 2", true]]);
+  assert.equal(gmMap.fog[12 * gmMap.cols + 9], "1", "the stairs are lit");
+  assert.equal(f.state("b").map!.tokens.some(token => token.monsterId === "giant-rat"), false);
+
+  f.send(gm, { type: "gameCombatStart" });
+  assert.equal(f.state("b").music!.trackId, "battle");
+  f.send(gm, { type: "gameCombatEnd" });
+  assert.equal(f.state("b").music!.trackId, "catacombs");
+
+  f.send(gm, { type: "gameMusic", trackId: "nope" });
+  assert.equal(f.lastError("a"), "UNKNOWN_TRACK");
+  f.send(gm, { type: "gameMusic", trackId: "finale" });
+  f.send(gm, { type: "gameScene", index: 3 });
+  assert.deepEqual([f.state("b").music!.trackId, f.state("b").musicAuto], ["finale", false], "a chosen track stays");
+  f.send(gm, { type: "gameMusic", trackId: null });
+  assert.equal(f.state("b").music, null);
+  f.send(gm, { type: "gameMusicAuto" });
+  assert.equal(f.state("b").music!.trackId, "catacombs");
+  f.send(gm, { type: "gameEnd" });
+  assert.equal(f.state("b").music, null);
 });

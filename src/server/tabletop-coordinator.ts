@@ -13,10 +13,12 @@ import {
   type DiceExpression,
   type GameClientMessage,
   type GameServerMessage,
+  type AdventureSummary,
   type CombatView,
   type HeroSheet,
   type MonsterSheet,
   type MapView,
+  type MusicView,
   type SceneMap,
   type TokenView,
   type RollDie,
@@ -27,7 +29,8 @@ import {
   type TableRole,
   type TableView,
 } from "../shared/tabletop.js";
-import { findAdventure, findHero, findMonster } from "../shared/tabletop-adventures.js";
+import { BUILT_IN_ADVENTURES } from "../shared/tabletop-adventures.js";
+import { adventureForPlayers, adventureListItem } from "../shared/adventure-package.js";
 
 /*
  * Channel game tables. No Node-only imports, like the whiteboard coordinator.
@@ -125,10 +128,19 @@ interface TableState {
   scene: number;
   scenes: Map<number, SceneState>;
   combat: CombatState | null;
+  /** What plays now and since when; `auto` follows the scene and combat. */
+  music: { trackId: string | null; startedAt: number; auto: boolean };
+  narration: { id: string; title: string; text: string; art?: string } | null;
   updatedAt: number;
 }
 
-interface Subscription { tableKey: string; seatKey: string; nickname: string }
+interface Subscription {
+  tableKey: string;
+  seatKey: string;
+  nickname: string;
+  /** "<adventure id>|<game master?>" of the adventure data this subscriber has. */
+  adventureSent?: string;
+}
 interface Bucket { tokens: number; updatedAt: number }
 
 export interface TabletopCoordinatorOptions {
@@ -137,6 +149,10 @@ export interface TabletopCoordinatorOptions {
   rollDie?: (sides: number) => number;
   now?: () => number;
   randomId?: () => string;
+  /** Every adventure a table may play (built-in ones by default). */
+  adventures?: () => readonly AdventureSummary[];
+  /** Which of them the administrator uploaded. */
+  isCustomAdventure?: (id: string) => boolean;
 }
 
 /** Table key for a TeamSpeak channel: target key plus channel id. */
@@ -195,6 +211,23 @@ export class TabletopCoordinator {
     this.rollDie = options.rollDie ?? defaultRollDie;
     this.now = options.now ?? Date.now;
     this.randomId = options.randomId ?? defaultRandomId;
+    this.adventures = options.adventures ?? (() => BUILT_IN_ADVENTURES);
+    this.isCustom = options.isCustomAdventure ?? (() => false);
+  }
+
+  private readonly adventures: () => readonly AdventureSummary[];
+  private readonly isCustom: (id: string) => boolean;
+
+  private findAdventure(id: string | null | undefined): AdventureSummary | undefined {
+    return id ? this.adventures().find(adventure => adventure.id === id) : undefined;
+  }
+
+  private findHero(adventureId: string | null | undefined, heroId: string | null | undefined): HeroSheet | undefined {
+    return heroId ? this.findAdventure(adventureId)?.heroes.find(hero => hero.id === heroId) : undefined;
+  }
+
+  private findMonster(adventureId: string | null | undefined, monsterId: string | null | undefined): MonsterSheet | undefined {
+    return monsterId ? this.findAdventure(adventureId)?.monsters.find(monster => monster.id === monsterId) : undefined;
   }
 
   handleMessage(participant: TableParticipant, message: GameClientMessage): void {
@@ -235,7 +268,9 @@ export class TabletopCoordinator {
       this.syncCombat(table);
     } else {
       table.combat = null;
+      table.narration = null;
     }
+    this.syncMusic(table);
     table.updatedAt = this.now();
     this.broadcast(subscription.tableKey);
   }
@@ -275,7 +310,8 @@ export class TabletopCoordinator {
   private table(key: string): TableState {
     let table = this.tables.get(key);
     if (!table) {
-      table = { phase: "lobby", adventureId: null, gm: null, players: [], rolls: [], checks: [], scene: 0, scenes: new Map(), combat: null, updatedAt: this.now() };
+      table = { phase: "lobby", adventureId: null, gm: null, players: [], rolls: [], checks: [], scene: 0, scenes: new Map(), combat: null,
+        music: { trackId: null, startedAt: 0, auto: true }, narration: null, updatedAt: this.now() };
       this.tables.set(key, table);
     }
     return table;
@@ -321,7 +357,7 @@ export class TabletopCoordinator {
       case "gameAdventure": {
         if (role !== "gm") return "GM_ONLY";
         if (table.phase !== "lobby") return "GAME_RUNNING";
-        const adventure = findAdventure(message.adventureId);
+        const adventure = this.findAdventure(message.adventureId);
         if (!adventure) return "UNKNOWN_ADVENTURE";
         table.adventureId = adventure.id;
         for (const seat of table.players) {
@@ -336,7 +372,7 @@ export class TabletopCoordinator {
           Object.assign(ownSeat, { heroId: null, hp: null, ready: false });
           return null;
         }
-        const hero = findHero(table.adventureId, message.heroId);
+        const hero = this.findHero(table.adventureId, message.heroId);
         if (!hero) return "UNKNOWN_HERO";
         if (table.players.some(seat => seat.key !== who.seatKey && seat.heroId === hero.id)) return "HERO_TAKEN";
         Object.assign(ownSeat, { heroId: hero.id, hp: hero.maxHp });
@@ -352,7 +388,7 @@ export class TabletopCoordinator {
         table.phase = "playing";
         table.checks = [];
         for (const seat of heroes) {
-          seat.hp = findHero(table.adventureId, seat.heroId)!.maxHp;
+          seat.hp = this.findHero(table.adventureId, seat.heroId)!.maxHp;
           delete seat.dying;
         }
         table.scene = 0;
@@ -373,7 +409,7 @@ export class TabletopCoordinator {
         const seat = table.players.find(candidate => candidate.key === message.key);
         if (!seat?.heroId) return "UNKNOWN_SEAT";
         if (role !== "gm" && seat.key !== who.seatKey) return "NOT_YOUR_HERO";
-        this.setHeroHp(seat, message.hp, findHero(table.adventureId, seat.heroId)!.maxHp);
+        this.setHeroHp(seat, message.hp, this.findHero(table.adventureId, seat.heroId)!.maxHp);
         return null;
       }
       case "gameCheck": {
@@ -400,6 +436,11 @@ export class TabletopCoordinator {
       case "gameCombatRollAll":
       case "gameApply":
         return this.applyCombat(table, who, role, message);
+      case "gameMusic":
+      case "gameMusicAuto":
+      case "gameNarrate":
+      case "gameNarrationClose":
+        return this.applyStory(table, role, message);
       default:
         return this.applyMap(table, who, role, message);
     }
@@ -412,8 +453,11 @@ export class TabletopCoordinator {
     if (table.phase !== "playing") return "GAME_NOT_RUNNING";
     if (message.type === "gameScene") {
       if (role !== "gm") return "GM_ONLY";
-      if (!findAdventure(table.adventureId)?.scenes[message.index]) return "UNKNOWN_SCENE";
-      if (table.scene !== message.index) table.combat = null;
+      if (!this.findAdventure(table.adventureId)?.scenes[message.index]) return "UNKNOWN_SCENE";
+      if (table.scene !== message.index) {
+        table.combat = null;
+        table.narration = null;
+      }
       table.scene = message.index;
       return null;
     }
@@ -436,7 +480,7 @@ export class TabletopCoordinator {
     if (role !== "gm") return "GM_ONLY";
     switch (message.type) {
       case "gameTokenAdd": {
-        const monster = findMonster(table.adventureId, message.monsterId);
+        const monster = this.findMonster(table.adventureId, message.monsterId);
         if (!monster) return "UNKNOWN_MONSTER";
         if (!inside(message.x, message.y)) return "OUT_OF_BOUNDS";
         if (occupied(message.x, message.y)) return "CELL_TAKEN";
@@ -466,6 +510,43 @@ export class TabletopCoordinator {
         scene.fog.fill(message.reveal ? 1 : 0);
         return null;
     }
+  }
+
+  // ---- Story: narration and music ----------------------------------------------
+
+  private applyStory(table: TableState, role: TableRole,
+    message: Extract<GameClientMessage, { type: "gameMusic" | "gameMusicAuto" | "gameNarrate" | "gameNarrationClose" }>): string | null {
+    if (role !== "gm") return "GM_ONLY";
+    if (table.phase !== "playing") return "GAME_NOT_RUNNING";
+    const adventure = this.findAdventure(table.adventureId);
+    switch (message.type) {
+      case "gameMusic":
+        if (message.trackId !== null && !adventure?.music?.some(track => track.id === message.trackId)) return "UNKNOWN_TRACK";
+        table.music = { trackId: message.trackId, startedAt: this.now(), auto: false };
+        return null;
+      case "gameMusicAuto":
+        table.music = { ...table.music, auto: true };
+        return null;
+      case "gameNarrate": {
+        const scene = adventure?.scenes[table.scene];
+        const text = message.text ?? scene?.intro;
+        if (!text) return "NO_NARRATION";
+        table.narration = { id: this.randomId(), title: scene?.title ?? "", text, ...(scene?.art ? { art: scene.art } : {}) };
+        return null;
+      }
+      case "gameNarrationClose":
+        table.narration = null;
+        return null;
+    }
+  }
+
+  /** While music follows the story: the fight's track during combat, otherwise the scene's own; silence in the lobby. */
+  private syncMusic(table: TableState): void {
+    if (!table.music.auto) return;
+    const adventure = this.findAdventure(table.adventureId);
+    const wanted = table.phase !== "playing" ? null
+      : (table.combat && adventure?.combatMusic) || adventure?.scenes[table.scene]?.music || null;
+    if (wanted !== table.music.trackId) table.music = { trackId: wanted, startedAt: this.now(), auto: true };
   }
 
   // ---- Combat -----------------------------------------------------------------
@@ -505,7 +586,7 @@ export class TabletopCoordinator {
         for (const item of combat.order) {
           if (item.initiative !== null || item.kind !== "hero") continue;
           const seat = table.players.find(candidate => candidate.key === item.seatKey);
-          const hero = findHero(table.adventureId, item.heroId);
+          const hero = this.findHero(table.adventureId, item.heroId);
           if (!seat || !hero) continue;
           const planned = this.plan({ type: "initiative" }, hero)!;
           const result = this.throwDice(planned.expression, "normal");
@@ -537,12 +618,12 @@ export class TabletopCoordinator {
     for (const token of scene.tokens) {
       if (kept.some(item => item.tokenId === token.id)) continue;
       if (token.kind === "hero") {
-        const hero = findHero(table.adventureId, token.heroId);
+        const hero = this.findHero(table.adventureId, token.heroId);
         if (!hero) continue;
         const initiative = combat.phase === "running" ? this.rollDie(20) + abilityModifier(hero.abilities.dex) : null;
         kept.push({ id: this.randomId(), tokenId: token.id, kind: "hero", name: hero.name, seatKey: token.seatKey, heroId: hero.id, initiative, dex: hero.abilities.dex });
       } else {
-        const monster = findMonster(table.adventureId, token.monsterId);
+        const monster = this.findMonster(table.adventureId, token.monsterId);
         if (!monster) continue;
         kept.push({
           id: this.randomId(), tokenId: token.id, kind: "monster", name: token.name, monsterId: monster.id,
@@ -606,6 +687,12 @@ export class TabletopCoordinator {
     }
   }
 
+  private musicFor(table: TableState): MusicView | null {
+    const track = this.findAdventure(table.adventureId)?.music?.find(item => item.id === table.music.trackId);
+    if (!track) return null;
+    return { trackId: track.id, title: track.title, url: track.file, elapsedMs: Math.max(0, this.now() - table.music.startedAt), auto: table.music.auto };
+  }
+
   private combatFor(table: TableState, role: TableRole): CombatView | null {
     const combat = table.combat;
     if (!combat) return null;
@@ -648,7 +735,7 @@ export class TabletopCoordinator {
       token.hp = Math.max(0, (token.hp ?? 0) - amount);
     } else {
       const seat = table.players.find(candidate => candidate.key === token.seatKey);
-      const hero = findHero(table.adventureId, seat?.heroId);
+      const hero = this.findHero(table.adventureId, seat?.heroId);
       if (!seat || !hero) return "UNKNOWN_TOKEN";
       if ((seat.hp ?? 0) > 0) {
         this.setHeroHp(seat, (seat.hp ?? 0) - amount, hero.maxHp);
@@ -670,7 +757,7 @@ export class TabletopCoordinator {
     const map = this.currentMap(table);
     if (!map) return "NO_MAP";
     if (x > map.cols || y > map.rows) return "OUT_OF_BOUNDS";
-    const by = role === "player" ? findHero(table.adventureId, table.players.find(seat => seat.key === who.seatKey)?.heroId)?.name ?? who.nickname : who.nickname;
+    const by = role === "player" ? this.findHero(table.adventureId, table.players.find(seat => seat.key === who.seatKey)?.heroId)?.name ?? who.nickname : who.nickname;
     for (const [entryId, subscription] of this.subscriptions) {
       if (subscription.tableKey === who.tableKey) this.sendRaw(entryId, { type: "gamePinged", by, x, y, gm: role === "gm" });
     }
@@ -678,7 +765,7 @@ export class TabletopCoordinator {
   }
 
   private currentMap(table: TableState): SceneMap | undefined {
-    return table.phase === "playing" ? findAdventure(table.adventureId)?.scenes[table.scene]?.map : undefined;
+    return table.phase === "playing" ? this.findAdventure(table.adventureId)?.scenes[table.scene]?.map : undefined;
   }
 
   private sceneState(table: TableState, map: SceneMap): SceneState {
@@ -686,8 +773,30 @@ export class TabletopCoordinator {
     if (!scene) {
       scene = { fog: new Uint8Array(map.cols * map.rows), tokens: [], counters: new Map() };
       table.scenes.set(table.scene, scene);
+      this.prepareScene(table, map, scene);
     }
     return scene;
+  }
+
+  /** The adventure's own setup for a map: lit areas and waiting monsters. */
+  private prepareScene(table: TableState, map: SceneMap, scene: SceneState): void {
+    const content = this.findAdventure(table.adventureId)?.scenes[table.scene];
+    for (const [left, top, width, height] of content?.reveal ?? []) {
+      for (let y = Math.max(0, top); y < Math.min(map.rows, top + height); y++) {
+        for (let x = Math.max(0, left); x < Math.min(map.cols, left + width); x++) scene.fog[y * map.cols + x] = 1;
+      }
+    }
+    for (const placed of content?.encounter ?? []) {
+      const monster = this.findMonster(table.adventureId, placed.monsterId);
+      if (!monster || placed.x >= map.cols || placed.y >= map.rows || scene.tokens.length >= MAX_MAP_TOKENS) continue;
+      if (scene.tokens.some(token => token.x === placed.x && token.y === placed.y)) continue;
+      const number = (scene.counters.get(monster.id) ?? 0) + 1;
+      scene.counters.set(monster.id, number);
+      scene.tokens.push({
+        id: this.randomId(), kind: "monster", x: placed.x, y: placed.y, name: `${monster.name} ${number}`,
+        monsterId: monster.id, hp: monster.maxHp, maxHp: monster.maxHp, hidden: placed.hidden === true,
+      });
+    }
   }
 
   /** Every hero has exactly one token on the current map; newcomers appear at the entrance with some light around them. */
@@ -699,7 +808,7 @@ export class TabletopCoordinator {
     scene.tokens = scene.tokens.filter(token => token.kind !== "hero" || heroes.some(seat => seat.key === token.seatKey && seat.heroId === token.heroId));
     for (const seat of heroes) {
       if (scene.tokens.some(token => token.kind === "hero" && token.seatKey === seat.key)) continue;
-      const hero = findHero(table.adventureId, seat.heroId)!;
+      const hero = this.findHero(table.adventureId, seat.heroId)!;
       const spot = this.freeSpot(map, scene);
       if (!spot) continue;
       scene.tokens.push({ id: this.randomId(), kind: "hero", x: spot[0], y: spot[1], name: hero.name, seatKey: seat.key, heroId: hero.id, hidden: false });
@@ -762,14 +871,14 @@ export class TabletopCoordinator {
       source = check.source;
       if (check.mode !== "normal") mode = check.mode;
     }
-    const hero = role === "player" ? findHero(table.adventureId, seat.heroId) : undefined;
+    const hero = role === "player" ? this.findHero(table.adventureId, seat.heroId) : undefined;
     const map = this.currentMap(table);
     const scene = map ? this.sceneState(table, map) : undefined;
     let monster: { sheet: MonsterSheet; name: string } | undefined;
     if (source.type === "monsterAttack" || source.type === "monsterDamage") {
       if (role !== "gm") return "GM_ONLY";
       const token = scene?.tokens.find(candidate => candidate.id === source.tokenId && candidate.kind === "monster");
-      const sheet = token ? findMonster(table.adventureId, token.monsterId) : undefined;
+      const sheet = token ? this.findMonster(table.adventureId, token.monsterId) : undefined;
       if (!token || !sheet) return "UNKNOWN_TOKEN";
       monster = { sheet, name: token.name };
     }
@@ -808,7 +917,7 @@ export class TabletopCoordinator {
       record.targetId = target.id;
       record.targetName = target.name;
       if (source.type === "attack" || source.type === "monsterAttack") {
-        const ac = target.kind === "hero" ? findHero(table.adventureId, target.heroId)?.ac : findMonster(table.adventureId, target.monsterId)?.ac;
+        const ac = target.kind === "hero" ? this.findHero(table.adventureId, target.heroId)?.ac : this.findMonster(table.adventureId, target.monsterId)?.ac;
         if (ac !== undefined) {
           record.targetAc = ac;
           record.hit = result.natural === 20 ? true : result.natural === 1 ? false : result.total >= ac;
@@ -941,6 +1050,10 @@ export class TabletopCoordinator {
       scene: table.scene,
       map: this.mapFor(table, role),
       combat: this.combatFor(table, role),
+      music: this.musicFor(table),
+      musicAuto: table.music.auto,
+      narration: table.narration ? { ...table.narration } : null,
+      adventures: this.adventures().map(item => adventureListItem(item, this.isCustom(item.id))),
     };
   }
 
@@ -948,7 +1061,15 @@ export class TabletopCoordinator {
     const table = this.tables.get(tableKey);
     if (!table) return;
     for (const [entryId, subscription] of this.subscriptions) {
-      if (subscription.tableKey === tableKey) this.sendRaw(entryId, { type: "gameState", table: this.viewFor(tableKey, table, subscription.seatKey) });
+      if (subscription.tableKey !== tableKey) continue;
+      const adventure = this.findAdventure(table.adventureId);
+      const gm = this.roleOf(table, subscription.seatKey) === "gm";
+      const marker = adventure ? `${adventure.id}|${gm}` : undefined;
+      if (adventure && subscription.adventureSent !== marker) {
+        subscription.adventureSent = marker;
+        this.sendRaw(entryId, { type: "gameAdventureData", adventure: gm ? adventure : adventureForPlayers(adventure) });
+      }
+      this.sendRaw(entryId, { type: "gameState", table: this.viewFor(tableKey, table, subscription.seatKey) });
     }
   }
 

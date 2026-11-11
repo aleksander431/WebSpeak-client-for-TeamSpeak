@@ -16,6 +16,17 @@
         <span v-if="table" class="gm-pill">{{ roleLabel }}</span>
       </div>
       <div class="gm-top-actions">
+        <div v-if="table?.phase === 'playing' && (table.music || role === 'gm')" class="gm-music" data-ws-part="voice.game.music">
+          <button type="button" class="gm-mini" :aria-label="music.state.muted ? x.musicUnmute : x.musicMute" :title="music.state.muted ? x.musicUnmute : x.musicMute" :aria-pressed="music.state.muted" @click="music.setMuted(!music.state.muted)">{{ music.state.muted || !table.music ? "🔇" : "🎵" }}</button>
+          <select v-if="role === 'gm' && adventure?.music?.length" class="gm-input gm-music-select" :value="table.musicAuto ? '@auto' : table.music?.trackId ?? '@none'" :aria-label="x.music" @change="onMusicPick">
+            <option value="@auto">{{ x.musicAuto }}<template v-if="table.musicAuto && table.music"> · {{ table.music.title }}</template></option>
+            <option v-for="track in adventure.music" :key="track.id" :value="track.id">{{ track.title }}</option>
+            <option value="@none">{{ x.musicOff }}</option>
+          </select>
+          <span v-else-if="table.music" class="gm-music-title">{{ table.music.title }}</span>
+          <input type="range" min="0" max="100" class="gm-music-volume" :value="Math.round(music.state.volume * 100)" :aria-label="x.musicVolume" :title="x.musicVolume" @input="music.setVolume(Number(($event.target as HTMLInputElement).value) / 100)" />
+          <button v-if="music.state.blocked" type="button" class="gm-btn gm-btn-gold" @click="music.resume()">{{ x.musicStart }}</button>
+        </div>
         <button v-if="table?.phase === 'playing' && role === 'gm'" type="button" class="gm-btn" @click="client.end()">{{ x.end }}</button>
         <button type="button" class="gm-btn" @click="emit('close')">{{ x.close }}</button>
       </div>
@@ -66,11 +77,11 @@
       <section class="gm-col gm-wide" aria-labelledby="gm-adventure-title">
         <div class="gm-card">
           <div class="gm-card-head"><h2 id="gm-adventure-title">{{ x.adventure }}</h2><span class="gm-muted">{{ x.adventurePick }}</span></div>
-          <label v-for="item in BUILT_IN_ADVENTURES" :key="item.id" :class="['gm-choice', { 'gm-choice-on': table.adventureId === item.id }]">
+          <label v-for="item in table.adventures" :key="item.id" :class="['gm-choice', { 'gm-choice-on': table.adventureId === item.id }]">
             <input type="radio" name="gm-adventure" :value="item.id" :checked="table.adventureId === item.id" :disabled="role !== 'gm'" @change="client.adventure(item.id)" />
             <span class="gm-choice-text">
               <strong class="gm-display gm-display-s">{{ item.title }}</strong>
-              <span class="gm-muted">{{ item.length }} · {{ item.level }} {{ x.levelShort }}</span>
+              <span class="gm-muted">{{ item.length }}<template v-if="item.length"> · </template>{{ item.level }} {{ x.levelShort }}<template v-if="item.custom"> · <span class="gm-tag">{{ x.customAdventure }}</span></template></span>
               <span>{{ item.summary }}</span>
             </span>
           </label>
@@ -194,6 +205,24 @@
 
       <!-- Game master: the party and checks -->
       <section v-else-if="role === 'gm'" v-show="!wide" class="gm-col gm-sheet gm-scroll" :aria-label="x.party">
+        <div v-if="scene" class="gm-card gm-story-card" data-ws-part="voice.game.story">
+          <h2>{{ x.sceneCard }}</h2>
+          <template v-if="scene.intro">
+            <p class="gm-story-text">{{ scene.intro }}</p>
+            <button type="button" class="gm-btn gm-btn-gold" @click="client.narrate()">{{ x.readAloud }}</button>
+          </template>
+          <details v-if="scene.notes" class="gm-notes" open>
+            <summary>{{ x.gmNotes }}</summary>
+            <p>{{ scene.notes }}</p>
+          </details>
+          <form class="gm-narrate" @submit.prevent="sendNarration">
+            <textarea v-model="narrationDraft" class="gm-input" rows="2" maxlength="2000" :placeholder="x.narratePlaceholder" :aria-label="x.narratePlaceholder"></textarea>
+            <div class="gm-row">
+              <button type="submit" class="gm-btn" :disabled="!narrationDraft.trim()">{{ x.narrateSend }}</button>
+              <button v-if="table.narration" type="button" class="gm-btn" @click="client.closeNarration()">{{ x.narrationHide }}</button>
+            </div>
+          </form>
+        </div>
         <div class="gm-card">
           <h2>{{ x.party }}</h2>
           <div v-for="seat in partySeats" :key="seat.key" class="gm-party">
@@ -329,7 +358,7 @@
           :client="client"
           :map="table.map"
           :scene-map="sceneMap"
-          :adventure-id="table.adventureId"
+          :adventure="adventure ?? null"
           :role="role"
           :you-key="table.you.key"
           :seats="table.players"
@@ -339,6 +368,20 @@
           <img v-if="scene?.art" :src="scene.art" alt="" />
           <figcaption><strong class="gm-display">{{ scene?.title }}</strong></figcaption>
         </figure>
+        <div v-if="table.narration && table.narration.id !== dismissedNarration" class="gm-narration" role="dialog" :aria-label="table.narration.title" data-ws-part="voice.game.narration">
+          <div class="gm-narration-card" :key="table.narration.id">
+            <img v-if="table.narration.art" class="gm-narration-art" :src="table.narration.art" alt="" />
+            <div class="gm-narration-body">
+              <span class="gm-muted gm-small">{{ x.narrationFrom }}</span>
+              <strong v-if="table.narration.title" class="gm-display gm-display-s">{{ table.narration.title }}</strong>
+              <p>{{ table.narration.text }}</p>
+              <div class="gm-row">
+                <button type="button" class="gm-btn gm-btn-gold" @click="dismissedNarration = table.narration.id">{{ x.narrationContinue }}</button>
+                <button v-if="role === 'gm'" type="button" class="gm-btn" @click="client.closeNarration()">{{ x.narrationHide }}</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="gm-col gm-side gm-scroll" :aria-label="x.turnLog">
@@ -429,8 +472,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { ABILITIES, MAX_PLAYERS, SKILL_IDS, abilityModifier, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
-import { BUILT_IN_ADVENTURES, findAdventure, findHero, findMonster } from "../../../../src/shared/tabletop-adventures.js";
+
 import GameMap from "./GameMap.vue";
+import { GameMusicPlayer } from "../../game/music-player.js";
 import type { GameClient } from "../../game/game-client.js";
 import { dndText } from "../../game/dnd-text.js";
 
@@ -443,7 +487,13 @@ const diePrefix = computed(() => (x.value === TEXT_RU ? "к" : "d"));
 const table = computed(() => props.client.state.table);
 const role = computed(() => table.value?.you.role ?? "spectator");
 const roleLabel = computed(() => role.value === "gm" ? x.value.gm : role.value === "player" ? x.value.player : x.value.spectator);
-const adventure = computed(() => findAdventure(table.value?.adventureId));
+/** The chosen adventure, as the gateway sent it to this viewer. */
+const adventure = computed(() => {
+  const data = props.client.adventureData.value;
+  return data && data.id === table.value?.adventureId ? data : undefined;
+});
+const findHero = (_adventureId: string | null | undefined, heroId: string | null | undefined) => heroId ? adventure.value?.heroes.find(hero => hero.id === heroId) : undefined;
+const findMonster = (_adventureId: string | null | undefined, monsterId: string | null | undefined) => monsterId ? adventure.value?.monsters.find(monster => monster.id === monsterId) : undefined;
 const mySeat = computed(() => table.value?.players.find(seat => seat.key === table.value?.you.key) ?? null);
 const myHero = computed(() => findHero(table.value?.adventureId, mySeat.value?.heroId));
 const ownReady = computed(() => role.value === "gm" ? Boolean(table.value?.gm?.ready) : Boolean(mySeat.value?.ready));
@@ -499,6 +549,25 @@ function onEscape(event: KeyboardEvent): void {
   if (!event.defaultPrevented) emit("close");
 }
 const dice = (expression: string) => expression.replace(/d/g, x.value === TEXT_RU ? "к" : "d");
+
+// ---- Story: music and narration ----------------------------------------------
+
+const music = new GameMusicPlayer();
+watch(() => table.value?.music ?? null, view => music.sync(view), { immediate: true });
+onBeforeUnmount(() => music.dispose());
+function onMusicPick(event: Event): void {
+  const value = (event.target as HTMLSelectElement).value;
+  if (value === "@auto") props.client.musicAuto();
+  else props.client.music(value === "@none" ? null : value);
+}
+const dismissedNarration = ref<string | null>(null);
+const narrationDraft = ref("");
+function sendNarration(): void {
+  const text = narrationDraft.value.trim();
+  if (!text) return;
+  props.client.narrate(text);
+  narrationDraft.value = "";
+}
 
 /** Hide the left column to give the scene more room. */
 const wide = ref(false);
@@ -652,6 +721,24 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-sheet { flex: 1 1 340px; max-width: 420px; }
 .gm-play { display: grid; grid-template-columns: minmax(260px, 330px) minmax(0, 1fr) minmax(240px, 300px); align-items: stretch; overflow: hidden; padding: 14px; gap: 14px; }
 .gm-play-nosheet { grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); }
+.gm-music { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 2px; border-radius: 12px; border: 1px solid var(--gm-line); }
+.gm-music-select { width: auto; max-width: 220px; min-height: 34px; padding: 4px 8px; font-size: 13px; }
+.gm-music-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--gm-muted); }
+.gm-music-volume { width: 90px; accent-color: var(--gm-gold); }
+.gm-story-text { margin: 0; font-family: "Cormorant Garamond", Georgia, serif; font-size: 17px; font-style: italic; line-height: 1.45; color: #e9dcc0; white-space: pre-wrap; }
+.gm-notes { border-radius: 10px; background: var(--gm-raised); padding: 8px 10px; }
+.gm-notes summary { cursor: pointer; color: var(--gm-gold); font-size: 13px; }
+.gm-notes p { margin: 8px 0 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.gm-narrate { display: flex; flex-direction: column; gap: 6px; }
+.gm-narrate textarea { resize: vertical; min-height: 56px; font: inherit; }
+.gm-stage { position: relative; }
+.gm-narration { position: absolute; inset: 50px 0 0; z-index: 6; display: grid; place-items: center; padding: 24px; background: rgba(6, 7, 9, 0.62); backdrop-filter: blur(3px); border-radius: 14px; animation: gm-fade-in .4s ease both; }
+.gm-narration-card { display: flex; flex-direction: column; width: min(720px, 100%); max-height: 100%; overflow: auto; border-radius: 16px; border: 1px solid #5a4a2e; background: linear-gradient(180deg, #221d15, #16171b); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); animation: gm-rise .5s ease both; }
+.gm-narration-art { width: 100%; height: 200px; object-fit: cover; border-radius: 16px 16px 0 0; }
+.gm-narration-body { display: flex; flex-direction: column; gap: 10px; padding: 18px 22px 20px; }
+.gm-narration-body p { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 19px; line-height: 1.6; color: #f1e6cf; white-space: pre-wrap; }
+@keyframes gm-fade-in { from { opacity: 0; } }
+@keyframes gm-rise { from { opacity: 0; transform: translateY(16px); } }
 .gm-btn-war { min-height: 34px; font-size: 13px; border-color: #b84a3e; color: #f3c9c9; white-space: nowrap; flex: none; }
 .gm-btn-war:hover:not(:disabled) { background: #3a2222; }
 .gm-combat { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 14px; border: 1px solid #4a2a26; background: linear-gradient(180deg, #221816, #1a1b20); }
@@ -830,7 +917,7 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 @keyframes gm-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes gm-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .gm-roll, .gm-roll-die, .gm-roll-title, .gm-roll-sum, .gm-spinner, .gm-art img, .gm-your-turn { animation: none; }
+  .gm-roll, .gm-roll-die, .gm-roll-title, .gm-roll-sum, .gm-spinner, .gm-art img, .gm-your-turn, .gm-narration, .gm-narration-card { animation: none; }
 }
 @media (max-width: 720px) {
   .gm-body { padding: 12px; }

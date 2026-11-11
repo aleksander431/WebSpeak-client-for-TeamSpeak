@@ -1,5 +1,5 @@
 import { reactive, shallowRef } from "vue";
-import type { CheckSource, GameClientMessage, GameServerMessage, RollMode, RollSource, RollView, TableRole, TableView } from "../../../src/shared/tabletop.js";
+import type { AdventureSummary, CheckSource, GameClientMessage, GameServerMessage, RollMode, RollSource, RollView, TableRole, TableView } from "../../../src/shared/tabletop.js";
 
 export interface GameTransport {
   isOpen(): boolean;
@@ -20,6 +20,8 @@ export class GameClient {
   });
   /** The newest roll, for the dice animation; replaced (not mutated) per roll. */
   readonly lastRoll = shallowRef<RollView | null>(null);
+  /** The chosen adventure as the gateway lets this viewer see it. */
+  readonly adventureData = shallowRef<AdventureSummary | null>(null);
   /** The newest ping on the map (a fresh object per ping). */
   readonly lastPing = shallowRef<{ id: number; by: string; x: number; y: number; gm: boolean } | null>(null);
   private pingCount = 0;
@@ -37,6 +39,10 @@ export class GameClient {
     }
     if (message.type === "gameRolled") {
       if (this.state.open) this.lastRoll.value = message.roll;
+      return;
+    }
+    if (message.type === "gameAdventureData") {
+      if (this.state.open) this.adventureData.value = message.adventure;
       return;
     }
     if (message.type === "gamePinged") {
@@ -58,6 +64,7 @@ export class GameClient {
     this.state.table = null;
     this.lastRoll.value = null;
     this.lastPing.value = null;
+    this.adventureData.value = null;
   }
 
   /** After a reconnect the gateway forgot the subscription: open again. */
@@ -84,6 +91,10 @@ export class GameClient {
   combatPrev(): void { this.send({ type: "gameCombatPrev" }); }
   combatRollAll(): void { this.send({ type: "gameCombatRollAll" }); }
   apply(rollId: string, half: boolean): void { this.send({ type: "gameApply", rollId, half }); }
+  music(trackId: string | null): void { this.send({ type: "gameMusic", trackId }); }
+  musicAuto(): void { this.send({ type: "gameMusicAuto" }); }
+  narrate(text?: string): void { this.send(text ? { type: "gameNarrate", text } : { type: "gameNarrate" }); }
+  closeNarration(): void { this.send({ type: "gameNarrationClose" }); }
   setHp(key: string, hp: number): void { this.send({ type: "gameHp", key, hp: Math.round(hp) }); }
   requestCheck(source: CheckSource, dc: number, mode: RollMode, targets: string[]): void {
     this.send({ type: "gameCheck", source, dc, mode, targets });
