@@ -8,7 +8,7 @@ const KEEP_MS = 60 * 24 * 60 * 60 * 1000;
 const WRITE_DELAY_MS = 1500;
 
 /**
- * Game tables on disk: one JSON file per table under `<data>/tables/`, named by
+ * Game tables (and hero vaults) on disk: one JSON file per key under `<data>/tables/`, named by
  * a hash of the table key (the key itself is inside). Everything is read once
  * at startup, so the coordinator's synchronous `load` never waits; writes are
  * coalesced per table and replace the file atomically.
@@ -18,7 +18,12 @@ export class FileTabletopStore implements TabletopStore {
   private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
   private writing: Promise<void> = Promise.resolve();
 
-  constructor(private readonly directory: string, private readonly warn: (message: string, details: Record<string, unknown>) => void = () => undefined) {}
+  constructor(
+    private readonly directory: string,
+    private readonly warn: (message: string, details: Record<string, unknown>) => void = () => undefined,
+    /** Files untouched for longer are deleted at startup (hero vaults keep theirs). */
+    private readonly keepMs = KEEP_MS,
+  ) {}
 
   async open(now = Date.now()): Promise<void> {
     await mkdir(this.directory, { recursive: true });
@@ -26,7 +31,7 @@ export class FileTabletopStore implements TabletopStore {
       if (!name.endsWith(".json")) continue;
       const file = path.join(this.directory, name);
       try {
-        if (now - (await stat(file)).mtimeMs > KEEP_MS) {
+        if (now - (await stat(file)).mtimeMs > this.keepMs) {
           await rm(file, { force: true });
           continue;
         }

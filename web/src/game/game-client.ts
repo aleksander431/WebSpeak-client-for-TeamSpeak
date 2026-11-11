@@ -1,6 +1,6 @@
 import { reactive, shallowRef } from "vue";
-import type { HeroChoices } from "../../../src/shared/hero-builder.js";
-import type { AdventureSummary, CheckSource, ConditionId, GameClientMessage, GameServerMessage, RollMode, RollSource, RollView, TableRole, TableView } from "../../../src/shared/tabletop.js";
+import type { Coins, HeroChoices, InventoryItem } from "../../../src/shared/hero-builder.js";
+import type { AdventureSummary, CheckSource, ConditionId, GameClientMessage, GameServerMessage, RollMode, RollSource, RollView, TableRole, TableView, VaultHero } from "../../../src/shared/tabletop.js";
 
 export interface GameTransport {
   isOpen(): boolean;
@@ -25,6 +25,8 @@ export class GameClient {
   readonly adventureData = shallowRef<AdventureSummary | null>(null);
   /** The newest ping on the map (a fresh object per ping). */
   readonly lastPing = shallowRef<{ id: number; by: string; x: number; y: number; gm: boolean } | null>(null);
+  /** Own heroes the gateway keeps for this TeamSpeak identity; null without a unique id (or before the panel opened). */
+  readonly vault = shallowRef<VaultHero[] | null>(null);
   private pingCount = 0;
   private readonly unsubscribe: () => void;
 
@@ -44,6 +46,10 @@ export class GameClient {
     }
     if (message.type === "gameAdventureData") {
       if (this.state.open) this.adventureData.value = message.adventure;
+      return;
+    }
+    if (message.type === "gameVault") {
+      if (this.state.open) this.vault.value = message.heroes;
       return;
     }
     if (message.type === "gamePinged") {
@@ -66,6 +72,7 @@ export class GameClient {
     this.lastRoll.value = null;
     this.lastPing.value = null;
     this.adventureData.value = null;
+    this.vault.value = null;
   }
 
   /** After a reconnect the gateway forgot the subscription: open again. */
@@ -117,6 +124,11 @@ export class GameClient {
   resource(key: string, resourceId: string, used: number): void { this.send({ type: "gameResource", key, resourceId, used: Math.max(0, used) }); }
   rest(kind: "short" | "long"): void { this.send({ type: "gameRest", kind }); }
   hitDie(key: string): void { this.send({ type: "gameHitDie", key }); }
+  xp(keys: string[], amount: number): void { this.send({ type: "gameXp", keys, amount: Math.round(amount) }); }
+  levelUp(choices: HeroChoices): void { this.send({ type: "gameLevelUp", choices }); }
+  inventory(key: string, inventory: InventoryItem[], coins: Coins): void { this.send({ type: "gameInventory", key, inventory, coins }); }
+  vaultSave(hero: VaultHero): void { this.send({ type: "gameVaultSave", hero }); }
+  vaultRemove(id: string): void { this.send({ type: "gameVaultRemove", id }); }
   saveAttack(source: Extract<GameClientMessage, { type: "gameSaveAttack" }>["source"], targets: string[]): void { this.send({ type: "gameSaveAttack", source, targets }); }
 
   dispose(): void {

@@ -116,13 +116,21 @@
             <h2>{{ x.builder.myHeroes }}</h2>
             <span class="gm-muted">{{ x.builder.myHeroesLead }}</span>
           </div>
+          <div class="gm-row gm-own-tools">
+            <span class="gm-muted gm-small">{{ client.vault.value ? `☁ ${x.progress.synced}` : x.progress.localOnly }}</span>
+            <span class="gm-grow"></span>
+            <button v-if="library.heroes.value.length" type="button" class="gm-chip" @click="exportHeroes">⬇ {{ x.progress.exportHeroes }}</button>
+            <button type="button" class="gm-chip" @click="importInput?.click()">⬆ {{ x.progress.importHeroes }}</button>
+            <input ref="importInput" type="file" accept=".json,application/json" hidden @change="importHeroes" />
+          </div>
+          <p v-if="importNote" class="gm-muted gm-small" role="status">{{ importNote }}</p>
           <div class="gm-hero-grid">
             <div v-for="item in ownHeroes" :key="item.saved.id" :class="['gm-hero', 'gm-hero-own', { 'gm-hero-on': item.active }]">
               <img v-if="item.sheet.portrait" class="gm-avatar gm-avatar-l gm-portrait" :src="item.sheet.portrait" alt="" /><span v-else class="gm-avatar gm-avatar-l">{{ initial(item.sheet.name) }}</span>
               <span class="gm-hero-text">
                 <strong>{{ item.sheet.name }}</strong>
-                <span class="gm-muted">{{ item.sheet.race }} · {{ item.sheet.cls }}</span>
-                <span class="gm-hero-stats">{{ x.hp }} {{ item.sheet.maxHp }} · {{ x.ac }} {{ item.sheet.ac }}</span>
+                <span class="gm-muted">{{ item.sheet.race }} · {{ item.sheet.cls }} · {{ item.sheet.level }} {{ x.levelShort }}</span>
+                <span class="gm-hero-stats">{{ x.hp }} {{ item.sheet.maxHp }} · {{ x.ac }} {{ item.sheet.ac }}<template v-if="item.saved.choices.xp"> · {{ x.progress.xp }} {{ item.saved.choices.xp }}</template></span>
                 <span class="gm-own-actions">
                   <span v-if="item.active" class="gm-tag">{{ x.builder.playing }}</span>
                   <button v-else-if="role === 'player'" type="button" class="gm-act gm-act-gold" @click="playSaved(item.saved)">{{ x.builder.play }}</button>
@@ -192,6 +200,11 @@
             @toggle="(id, active) => client.condition(mySeat!.key, id, active)"
             @exhaustion="level => client.exhaustion(mySeat!.key, level)"
           />
+          <div v-if="mySeat.xp !== undefined" class="gm-xp">
+            <span class="gm-small">{{ x.progress.xp }} <b>{{ mySeat.xp }}</b><template v-if="myHero.level < MAX_LEVEL"> / {{ XP_FOR_LEVEL[myHero.level + 1] }}</template><template v-else> · {{ x.progress.maxLevel }}</template></span>
+            <span class="gm-xp-bar"><span :style="{ width: `${xpPercent}%` }"></span></span>
+            <button v-if="canLevelUp" type="button" class="gm-btn gm-btn-gold gm-btn-s" @click="levelUpOpen = true">⬆ {{ x.progress.levelUpButton }}</button>
+          </div>
           <div class="gm-stat-row">
             <div class="gm-stat">
               <div class="gm-hp">
@@ -257,6 +270,14 @@
               <span>{{ x.abilityName[ability] }}</span><strong>{{ signed(saveBonus(myHero, ability)) }}</strong>
             </button>
           </div>
+          <GameInventory
+            v-else-if="sheetTab === 'equipment' && mySeat.inventory"
+            :x="x"
+            :items="mySeat.inventory"
+            :coins="mySeat.coins ?? { gp: 0, sp: 0, cp: 0 }"
+            editable
+            @change="(items, coins) => client.inventory(mySeat!.key, items, coins)"
+          />
           <ul v-else class="gm-list">
             <li v-for="line in sheetLines" :key="line">{{ line }}</li>
           </ul>
@@ -295,7 +316,8 @@
             <img v-if="seat.hero.portrait" class="gm-avatar gm-portrait" :src="seat.hero.portrait" alt="" /><span v-else class="gm-avatar">{{ initial(seat.hero.name) }}</span>
             <span class="gm-party-text">
               <strong>{{ seat.hero.name }}</strong>
-              <span class="gm-muted gm-small">{{ seat.nickname }}<template v-if="!seat.online"> · {{ x.offline }}</template> · {{ x.ac }} {{ seat.hero.ac }}<template v-if="seat.dying"> · <b class="gm-bad">{{ dyingText(seat.dying) }}</b></template></span>
+              <span class="gm-muted gm-small">{{ seat.nickname }}<template v-if="!seat.online"> · {{ x.offline }}</template> · {{ seat.hero.level }} {{ x.levelShort }} · {{ x.ac }} {{ seat.hero.ac }}<template v-if="seat.xp"> · {{ x.progress.xp }} {{ seat.xp }}</template><template v-if="seat.dying"> · <b class="gm-bad">{{ dyingText(seat.dying) }}</b></template>
+                <button type="button" class="gm-act" :title="x.progress.bag" @click="bagFor = seat.key">🎒 {{ x.progress.bag }}</button></span>
               <span class="gm-bar"><span :style="{ width: `${Math.max(0, Math.min(100, ((seat.hp ?? 0) / seat.hero.maxHp) * 100))}%` }" :class="hpClass(seat.hp, seat.hero.maxHp)"></span></span>
               <GameConditions
                 :x="x"
@@ -317,6 +339,14 @@
               <button type="button" class="gm-mini" :aria-label="x.hpPlus" @click="client.setHp(seat.key, (seat.hp ?? 0) + 1)">+</button>
             </span>
           </div>
+          <form v-if="partySeats.length" class="gm-row gm-award" @submit.prevent="awardXp">
+            <input v-model.number="xpAmount" class="gm-input gm-award-n" type="number" step="25" :aria-label="x.progress.xpAmount" :placeholder="x.progress.xpAmount" />
+            <select v-model="xpTarget" class="gm-input gm-grow" :aria-label="x.checkWho">
+              <option value="">{{ x.progress.awardAll }}</option>
+              <option v-for="seat in partySeats" :key="seat.key" :value="seat.key">{{ seat.hero.name }}</option>
+            </select>
+            <button type="submit" class="gm-btn" :disabled="!xpAmount">★ {{ x.progress.award }}</button>
+          </form>
         </div>
 
         <form class="gm-card gm-form" @submit.prevent="sendCheck">
@@ -508,8 +538,8 @@
             <li v-for="item in reversedRolls" :key="item.id" :class="['gm-log-item', { 'gm-log-secret': item.secret }]">
               <span class="gm-log-who">{{ item.heroName ?? item.by }}</span>
               <span class="gm-log-what">{{ item.secret ? x.secretRoll : item.label }}<template v-if="item.hidden && !item.secret"> · {{ x.hidden.split(' (')[0] }}</template></span>
-              <span v-if="!item.secret" class="gm-log-dice">{{ diceText(item) }}</span>
-              <strong v-if="!item.secret" :class="['gm-log-total', rollClass(item)]">{{ item.total }}</strong>
+              <span v-if="!item.secret && item.dice?.length" class="gm-log-dice">{{ diceText(item) }}</span>
+              <strong v-if="!item.secret && item.total !== undefined" :class="['gm-log-total', rollClass(item)]">{{ item.total }}</strong>
               <span v-if="item.success !== undefined" :class="item.success ? 'gm-ok' : 'gm-bad'">{{ item.success ? x.success : x.failure }}<template v-if="item.dc !== undefined"> · {{ item.dc }}</template></span>
               <span v-if="item.targetName" class="gm-log-target">→ {{ item.targetName }}<template v-if="item.targetAc !== undefined"> ({{ x.ac }} {{ item.targetAc }})</template></span>
               <span v-if="item.hit !== undefined" :class="item.hit ? 'gm-ok' : 'gm-bad'">{{ item.hit ? x.hitText : x.missText }}</span>
@@ -562,6 +592,25 @@
         </template>
       </div>
     </div>
+    <HeroLevelUp
+      v-if="levelUpOpen && activeSaved"
+      :x="x"
+      :choices="activeSaved.choices"
+      @cancel="levelUpOpen = false"
+      @confirm="confirmLevelUp"
+    />
+    <div v-if="bagSeat" class="gm-modal" role="dialog" aria-modal="true" :aria-label="`${x.progress.bag}: ${bagSeat.hero.name}`" @keydown.esc.stop.prevent="bagFor = null" @click.self="bagFor = null">
+      <div class="gm-modal-card">
+        <div class="gm-card-head"><h2>🎒 {{ bagSeat.hero.name }}</h2><span class="gm-grow"></span><button type="button" class="gm-btn" @click="bagFor = null">{{ x.close }}</button></div>
+        <GameInventory
+          :x="x"
+          :items="bagSeat.inventory ?? []"
+          :coins="bagSeat.coins ?? { gp: 0, sp: 0, cp: 0 }"
+          editable
+          @change="(items, coins) => client.inventory(bagSeat!.key, items, coins)"
+        />
+      </div>
+    </div>
     <GameSaveAttack
       v-if="saveDialog && table?.map"
       :x="x"
@@ -595,7 +644,9 @@ import HeroBuilder from "./HeroBuilder.vue";
 import GameConditions from "./GameConditions.vue";
 import GameResources from "./GameResources.vue";
 import GameSaveAttack from "./GameSaveAttack.vue";
-import { buildHero, heroPortraitUrl, type HeroChoices } from "../../../../src/shared/hero-builder.js";
+import GameInventory from "./GameInventory.vue";
+import HeroLevelUp from "./HeroLevelUp.vue";
+import { MAX_LEVEL, XP_FOR_LEVEL, buildHero, heroPortraitUrl, type HeroChoices } from "../../../../src/shared/hero-builder.js";
 import { useHeroLibrary, type SavedHero } from "../../game/hero-library.js";
 import { GameMusicPlayer } from "../../game/music-player.js";
 import type { GameClient } from "../../game/game-client.js";
@@ -689,6 +740,7 @@ function openBuilder(saved: SavedHero | null): void {
 }
 function onBuilderSave(choices: HeroChoices, play: boolean): void {
   const saved = library.save(choices, builderFor.value?.id);
+  pushVault(saved);
   builderOpen.value = false;
   if (play || (myCustom.value && playedSaved.value === saved.id)) playSaved(saved);
 }
@@ -706,6 +758,83 @@ function removeSaved(id: string): void {
   }
   confirmRemove.value = null;
   library.remove(id);
+  if (props.client.vault.value) props.client.vaultRemove(id);
+}
+
+// ---- Levels, experience, belongings and the hero vault ------------------------
+
+const activeSaved = computed(() => ownHeroes.value.find(item => item.active)?.saved ?? null);
+const xpPercent = computed(() => {
+  const hero = myHero.value;
+  const xp = mySeat.value?.xp ?? 0;
+  if (!hero || hero.level >= MAX_LEVEL) return 100;
+  const from = XP_FOR_LEVEL[hero.level]!;
+  const to = XP_FOR_LEVEL[hero.level + 1]!;
+  return Math.max(0, Math.min(100, ((xp - from) / (to - from)) * 100));
+});
+const canLevelUp = computed(() => Boolean(myCustom.value && activeSaved.value && myCustom.value.level < MAX_LEVEL
+  && (mySeat.value?.xp ?? 0) >= XP_FOR_LEVEL[myCustom.value.level + 1]! && !combat.value));
+const levelUpOpen = ref(false);
+/** Sent and waiting for the gateway's new sheet. */
+const pendingLevel = ref<HeroChoices | null>(null);
+function confirmLevelUp(choices: HeroChoices): void {
+  levelUpOpen.value = false;
+  pendingLevel.value = choices;
+  props.client.levelUp(choices);
+}
+/** Keeps the saved hero in step with the table: level, experience, the bag and the purse. */
+watch(() => [myCustom.value, mySeat.value?.xp, mySeat.value?.inventory, mySeat.value?.coins] as const, ([custom, xp, inventory, coins]) => {
+  const saved = activeSaved.value;
+  if (!custom || !saved) return;
+  let base = saved.choices;
+  if (pendingLevel.value && custom.level === pendingLevel.value.level) {
+    base = pendingLevel.value;
+    pendingLevel.value = null;
+  }
+  const next: HeroChoices = { ...base, ...(xp ? { xp } : {}), ...(inventory ? { inventory } : {}), ...(coins ? { coins } : {}) };
+  if (custom.level !== (base.level ?? 1)) return;
+  if (JSON.stringify(next) === JSON.stringify(saved.choices)) return;
+  pushVault(library.save(next, saved.id));
+});
+
+const bagFor = ref<string | null>(null);
+const bagSeat = computed(() => partySeats.value.find(seat => seat.key === bagFor.value) ?? null);
+const xpAmount = ref<number | "">("");
+const xpTarget = ref("");
+function awardXp(): void {
+  const amount = Number(xpAmount.value);
+  if (!amount) return;
+  props.client.xp(xpTarget.value ? [xpTarget.value] : partySeats.value.map(seat => seat.key), amount);
+  xpAmount.value = "";
+}
+
+function pushVault(saved: SavedHero): void {
+  if (props.client.vault.value) props.client.vaultSave(saved);
+}
+watch(() => props.client.vault.value, remote => {
+  if (!remote) return;
+  for (const hero of library.merge(remote)) props.client.vaultSave(hero);
+}, { immediate: true });
+
+const importInput = ref<HTMLInputElement | null>(null);
+const importNote = ref("");
+function exportHeroes(): void {
+  const blob = new Blob([library.exportText()], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "webspeak-heroes.json";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function importHeroes(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  const taken = file.size > 512 * 1024 ? null : library.importText(await file.text());
+  importNote.value = taken ? x.value.progress.imported.replace("{n}", String(taken.length)) : x.value.progress.importFailed;
+  for (const hero of taken ?? []) pushVault(hero);
 }
 
 // ---- Combat ----------------------------------------------------------------
@@ -786,7 +915,7 @@ const sheetTabs = computed(() => [
   { id: "skills" as const, label: x.value.skills },
   { id: "saves" as const, label: x.value.saves },
   { id: "features" as const, label: x.value.features },
-  { id: "equipment" as const, label: x.value.equipment },
+  { id: "equipment" as const, label: x.value.progress.inventory },
   { id: "story" as const, label: x.value.story },
 ]);
 const sheetLines = computed(() => {
@@ -858,7 +987,8 @@ function rollHeadline(item: RollView): string {
 const shownRoll = ref<RollView | null>(null);
 let hideTimer: ReturnType<typeof setTimeout> | undefined;
 watch(() => props.client.lastRoll.value, item => {
-  if (!item) return;
+  // Table notes (experience, rests, levels) have no dice: the log is enough.
+  if (!item || (!item.secret && !item.dice?.length)) return;
   shownRoll.value = item;
   clearTimeout(hideTimer);
   hideTimer = setTimeout(() => { shownRoll.value = null; }, item.secret ? 1600 : 2600);
@@ -1029,6 +1159,21 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-hero-stats { font-size: 12px; color: #c9c6bf; }
 .gm-hero-own { cursor: default; }
 .gm-party-head { justify-content: space-between; }
+.gm-own-tools { align-items: center; gap: 6px; }
+.gm-own-tools .gm-chip { min-height: 30px; font-size: 12px; }
+.gm-grow { flex: 1 1 auto; }
+.gm-xp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.gm-xp b { color: var(--gm-gold); }
+.gm-xp-bar { flex: 1 1 120px; height: 6px; border-radius: 3px; background: var(--gm-raised); overflow: hidden; }
+.gm-xp-bar span { display: block; height: 100%; background: linear-gradient(90deg, #a8843f, var(--gm-gold)); }
+.gm-btn-s { min-height: 30px; padding: 0 10px; font-size: 12px; }
+.gm-award { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--gm-line); gap: 6px; }
+.gm-award { flex-wrap: nowrap; }
+.gm-award .gm-input { width: auto; min-width: 0; }
+.gm-award-n { flex: 0 0 96px; }
+.gm-award .gm-btn { flex: none; white-space: nowrap; }
+.gm-modal { position: absolute; inset: 0; z-index: 25; display: grid; place-items: center; padding: 24px; background: rgba(8, 9, 12, .6); }
+.gm-modal-card { display: flex; flex-direction: column; gap: 12px; width: min(480px, 100%); max-height: 100%; overflow: auto; padding: 18px; border-radius: 16px; border: 1px solid var(--gm-line-2); background: var(--gm-card); box-shadow: 0 24px 60px rgba(0, 0, 0, .5); }
 .gm-rest { gap: 6px; }
 .gm-rest .gm-chip { min-height: 30px; font-size: 12px; }
 .gm-rest .gm-chip:disabled { opacity: .45; cursor: default; }

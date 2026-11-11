@@ -8,6 +8,7 @@ import {
   type HeroResource,
   type HeroSheet,
   type Skill,
+  proficiencyBonus,
 } from "./tabletop.js";
 
 /**
@@ -42,6 +43,38 @@ export interface HeroChoices {
   ancestry?: DragonAncestry;
   portrait?: string;
   story?: string;
+  /** 1–MAX_LEVEL; 1 when missing. */
+  level?: number;
+  xp?: number;
+  /** Ability score improvements: two picks at level 4 (the same one twice for +2). */
+  asi?: Ability[];
+  /** What the hero carries (starts as the class equipment) and their coins. */
+  inventory?: InventoryItem[];
+  coins?: Coins;
+}
+
+export interface InventoryItem {
+  name: string;
+  qty: number;
+  note?: string;
+}
+
+export interface Coins {
+  gp: number;
+  sp: number;
+  cp: number;
+}
+
+export const MAX_LEVEL = 5;
+/** Experience needed for each level (index = level), SRD 5.1. */
+export const XP_FOR_LEVEL = [0, 0, 300, 900, 2700, 6500];
+export const MAX_INVENTORY = 60;
+export const STARTING_COINS: Coins = { gp: 15, sp: 0, cp: 0 };
+
+export function levelForXp(xp: number): number {
+  let level = 1;
+  while (level < MAX_LEVEL && xp >= XP_FOR_LEVEL[level + 1]!) level += 1;
+  return level;
 }
 
 export type DragonAncestry = "red" | "blue" | "green" | "black" | "white" | "gold" | "silver" | "bronze" | "copper" | "brass";
@@ -151,7 +184,6 @@ export const CLASSES: ClassInfo[] = [
 export const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
 export const POINT_BUY_BUDGET = 27;
 const POINT_COST: Record<number, number> = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
-const PROFICIENCY = 2;
 
 export function pointBuyCost(abilities: Record<Ability, number>): number {
   return ABILITIES.reduce((sum, ability) => sum + (POINT_COST[abilities[ability]] ?? 99), 0);
@@ -165,13 +197,19 @@ export function findClass(id: unknown): ClassInfo | undefined {
   return CLASSES.find(cls => cls.id === id);
 }
 
-/** Final scores with racial bonuses. */
-export function finalAbilities(choices: Pick<HeroChoices, "race" | "abilities" | "bonusAbilities">): Record<Ability, number> {
+/** Final scores with racial bonuses and improvements (at most 20). */
+export function finalAbilities(choices: Pick<HeroChoices, "race" | "abilities" | "bonusAbilities" | "asi" | "level">): Record<Ability, number> {
   const race = findRace(choices.race);
   const result = { ...choices.abilities };
   for (const ability of ABILITIES) result[ability] += race?.bonuses[ability] ?? 0;
   if (choices.race === "half-elf") for (const ability of choices.bonusAbilities ?? []) result[ability] += 1;
+  if ((choices.level ?? 1) >= 4) for (const ability of choices.asi ?? []) result[ability] = Math.min(20, result[ability] + 1);
   return result;
+}
+
+/** Starting gear as inventory lines ("2 кинжала" stays one line). */
+export function startingInventory(equipment: readonly string[]): InventoryItem[] {
+  return equipment.map(name => ({ name, qty: 1 }));
 }
 
 /** Skills the race and class give without a choice. */
@@ -238,11 +276,30 @@ export function validateHeroChoices(raw: unknown): HeroChoices {
   }
   const all = [...race.skills, ...classSkills, ...backgroundSkills, ...bonusSkills];
   if (new Set(all).size !== all.length) throw new HeroChoiceError("HERO_SKILL_TWICE", "the same skill from two sources");
-  if (cls.id === "rogue") {
+  const level = value.level === undefined ? 1 : value.level;
+  if (!Number.isInteger(level) || (level as number) < 1 || (level as number) > MAX_LEVEL) throw new HeroChoiceError("HERO_LEVEL", `1–${MAX_LEVEL}`);
+  const xp = value.xp === undefined ? 0 : value.xp;
+  if (!Number.isInteger(xp) || (xp as number) < 0 || (xp as number) > 1_000_000) throw new HeroChoiceError("HERO_XP", "0 or more");
+  if ((xp as number) < XP_FOR_LEVEL[level as number]!) throw new HeroChoiceError("HERO_XP", "not enough experience for the level");
+  if (level !== 1) choices.level = level as number;
+  if (xp) choices.xp = xp as number;
+  const expertiseCount = cls.id === "rogue" ? 2 : cls.id === "bard" && (level as number) >= 3 ? 2 : 0;
+  if (expertiseCount) {
     const expertise = skillList(value.expertise, "HERO_EXPERTISE");
-    if (expertise.length !== 2 || !expertise.every(skill => all.includes(skill))) throw new HeroChoiceError("HERO_EXPERTISE", "two of your skills");
+    if (expertise.length !== expertiseCount || !expertise.every(skill => all.includes(skill))) throw new HeroChoiceError("HERO_EXPERTISE", "two of your skills");
     choices.expertise = expertise;
   }
+  if ((level as number) >= 4) {
+    const asi = value.asi;
+    if (!Array.isArray(asi) || asi.length !== 2 || !asi.every(item => (ABILITIES as readonly unknown[]).includes(item))) throw new HeroChoiceError("HERO_ASI", "two ability picks");
+    choices.asi = asi as Ability[];
+  }
+  if (value.inventory !== undefined) {
+    const items = value.inventory;
+    if (!Array.isArray(items) || items.length > MAX_INVENTORY) throw new HeroChoiceError("HERO_INVENTORY", `at most ${MAX_INVENTORY} items`);
+    choices.inventory = items.map(item => parseInventoryItem(item));
+  }
+  if (value.coins !== undefined) choices.coins = parseCoins(value.coins);
   if (cls.id === "fighter") {
     if (value.fightingStyle !== "defense" && value.fightingStyle !== "archery") throw new HeroChoiceError("HERO_STYLE", "defense or archery");
     choices.fightingStyle = value.fightingStyle;
@@ -262,31 +319,63 @@ export function validateHeroChoices(raw: unknown): HeroChoices {
   return choices;
 }
 
+export function parseInventoryItem(raw: unknown): InventoryItem {
+  if (typeof raw !== "object" || raw === null) throw new HeroChoiceError("HERO_INVENTORY", "not an item");
+  const item = raw as Record<string, unknown>;
+  const name = typeof item.name === "string" ? item.name.trim() : "";
+  if (!name || name.length > 80) throw new HeroChoiceError("HERO_INVENTORY", "item name: 1–80 characters");
+  if (!Number.isInteger(item.qty) || (item.qty as number) < 1 || (item.qty as number) > 9999) throw new HeroChoiceError("HERO_INVENTORY", "quantity 1–9999");
+  const note = typeof item.note === "string" ? item.note.trim().slice(0, 160) : "";
+  return { name, qty: item.qty as number, ...(note ? { note } : {}) };
+}
+
+export function parseCoins(raw: unknown): Coins {
+  if (typeof raw !== "object" || raw === null) throw new HeroChoiceError("HERO_COINS", "not coins");
+  const coins = raw as Record<string, unknown>;
+  const amount = (value: unknown) => {
+    if (value === undefined) return 0;
+    if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 9_999_999) throw new HeroChoiceError("HERO_COINS", "0–9999999");
+    return value as number;
+  };
+  return { gp: amount(coins.gp), sp: amount(coins.sp), cp: amount(coins.cp) };
+}
+
 /** The hero sheet the choices produce. `portraitUrl` turns a gallery id into a picture. */
 export function buildHero(choices: HeroChoices, id: string, portraitUrl: (portrait: string) => string | undefined = () => undefined): HeroSheet {
   const race = findRace(choices.race)!;
   const cls = findClass(choices.cls)!;
+  const level = choices.level ?? 1;
+  const proficiency = proficiencyBonus(level);
   const scores = finalAbilities(choices);
   const mod = (ability: Ability) => abilityModifier(scores[ability]);
   const spell = cls.spellAbility ? mod(cls.spellAbility) : 0;
-  const saveDc = 8 + PROFICIENCY + spell;
+  const saveDc = 8 + proficiency + spell;
   const strongerHand: "str" | "dex" = mod("dex") > mod("str") ? "dex" : "str";
 
   const plan = classPlan(cls.id, choices, mod, strongerHand);
+  // Rangers take archery at level 2; paladins defense.
+  const archeryStyle = choices.fightingStyle === "archery" || (cls.id === "ranger" && level >= 2);
+  if (cls.id === "paladin" && level >= 2) plan.ac += 1;
   const attacks: HeroAttack[] = plan.weapons.map(weapon => {
     const ability = weapon.ability === "finesse" ? (mod("dex") >= mod("str") ? "dex" : "str") : weapon.ability === "spell" ? cls.spellAbility ?? "int" : weapon.ability;
     const modifier = mod(ability);
-    const archery = choices.fightingStyle === "archery" && weapon.ranged ? 2 : 0;
-    const add = weapon.addModifier ?? weapon.ability !== "spell";
-    const damage = `${weapon.die}${add && modifier ? formatModifier(modifier) : ""}`;
+    const archery = archeryStyle && weapon.ranged && weapon.ability !== "spell" ? 2 : 0;
+    // Agonizing blast from level 2 adds Charisma to eldritch blast.
+    const agonizing = cls.id === "warlock" && level >= 2 && weapon.name === "Мистический заряд";
+    const add2 = agonizing || (weapon.addModifier ?? weapon.ability !== "spell");
+    let die = weapon.die;
+    if (weapon.ability === "spell" && level >= 5) die = die.replace(/^1d/, "2d");
+    if (weapon.name === "Скрытая атака") die = `${Math.ceil(level / 2)}d6`;
+    if (weapon.name === "Безоружный удар" && level >= 5) die = "1d6";
+    const damage = `${die}${add2 && modifier ? formatModifier(modifier) : ""}`;
     if (weapon.save) {
       return { name: weapon.name, bonus: null, damage, note: `${weapon.note}; спасбросок ${ABILITY_SHORT[weapon.save]} СЛ ${saveDc}`, save: { ability: weapon.save, dc: saveDc, half: false } };
     }
-    return { name: weapon.name, bonus: PROFICIENCY + modifier + archery, damage, note: weapon.note };
+    return { name: weapon.name, bonus: proficiency + modifier + archery, damage, note: weapon.note };
   });
   if (race.id === "dragonborn" && choices.ancestry) {
     const breath = DRAGON[choices.ancestry];
-    const breathDc = 8 + PROFICIENCY + mod("con");
+    const breathDc = 8 + proficiency + mod("con");
     attacks.push({
       name: "Оружие дыхания", bonus: null, damage: "2d6",
       note: `${breath.damage}, ${breath.shape}, раз на короткий отдых; спасбросок ${ABILITY_SHORT[breath.save]} СЛ ${breathDc}, половина при успехе`,
@@ -298,28 +387,36 @@ export function buildHero(choices: HeroChoices, id: string, portraitUrl: (portra
     ? [`${DRAGON[choices.ancestry].name} дракон: сопротивление урону «${DRAGON[choices.ancestry].damage}»`]
     : race.features;
   const skills = [...new Set([...race.skills, ...choices.classSkills, ...choices.backgroundSkills, ...(choices.bonusSkills ?? [])])];
-  const hp = cls.hitDie + mod("con") + race.hpPerLevel;
+  // Level 1: the full die; later levels the fixed average (die / 2 + 1). Hill dwarves and draconic sorcerers +1 per level.
+  const perLevel = race.hpPerLevel + (cls.id === "sorcerer" ? 1 : 0);
+  const hp = cls.hitDie + mod("con") + perLevel + (level - 1) * (cls.hitDie / 2 + 1 + mod("con") + perLevel);
+  const speedBonus = (cls.id === "monk" && level >= 2) || (cls.id === "barbarian" && level >= 5) ? 10 : 0;
+  const features = [...plan.features];
+  for (let at = 2; at <= level; at++) features.push(...(LEVEL_FEATURES[cls.id][at] ?? []).map(text => `${at} ур.: ${text}`));
+  if (level >= 4 && choices.asi?.length) features.push(`4 ур.: Увеличение характеристик (${choices.asi.map(item => ABILITY_SHORT[item]).join(" +1, ")} +1)`);
+  const spells = [...plan.spells];
+  for (let at = 2; at <= level; at++) spells.push(...(LEVEL_SPELLS[cls.id][at] ?? []));
   return {
     id,
     name: choices.name,
     race: race.name,
     cls: cls.name,
-    level: 1,
-    maxHp: Math.max(1, hp),
+    level,
+    maxHp: Math.max(1, Math.floor(hp)),
     ac: plan.ac,
-    speed: race.speed,
+    speed: race.speed + speedBonus,
     abilities: scores,
     saves: [...cls.saves],
     skills,
     expertise: choices.expertise ? [...choices.expertise] : [],
     attacks,
-    features: [...plan.features, ...raceFeatures],
+    features: [...features, ...raceFeatures],
     equipment: plan.equipment,
-    ...(plan.spells.length ? { spells: plan.spells } : {}),
+    ...(spells.length ? { spells } : {}),
     story: choices.story ?? "",
     ...(choices.portrait && portraitUrl(choices.portrait) ? { portrait: portraitUrl(choices.portrait) } : {}),
     hitDie: cls.hitDie,
-    resources: heroResources(cls.id, race.id, 1, mod),
+    resources: heroResources(cls.id, race.id, level, mod),
   };
 }
 
@@ -371,6 +468,84 @@ export function heroResources(cls: ClassId, race: RaceId, level: number, mod: (a
 }
 
 const ABILITY_SHORT: Record<Ability, string> = { str: "Сил", dex: "Лов", con: "Тел", int: "Инт", wis: "Мдр", cha: "Хар" };
+
+/** What each class gains at levels 2–5 (SRD 5.1 subclasses). Level 4 also brings the ability score improvement. */
+export const LEVEL_FEATURES: Record<ClassId, Record<number, string[]>> = {
+  barbarian: {
+    2: ["Безрассудная атака: преимущество на рукопашные атаки Силой, но и атаки по вам с преимуществом", "Чувство опасности: преимущество на видимые спасброски Ловкости"],
+    3: ["Путь берсерка — бешенство: в ярости бонусная атака оружием каждый ход (потом 1 истощение)"],
+    5: ["Дополнительная атака: две атаки за действие", "Быстрое передвижение: +10 фт без тяжёлых доспехов"],
+  },
+  bard: {
+    2: ["Мастер на все руки: +1 к проверкам без владения", "Песнь отдыха: союзники получают ещё 1к6 хитов на коротком отдыхе"],
+    3: ["Коллегия знаний — острое словцо: реакцией вычесть кость вдохновения из броска врага", "Компетентность: удвоенный бонус мастерства в двух навыках"],
+    5: ["Вдохновение барда к8, источник вдохновения: восстанавливается на коротком отдыхе"],
+  },
+  cleric: {
+    2: ["Божественный канал: Изгнание нежити; Сохранение жизни (5 × уровень хитов союзникам)"],
+    3: ["Заклинания 2-го круга"],
+    5: ["Уничтожение нежити (ОП 1/2 и ниже)", "Заклинания 3-го круга"],
+  },
+  druid: {
+    2: ["Дикий облик: 2 раза, звери с ОП до 1/4, без плавания и полёта", "Круг земли: Естественное восстановление, дополнительный заговор"],
+    3: ["Заклинания 2-го круга"],
+    4: ["Дикий облик: звери с ОП до 1/2, плавание"],
+    5: ["Заклинания 3-го круга"],
+  },
+  fighter: {
+    2: ["Всплеск действий: ещё одно действие, раз на короткий отдых"],
+    3: ["Чемпион — улучшенный критический удар: крит на 19–20"],
+    5: ["Дополнительная атака: две атаки за действие"],
+  },
+  monk: {
+    2: ["Ци (очки = уровню): шквал ударов, терпеливая оборона, поступь ветра", "Движение без доспехов: +10 фт"],
+    3: ["Путь открытой ладони: шквал ударов сбивает с ног или отталкивает", "Отражение снарядов"],
+    4: ["Медленное падение"],
+    5: ["Дополнительная атака", "Ошеломляющий удар: 1 ци, спасбросок Телосложения или ошеломлён", "Боевые искусства к6"],
+  },
+  paladin: {
+    2: ["Боевой стиль: Защита (+1 КД)", "Божественная кара: +2к8 излучением за ячейку", "Заклинания: ячейки 1-го круга"],
+    3: ["Божественное здоровье: иммунитет к болезням", "Клятва преданности: Священное оружие, Изгнание нечестивцев"],
+    5: ["Дополнительная атака", "Заклинания 2-го круга"],
+  },
+  ranger: {
+    2: ["Боевой стиль: Стрельба (+2 к дальнобойным атакам)", "Заклинания: ячейки 1-го круга"],
+    3: ["Охотник — убийца колоссов: +1к8 урона раз в ход по раненой цели", "Первозданная осведомлённость"],
+    5: ["Дополнительная атака", "Заклинания 2-го круга"],
+  },
+  rogue: {
+    2: ["Хитрое действие: Рывок, Отход или Засада бонусным действием"],
+    3: ["Вор — быстрые руки и работа на втором этаже", "Скрытая атака 2к6"],
+    5: ["Невероятное уклонение: реакцией вдвое уменьшить урон от атаки", "Скрытая атака 3к6"],
+  },
+  sorcerer: {
+    2: ["Источник магии: единицы чародейства, гибкое колдовство"],
+    3: ["Метамагия: Усиленное и Ускоренное заклинание", "Заклинания 2-го круга"],
+    5: ["Заклинания 3-го круга"],
+  },
+  warlock: {
+    2: ["Воззвания: Мучительный взрыв (+Хар к урону мистического заряда), Дьявольский взгляд"],
+    3: ["Договор гримуара: три заговора любого класса", "Ячейки договора 2-го круга"],
+    5: ["Ячейки договора 3-го круга", "Ещё одно воззвание"],
+  },
+  wizard: {
+    2: ["Школа воплощения: знаток воплощения, создание безопасных зон в своих заклинаниях"],
+    3: ["Заклинания 2-го круга"],
+    5: ["Заклинания 3-го круга"],
+  },
+};
+
+const LEVEL_SPELLS: Record<ClassId, Record<number, string[]>> = {
+  barbarian: {}, fighter: {}, monk: {}, rogue: {},
+  bard: { 3: ["2-й круг: Невидимость, Удержание личности"], 5: ["3-й круг: Гипнотический узор, Рассеивание магии"] },
+  cleric: { 3: ["2-й круг: Духовное оружие, Малое восстановление, Удержание личности"], 5: ["3-й круг: Духовные стражи, Возрождение, Маяк надежды"] },
+  druid: { 3: ["2-й круг: Лунный луч, Порыв ветра, Малое восстановление"], 5: ["3-й круг: Призыв молнии, Слияние с камнем"] },
+  paladin: { 2: ["1-й круг: Лечение ран, Благословение, Божественная благосклонность"], 5: ["2-й круг: Магическое оружие, Найти скакуна"] },
+  ranger: { 2: ["1-й круг: Метка охотника, Лечение ран"], 5: ["2-й круг: Бесследное передвижение, Тёмное зрение"] },
+  sorcerer: { 3: ["2-й круг: Отражения, Паучье лазание"], 5: ["3-й круг: Огненный шар, Ускорение"] },
+  warlock: { 3: ["2-й круг: Туманный шаг, Тьма"], 5: ["3-й круг: Контрзаклинание, Полёт"] },
+  wizard: { 3: ["2-й круг: Туманный шаг, Паутина, Палящий луч"], 5: ["3-й круг: Огненный шар, Контрзаклинание, Молния"] },
+};
 
 interface Plan { ac: number; weapons: WeaponPlan[]; features: string[]; equipment: string[]; spells: string[] }
 

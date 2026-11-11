@@ -77,3 +77,36 @@ test("choices that break the rules are refused", () => {
   refused({ cls: "fighter", classSkills: ["intimidation", "perception"] }, "HERO_STYLE");
   refused({ portrait: "../x" }, "HERO_PORTRAIT");
 });
+
+test("levels 2–5: average hit points, proficiency, extra attacks, cantrips and sneak attack grow", () => {
+  const ranger5 = buildHero(validateHeroChoices({ ...base, level: 5, xp: 6500, asi: ["dex", "dex"] }), "r");
+  assert.equal(ranger5.level, 5);
+  assert.equal(ranger5.abilities.dex, 18, "+2 at level 4");
+  assert.equal(ranger5.maxHp, 12 + 4 * (6 + 2), "d10 + Con, then 6 + Con per level");
+  assert.deepEqual(ranger5.attacks.map(attack => [attack.name, attack.bonus, attack.damage]), [["Длинный лук", 3 + 4 + 2, "1d8+4"], ["Короткий меч", 7, "1d6+4"]], "proficiency +3, archery from level 2");
+  assert.ok(ranger5.features.some(line => line.includes("Дополнительная атака")));
+  assert.deepEqual(ranger5.resources!.map(item => [item.id, item.max]), [["slot1", 4], ["slot2", 2]]);
+  assert.equal(skillBonus(ranger5, "perception"), 2 + 3);
+
+  const wizard = { ...base, cls: "wizard", abilities: suggestedAbilities("wizard"), classSkills: ["arcana", "history"], backgroundSkills: ["insight", "religion"] };
+  const wizard5 = buildHero(validateHeroChoices({ ...wizard, level: 5, xp: 7000, asi: ["int", "con"] }), "w");
+  assert.equal(wizard5.attacks[0]!.damage, "2d10", "cantrips gain a die at level 5");
+  assert.equal(wizard5.attacks[0]!.bonus, 3 + 3, "Int 15 + 1 human + 1 improvement = 17, proficiency +3");
+
+  const rogue = { ...base, cls: "rogue", abilities: suggestedAbilities("rogue"), classSkills: ["stealth", "acrobatics", "deception", "insight"], backgroundSkills: ["history", "religion"], expertise: ["stealth", "deception"] };
+  assert.equal(buildHero(validateHeroChoices({ ...rogue, level: 3, xp: 900 }), "g").attacks.find(attack => attack.name === "Скрытая атака")!.damage, "2d6");
+
+  const bard = { ...base, cls: "bard", abilities: suggestedAbilities("bard"), classSkills: ["performance", "persuasion", "history"], backgroundSkills: ["insight", "religion"] };
+  assert.throws(() => validateHeroChoices({ ...bard, level: 3, xp: 900 }), (error: unknown) => (error as HeroChoiceError).code === "HERO_EXPERTISE", "bards pick expertise at 3");
+  assert.deepEqual(buildHero(validateHeroChoices({ ...bard, level: 3, xp: 900, expertise: ["performance", "persuasion"] }), "b").expertise, ["performance", "persuasion"]);
+
+  for (const [raw, code] of [
+    [{ ...base, level: 2, xp: 100 }, "HERO_XP"],
+    [{ ...base, level: 6, xp: 99999 }, "HERO_LEVEL"],
+    [{ ...base, level: 4, xp: 2700 }, "HERO_ASI"],
+    [{ ...base, inventory: [{ name: "", qty: 1 }] }, "HERO_INVENTORY"],
+    [{ ...base, coins: { gp: -1 } }, "HERO_COINS"],
+  ] as const) {
+    assert.throws(() => validateHeroChoices(raw), (error: unknown) => (error as HeroChoiceError).code === code, code);
+  }
+});

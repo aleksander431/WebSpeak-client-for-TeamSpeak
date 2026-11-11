@@ -329,6 +329,17 @@ export interface SeatView {
   used?: Record<string, number>;
   /** Hit dice left to spend. */
   hitDice?: number;
+  xp?: number;
+  /** Only for the game master and the seat's own player. */
+  inventory?: Array<{ name: string; qty: number; note?: string }>;
+  coins?: { gp: number; sp: number; cp: number };
+}
+
+/** A player's own hero kept by the gateway for their TeamSpeak identity. */
+export interface VaultHero {
+  id: string;
+  choices: unknown;
+  updatedAt: number;
 }
 
 export type TableRole = "gm" | "player" | "spectator";
@@ -471,7 +482,15 @@ export type GameClientMessage =
   /** Spend a hit die: roll it plus Constitution and heal. */
   | { type: "gameHitDie"; key: string }
   /** A saving-throw attack against several tokens: every save is rolled and the damage applied at once. */
-  | { type: "gameSaveAttack"; source: { type: "attack"; index: number } | { type: "monsterAttack"; tokenId: string; index: number }; targets: string[] };
+  | { type: "gameSaveAttack"; source: { type: "attack"; index: number } | { type: "monsterAttack"; tokenId: string; index: number }; targets: string[] }
+  /** Game master: experience for heroes (negative takes it back). */
+  | { type: "gameXp"; keys: string[]; amount: number }
+  /** A player's own hero one level up: the new choices, checked against the old ones. */
+  | { type: "gameLevelUp"; choices: unknown }
+  | { type: "gameInventory"; key: string; inventory: unknown[]; coins: unknown }
+  /** The player's hero library kept for their TeamSpeak identity. */
+  | { type: "gameVaultSave"; hero: VaultHero }
+  | { type: "gameVaultRemove"; id: string };
 
 export type GameServerMessage =
   | { type: "gameState"; table: TableView | null }
@@ -479,7 +498,9 @@ export type GameServerMessage =
   | { type: "gameError"; code: string }
   | { type: "gamePinged"; by: string; x: number; y: number; gm: boolean }
   /** The chosen adventure as this viewer may see it; sent before the state that needs it. */
-  | { type: "gameAdventureData"; adventure: AdventureSummary };
+  | { type: "gameAdventureData"; adventure: AdventureSummary }
+  /** Heroes kept for this identity (sent on open and after changes; absent without a unique id). */
+  | { type: "gameVault"; heroes: VaultHero[] };
 
 // ---- Parsers ---------------------------------------------------------------
 
@@ -593,6 +614,20 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
         ? { type: "gameResource", key: raw.key, resourceId: raw.resourceId, used: raw.used as number } : invalid;
     case "gameRest": return raw.kind === "short" || raw.kind === "long" ? { type: "gameRest", kind: raw.kind } : invalid;
     case "gameHitDie": return seatKey(raw.key) ? { type: "gameHitDie", key: raw.key } : invalid;
+    case "gameXp":
+      if (!Array.isArray(raw.keys) || !raw.keys.length || raw.keys.length > MAX_PLAYERS || !raw.keys.every(seatKey)) return invalid;
+      return Number.isInteger(raw.amount) && Math.abs(raw.amount as number) <= 100_000 && raw.amount !== 0
+        ? { type: "gameXp", keys: [...new Set(raw.keys as string[])], amount: raw.amount as number } : invalid;
+    case "gameLevelUp": return isObject(raw.choices) ? { type: "gameLevelUp", choices: raw.choices } : invalid;
+    case "gameInventory":
+      return seatKey(raw.key) && Array.isArray(raw.inventory) && raw.inventory.length <= 60 && isObject(raw.coins)
+        ? { type: "gameInventory", key: raw.key, inventory: raw.inventory, coins: raw.coins } : invalid;
+    case "gameVaultSave": {
+      const hero = raw.hero;
+      if (!isObject(hero) || !shortId(hero.id) || !isObject(hero.choices) || typeof hero.updatedAt !== "number" || !Number.isFinite(hero.updatedAt)) return invalid;
+      return { type: "gameVaultSave", hero: { id: hero.id, choices: hero.choices, updatedAt: hero.updatedAt } };
+    }
+    case "gameVaultRemove": return shortId(raw.id) ? { type: "gameVaultRemove", id: raw.id } : invalid;
     case "gameSaveAttack": {
       const source = raw.source;
       if (!isObject(source) || !Array.isArray(raw.targets) || !raw.targets.length || raw.targets.length > 20 || !raw.targets.every(shortId)) return invalid;
@@ -617,6 +652,7 @@ export function parseGameServerMessage(raw: unknown): GameServerMessage | null {
     && Array.isArray(raw.adventure.scenes) && Array.isArray(raw.adventure.heroes) && Array.isArray(raw.adventure.monsters)) {
     return raw as unknown as GameServerMessage;
   }
+  if (raw.type === "gameVault" && Array.isArray(raw.heroes)) return raw as unknown as GameServerMessage;
   if (raw.type === "gamePinged" && typeof raw.by === "string" && typeof raw.x === "number" && typeof raw.y === "number") {
     return { type: "gamePinged", by: raw.by, x: raw.x, y: raw.y, gm: raw.gm === true };
   }

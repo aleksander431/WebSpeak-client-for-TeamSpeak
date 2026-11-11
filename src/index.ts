@@ -60,6 +60,8 @@ async function main() {
   await adventureLibrary.load((message, details) => logger.warn(details, message));
   const tabletopStore = new FileTabletopStore(path.join(DATA_DIR, "tables"), (message, details) => logger.warn(details, message));
   await tabletopStore.open();
+  const heroVault = new FileTabletopStore(path.join(DATA_DIR, "heroes"), (message, details) => logger.warn(details, message), Number.POSITIVE_INFINITY);
+  await heroVault.open();
 
   const webServer = createWebServer({
     port: APP_PORT,
@@ -82,6 +84,7 @@ async function main() {
       chatStorage,
       adventures: adventureLibrary,
       tabletopStore,
+      heroVault,
     },
     adminService,
     skinRegistry: new SkinRegistry(path.join(DATA_DIR, "skins")),
@@ -97,7 +100,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down");
     await webServer.stop();
-    await tabletopStore.flush();
+    await Promise.all([tabletopStore.flush(), heroVault.flush()]);
     database.close();
     process.exit(0);
   };

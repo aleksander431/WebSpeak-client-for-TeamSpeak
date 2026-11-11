@@ -591,3 +591,66 @@ test("tables survive a gateway restart through the store", () => {
   for (const name of ["Alex", "Sasha", "Lena"]) again.coordinator.removePeer(`p-${name}`);
   assert.equal(saved.size, 0, "an emptied table is deleted");
 });
+
+test("experience, level-ups of own heroes, belongings and the hero vault", () => {
+  const vaultData = new Map<string, unknown>();
+  const vault: TabletopStore = { load: key => vaultData.get(key) ?? null, save: (key, value) => { if (value === null) vaultData.delete(key); else vaultData.set(key, value); } };
+  const sent: Array<{ entryId: string; message: GameServerMessage }> = [];
+  const coordinator = new TabletopCoordinator({ send: (entryId, message) => sent.push({ entryId, message }), adventures: () => BARE_ADVENTURES, vault, randomId: (() => { let id = 0; return () => `v${++id}`; })() });
+  const gm: TableParticipant = { entryId: "a", nickname: "Alex", seatKey: "uid:Alex", tableKey: "ts#1" };
+  const sasha: TableParticipant = { entryId: "b", nickname: "Sasha", seatKey: "uid:Sasha", tableKey: "ts#1" };
+  const guest: TableParticipant = { entryId: "c", nickname: "Guest", seatKey: "nick:Guest", tableKey: "ts#1" };
+  const state = (entryId: string) => (sent.filter(item => item.entryId === entryId && item.message.type === "gameState").at(-1)!.message as { table: TableView }).table;
+  const lastError = (entryId: string) => { const last = sent.filter(item => item.entryId === entryId).at(-1)?.message; return last?.type === "gameError" ? last.code : null; };
+  for (const who of [gm, sasha, guest]) coordinator.handleMessage(who, { type: "gameOpen" });
+  assert.deepEqual(sent.find(item => item.entryId === "b" && item.message.type === "gameVault")?.message, { type: "gameVault", heroes: [] });
+  assert.equal(sent.some(item => item.entryId === "c" && item.message.type === "gameVault"), false, "no vault without a unique id");
+
+  const choices = {
+    name: "Вера", race: "human", cls: "fighter", method: "array", abilities: { str: 15, dex: 13, con: 14, int: 8, wis: 12, cha: 10 },
+    classSkills: ["athletics", "perception"], backgroundSkills: ["history", "insight"], fightingStyle: "defense",
+    inventory: [{ name: "Верёвка", qty: 1 }], coins: { gp: 40, sp: 3, cp: 0 },
+  };
+  coordinator.handleMessage(sasha, { type: "gameVaultSave", hero: { id: "h1", choices, updatedAt: 1 } });
+  assert.equal((vaultData.get("uid:Sasha") as unknown[]).length, 1);
+  coordinator.handleMessage(guest, { type: "gameVaultSave", hero: { id: "h1", choices, updatedAt: 1 } });
+  assert.equal(lastError("c"), "NO_VAULT");
+  coordinator.handleMessage(sasha, { type: "gameVaultSave", hero: { id: "h1", choices: { ...choices, level: 3 }, updatedAt: 2 } });
+  assert.equal(lastError("b"), "HERO_XP", "the vault checks the rules too");
+
+  coordinator.handleMessage(gm, { type: "gameSeat", role: "gm" });
+  coordinator.handleMessage(sasha, { type: "gameSeat", role: "player" });
+  coordinator.handleMessage(sasha, { type: "gameCustomHero", choices });
+  let view = state("b");
+  assert.deepEqual(view.players[0]!.inventory, [{ name: "Верёвка", qty: 1 }]);
+  assert.deepEqual(view.players[0]!.coins, { gp: 40, sp: 3, cp: 0 });
+  assert.equal(state("c").players[0]!.inventory, undefined, "other people do not see the bag");
+  assert.equal(state("a").players[0]!.coins!.gp, 40, "the master does");
+
+  coordinator.handleMessage(sasha, { type: "gameLevelUp", choices: { ...choices, level: 2 } });
+  assert.equal(lastError("b"), "HERO_XP");
+  coordinator.handleMessage(gm, { type: "gameXp", keys: ["uid:Sasha"], amount: 1000 });
+  assert.equal(state("b").players[0]!.xp, 1000);
+  coordinator.handleMessage(sasha, { type: "gameLevelUp", choices: { ...choices, level: 2, fightingStyle: "archery" } });
+  assert.equal(lastError("b"), "HERO_CHANGED");
+  coordinator.handleMessage(sasha, { type: "gameLevelUp", choices: { ...choices, level: 3 } });
+  assert.equal(lastError("b"), "HERO_LEVEL", "one level at a time");
+  coordinator.handleMessage(sasha, { type: "gameLevelUp", choices: { ...choices, level: 2, name: "Вера Стойкая" } });
+  view = state("b");
+  const hero = view.customHeroes[0]!;
+  assert.equal(hero.level, 2);
+  assert.equal(hero.name, "Вера Стойкая");
+  assert.equal(hero.maxHp, 12 + 8);
+  assert.equal(view.players[0]!.hp, 20);
+  assert.ok(hero.resources!.some(item => item.id === "action-surge"));
+
+  coordinator.handleMessage(gm, { type: "gameInventory", key: "uid:Sasha", inventory: [{ name: "Зелье лечения", qty: 2, note: "2к4+2" }], coins: { gp: 100, sp: 0, cp: 0 } });
+  assert.deepEqual(state("b").players[0]!.inventory, [{ name: "Зелье лечения", qty: 2, note: "2к4+2" }]);
+  coordinator.handleMessage(guest, { type: "gameInventory", key: "uid:Sasha", inventory: [], coins: { gp: 0 } });
+  assert.equal(lastError("c"), "NOT_YOUR_HERO");
+  coordinator.handleMessage(sasha, { type: "gameInventory", key: "uid:Sasha", inventory: [{ name: "x".repeat(81), qty: 1 }], coins: { gp: 0 } });
+  assert.equal(lastError("b"), "HERO_INVENTORY");
+
+  coordinator.handleMessage(sasha, { type: "gameVaultRemove", id: "h1" });
+  assert.equal(vaultData.has("uid:Sasha"), false);
+});

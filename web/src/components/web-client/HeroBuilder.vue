@@ -316,6 +316,15 @@ const choices = computed<HeroChoices | null>(() => {
   if (draft.race === "dragonborn" && draft.ancestry) result.ancestry = draft.ancestry;
   if (draft.portrait) result.portrait = draft.portrait;
   if (draft.story.trim()) result.story = draft.story.trim();
+  // Editing a hero keeps what it earned: level, experience, improvements and belongings.
+  if (start) {
+    if (start.level && start.level > 1) result.level = start.level;
+    if (start.xp) result.xp = start.xp;
+    if (start.asi) result.asi = [...start.asi];
+    if (start.inventory) result.inventory = start.inventory.map(item => ({ ...item }));
+    if (start.coins) result.coins = { ...start.coins };
+    if (draft.cls === "bard" && start.cls === "bard" && start.expertise?.length) result.expertise = [...start.expertise];
+  }
   return result;
 });
 

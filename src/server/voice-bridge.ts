@@ -81,6 +81,8 @@ export interface VoiceBridgeOptions {
   chatStorage?: ChatStorage;
   /** Where game tables are kept across restarts; memory only without it. */
   tabletopStore?: TabletopStore;
+  /** Players' own D&D heroes by TeamSpeak unique id. */
+  heroVault?: TabletopStore;
 }
 
 /** What an HTTP chat request may act for: one connected session's server and channel. */
@@ -227,6 +229,7 @@ export class VoiceBridge {
       adventures: () => [...BUILT_IN_ADVENTURES, ...(options.adventures?.list() ?? [])],
       isCustomAdventure: id => options.adventures?.has(id) ?? false,
       ...(options.tabletopStore ? { store: options.tabletopStore } : {}),
+      ...(options.heroVault ? { vault: options.heroVault } : {}),
       send: (entryId, message) => {
         const entry = this.entries.get(entryId);
         if (entry?.ws.readyState !== WebSocket.OPEN) return;

@@ -35,10 +35,14 @@ import {
   type SeatView,
   type TableRole,
   type TableView,
+  type VaultHero,
 } from "../shared/tabletop.js";
 import { BUILT_IN_ADVENTURES } from "../shared/tabletop-adventures.js";
 import { adventureForPlayers, adventureListItem } from "../shared/adventure-package.js";
-import { HeroChoiceError, buildHero, heroPortraitUrl, validateHeroChoices } from "../shared/hero-builder.js";
+import {
+  HeroChoiceError, MAX_INVENTORY, STARTING_COINS, XP_FOR_LEVEL, buildHero, heroPortraitUrl, parseCoins, parseInventoryItem, startingInventory, validateHeroChoices,
+  type Coins, type HeroChoices, type InventoryItem,
+} from "../shared/hero-builder.js";
 
 /*
  * Channel game tables. No Node-only imports, like the whiteboard coordinator.
@@ -75,6 +79,11 @@ interface SeatState {
   used?: Record<string, number>;
   /** Hit dice left; undefined means all of them. */
   hitDice?: number;
+  /** Own heroes: the choices the sheet was built from (level-ups are checked against them). */
+  choices?: HeroChoices;
+  xp?: number;
+  inventory?: InventoryItem[];
+  coins?: Coins;
 }
 
 interface RollRecord extends Omit<RollView, "saves"> {
@@ -181,7 +190,11 @@ export interface TabletopCoordinatorOptions {
   isCustomAdventure?: (id: string) => boolean;
   /** Keeps tables across restarts; memory only without it. */
   store?: TabletopStore;
+  /** Players' own heroes by TeamSpeak unique id; without it the browser keeps them alone. */
+  vault?: TabletopStore;
 }
+
+const MAX_VAULT_HEROES = 30;
 
 const SNAPSHOT_VERSION = 1;
 
@@ -289,9 +302,11 @@ export class TabletopCoordinator {
     this.adventures = options.adventures ?? (() => BUILT_IN_ADVENTURES);
     this.isCustom = options.isCustomAdventure ?? (() => false);
     this.store = options.store;
+    this.vault = options.vault;
   }
 
   private readonly store: TabletopStore | undefined;
+  private readonly vault: TabletopStore | undefined;
 
   private readonly adventures: () => readonly AdventureSummary[];
   private readonly isCustom: (id: string) => boolean;
@@ -329,6 +344,11 @@ export class TabletopCoordinator {
     }
     if (!this.take(participant.entryId)) {
       this.error(participant.entryId, "RATE_LIMITED");
+      return;
+    }
+    if (message.type === "gameVaultSave" || message.type === "gameVaultRemove") {
+      const code = this.changeVault(participant.seatKey, message);
+      if (code) this.error(participant.entryId, code);
       return;
     }
     const subscription = this.subscriptions.get(participant.entryId);
@@ -389,9 +409,42 @@ export class TabletopCoordinator {
     return this.tables.size;
   }
 
+  // ---- Hero vault -------------------------------------------------------------
+
+  private vaultOf(seatKey: string): VaultHero[] | null {
+    if (!this.vault || !seatKey.startsWith("uid:")) return null;
+    const saved = this.vault.load(seatKey);
+    return Array.isArray(saved) ? saved as VaultHero[] : [];
+  }
+
+  private changeVault(seatKey: string, message: Extract<GameClientMessage, { type: "gameVaultSave" | "gameVaultRemove" }>): string | null {
+    const heroes = this.vaultOf(seatKey);
+    if (!heroes) return "NO_VAULT";
+    let next: VaultHero[];
+    if (message.type === "gameVaultRemove") {
+      next = heroes.filter(hero => hero.id !== message.id);
+    } else {
+      let choices: HeroChoices;
+      try { choices = validateHeroChoices(message.hero.choices); }
+      catch (error: unknown) { return error instanceof HeroChoiceError ? error.code : "HERO_INVALID"; }
+      const existing = heroes.find(hero => hero.id === message.hero.id);
+      if (existing && existing.updatedAt > message.hero.updatedAt) return null;
+      if (!existing && heroes.length >= MAX_VAULT_HEROES) return "VAULT_FULL";
+      const hero = { id: message.hero.id, choices, updatedAt: Math.min(message.hero.updatedAt, this.now() + 60_000) };
+      next = [hero, ...heroes.filter(item => item.id !== hero.id)];
+    }
+    this.vault!.save(seatKey, next.length ? next : null);
+    for (const [entryId, subscription] of this.subscriptions) {
+      if (subscription.seatKey === seatKey) this.sendRaw(entryId, { type: "gameVault", heroes: next });
+    }
+    return null;
+  }
+
   private subscribe(participant: TableParticipant): void {
     const tableKey = participant.tableKey!;
     this.subscriptions.set(participant.entryId, { tableKey, seatKey: participant.seatKey, nickname: participant.nickname });
+    const vault = this.vaultOf(participant.seatKey);
+    if (vault) this.sendRaw(participant.entryId, { type: "gameVault", heroes: vault });
     const table = this.table(tableKey);
     // A returning seat holder gets its current nickname.
     for (const seat of [table.gm, ...table.players]) if (seat?.key === participant.seatKey) seat.nickname = participant.nickname;
@@ -440,7 +493,7 @@ export class TabletopCoordinator {
     return table.players.some(seat => seat.key === seatKey) ? "player" : "spectator";
   }
 
-  private apply(table: TableState, who: Subscription, message: Exclude<GameClientMessage, { type: "gameOpen" | "gameClose" | "gamePing" }>): string | null {
+  private apply(table: TableState, who: Subscription, message: Exclude<GameClientMessage, { type: "gameOpen" | "gameClose" | "gamePing" | "gameVaultSave" | "gameVaultRemove" }>): string | null {
     const role = this.roleOf(table, who.seatKey);
     const ownSeat = role === "gm" ? table.gm : table.players.find(seat => seat.key === who.seatKey) ?? null;
     switch (message.type) {
@@ -483,6 +536,10 @@ export class TabletopCoordinator {
         const hero = this.heroOf(table, message.heroId);
         if (!hero) return "UNKNOWN_HERO";
         if (table.players.some(seat => seat.key !== who.seatKey && seat.heroId === hero.id)) return "HERO_TAKEN";
+        if (ownSeat.heroId !== hero.id) {
+          for (const key of ["choices", "xp", "inventory", "coins", "used", "hitDice", "conditions", "exhaustion"] as const) delete ownSeat[key];
+          Object.assign(ownSeat, { inventory: startingInventory(hero.equipment), coins: { gp: 10, sp: 0, cp: 0 } });
+        }
         Object.assign(ownSeat, { heroId: hero.id, hp: hero.maxHp });
         return null;
       }
@@ -493,7 +550,12 @@ export class TabletopCoordinator {
         try { choices = validateHeroChoices(message.choices); }
         catch (error: unknown) { return error instanceof HeroChoiceError ? error.code : "HERO_INVALID"; }
         const hero = buildHero(choices, `pc-${this.randomId()}`, heroPortraitUrl);
-        Object.assign(ownSeat, { custom: hero, heroId: hero.id, hp: hero.maxHp });
+        for (const key of ["used", "hitDice", "conditions", "exhaustion"] as const) delete ownSeat[key];
+        const { inventory, coins, ...sheetChoices } = choices;
+        Object.assign(ownSeat, {
+          custom: hero, heroId: hero.id, hp: hero.maxHp, choices: sheetChoices, xp: choices.xp ?? 0,
+          inventory: inventory ?? startingInventory(hero.equipment), coins: coins ?? { ...STARTING_COINS },
+        });
         return null;
       }
       case "gameStart": {
@@ -567,6 +629,10 @@ export class TabletopCoordinator {
         return this.applyCare(table, who, role, message);
       case "gameSaveAttack":
         return this.saveAttack(table, who, role, ownSeat, message);
+      case "gameXp":
+      case "gameLevelUp":
+      case "gameInventory":
+        return this.applyProgress(table, who, role, ownSeat, message);
       default:
         return this.applyMap(table, who, role, message);
     }
@@ -996,6 +1062,72 @@ export class TabletopCoordinator {
     }
   }
 
+  // ---- Experience, levels and belongings ------------------------------------------
+
+  private applyProgress(table: TableState, who: Subscription, role: TableRole, ownSeat: SeatState | null,
+    message: Extract<GameClientMessage, { type: "gameXp" | "gameLevelUp" | "gameInventory" }>): string | null {
+    switch (message.type) {
+      case "gameXp": {
+        if (role !== "gm") return "GM_ONLY";
+        const seats = table.players.filter(seat => seat.heroId && message.keys.includes(seat.key));
+        if (!seats.length) return "NO_TARGETS";
+        for (const seat of seats) seat.xp = Math.max(0, (seat.xp ?? 0) + message.amount);
+        const gm = table.gm!;
+        this.publish(table, who.tableKey, {
+          id: this.randomId(), at: this.now(), by: gm.nickname, byKey: gm.key, hidden: false,
+          label: `Опыт ${message.amount > 0 ? "+" : "−"}${Math.abs(message.amount)}: ${seats.map(seat => this.heroOf(table, seat.heroId)?.name ?? seat.nickname).join(", ")}`,
+        });
+        return null;
+      }
+      case "gameLevelUp": {
+        if (role !== "player" || !ownSeat?.custom || !ownSeat.choices) return "OWN_HERO_ONLY";
+        if (table.combat) return "COMBAT_RUNNING";
+        let next: HeroChoices;
+        try { next = validateHeroChoices({ ...(message.choices as object), xp: ownSeat.xp ?? 0 }); }
+        catch (error: unknown) { return error instanceof HeroChoiceError ? error.code : "HERO_INVALID"; }
+        const previous = ownSeat.choices;
+        const level = previous.level ?? 1;
+        if ((next.level ?? 1) !== level + 1) return "HERO_LEVEL";
+        if ((ownSeat.xp ?? 0) < XP_FOR_LEVEL[level + 1]!) return "HERO_XP";
+        const fixed = ["race", "cls", "method", "abilities", "classSkills", "backgroundSkills", "bonusAbilities", "bonusSkills", "fightingStyle", "ancestry"] as const;
+        if (fixed.some(key => JSON.stringify(previous[key] ?? null) !== JSON.stringify(next[key] ?? null))) return "HERO_CHANGED";
+        if (level >= 4 && JSON.stringify(previous.asi ?? null) !== JSON.stringify(next.asi ?? null)) return "HERO_CHANGED";
+        if (previous.cls === "rogue" && JSON.stringify(previous.expertise) !== JSON.stringify(next.expertise)) return "HERO_CHANGED";
+        const { inventory: _inventory, coins: _coins, ...sheetChoices } = next;
+        const hero = buildHero(sheetChoices, ownSeat.custom.id, heroPortraitUrl);
+        const gained = hero.maxHp - ownSeat.custom.maxHp;
+        ownSeat.custom = hero;
+        ownSeat.choices = sheetChoices;
+        if (ownSeat.hp !== null && ownSeat.hp > 0) ownSeat.hp = Math.min(hero.maxHp, ownSeat.hp + gained);
+        if (ownSeat.hitDice !== undefined) ownSeat.hitDice += 1;
+        if (table.phase === "playing") {
+          this.publish(table, who.tableKey, {
+            id: this.randomId(), at: this.now(), by: ownSeat.nickname, byKey: ownSeat.key, heroName: hero.name, hidden: false,
+            label: `Новый уровень: ${hero.level} (+${gained} к максимуму хитов)`,
+          });
+        }
+        return null;
+      }
+      case "gameInventory": {
+        const seat = table.players.find(candidate => candidate.key === message.key);
+        if (!seat?.heroId) return "UNKNOWN_SEAT";
+        if (role !== "gm" && seat.key !== who.seatKey) return "NOT_YOUR_HERO";
+        let items: InventoryItem[];
+        let coins: Coins;
+        try {
+          if (message.inventory.length > MAX_INVENTORY) return "HERO_INVENTORY";
+          items = message.inventory.map(item => parseInventoryItem(item));
+          coins = parseCoins(message.coins);
+        } catch (error: unknown) {
+          return error instanceof HeroChoiceError ? error.code : "HERO_INVENTORY";
+        }
+        seat.inventory = items;
+        seat.coins = coins;
+        return null;
+      }
+    }
+  }
+
   // ---- Saving-throw attacks ----------------------------------------------------
 
   private saveAttack(table: TableState, who: Subscription, role: TableRole, seat: SeatState | null,
@@ -1379,6 +1511,8 @@ export class TabletopCoordinator {
       ...(state.exhaustion ? { exhaustion: state.exhaustion } : {}),
       ...(state.used && Object.keys(state.used).length ? { used: { ...state.used } } : {}),
       ...(state.heroId ? { hitDice: state.hitDice ?? this.heroOf(table, state.heroId)?.level ?? 1 } : {}),
+      ...(state.heroId ? { xp: state.xp ?? 0 } : {}),
+      ...((role === "gm" || state.key === seatKey) && state.inventory ? { inventory: state.inventory.map(item => ({ ...item })), coins: { ...(state.coins ?? { gp: 0, sp: 0, cp: 0 }) } } : {}),
     });
     const checks: CheckView[] = table.checks
       .filter(check => role === "gm" || check.targets.includes(seatKey))
