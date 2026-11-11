@@ -22,7 +22,31 @@ export interface HeroAttack {
   /** Damage dice expression, e.g. "1d8+3". */
   damage: string;
   note: string;
+  /** A saving throw instead of (or after) an attack roll: targets roll it against `dc`; `half` halves the damage on a success. */
+  save?: AttackSave;
 }
+
+export interface AttackSave {
+  ability: Ability;
+  dc: number;
+  half: boolean;
+}
+
+/** Something a hero spends and gets back on a rest: spell slots, rage, second wind… */
+export interface HeroResource {
+  id: string;
+  name: string;
+  max: number;
+  recharge: "short" | "long";
+}
+
+/** SRD 5.1 conditions, plus concentration (not a condition, but tracked the same way). */
+export const CONDITIONS = [
+  "blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated", "invisible", "paralyzed",
+  "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious", "concentration",
+] as const;
+export type ConditionId = typeof CONDITIONS[number];
+export const MAX_EXHAUSTION = 6;
 
 export interface HeroSheet {
   id: string;
@@ -44,6 +68,9 @@ export interface HeroSheet {
   story: string;
   /** Portrait under the site root. */
   portrait?: string;
+  /** Hit die size (d6–d12): short rests spend them to heal. Defaults to 8. */
+  hitDie?: number;
+  resources?: HeroResource[];
 }
 
 /** A tactical map: a picture with a square grid laid over it (5 ft per cell). */
@@ -99,6 +126,8 @@ export interface MonsterSheet {
   speed: number;
   /** Dexterity score, for initiative. */
   dex: number;
+  /** Saving throw bonuses; unlisted ones are 0 (Dexterity: its modifier). */
+  saves?: Partial<Record<Ability, number>>;
   attacks: HeroAttack[];
   traits: string[];
   portrait?: string;
@@ -141,6 +170,24 @@ export function skillBonus(hero: HeroSheet, skill: Skill): number {
 
 export function saveBonus(hero: HeroSheet, ability: Ability): number {
   return abilityModifier(hero.abilities[ability]) + (hero.saves.includes(ability) ? proficiencyBonus(hero.level) : 0);
+}
+
+export function monsterSaveBonus(monster: MonsterSheet, ability: Ability): number {
+  return monster.saves?.[ability] ?? (ability === "dex" ? abilityModifier(monster.dex) : 0);
+}
+
+export function heroHitDie(hero: HeroSheet): number {
+  return hero.hitDie ?? 8;
+}
+
+/** Reads "спасбросок Ловкости СЛ 13" style notes of older sheets into a structured save. */
+export function attackSaveOf(attack: HeroAttack): AttackSave | undefined {
+  if (attack.save) return attack.save;
+  const match = /спасбросок\s+(Силы|Ловкости|Телосложения|Интеллекта|Мудрости|Харизмы|Сил|Лов|Тел|Инт|Мдр|Хар)\S*\s+СЛ\s+(\d{1,2})/i.exec(attack.note);
+  if (!match) return undefined;
+  const key = match[1]!.slice(0, 3).toLowerCase();
+  const ability = ({ сил: "str", лов: "dex", тел: "con", инт: "int", муд: "wis", мдр: "wis", хар: "cha" } as Record<string, Ability>)[key];
+  return ability ? { ability, dc: Number(match[2]), half: /половин/i.test(attack.note) } : undefined;
 }
 
 // ---- Dice expressions ------------------------------------------------------
@@ -235,6 +282,23 @@ export interface RollView {
   applied?: boolean;
   /** Death saving throws: the outcome. */
   deathSave?: "success" | "failure" | "revived";
+  /** A saving-throw attack: each target's save and the damage it took (already applied). */
+  saves?: SaveResultView[];
+  saveAbility?: Ability;
+  /** Hit dice spent on a short rest: hit points regained. */
+  healed?: number;
+  /** Why the gateway gave advantage or disadvantage (conditions, exhaustion). */
+  reasons?: string[];
+}
+
+export interface SaveResultView {
+  tokenId: string;
+  name: string;
+  /** Hidden from players for monsters they cannot see. */
+  total?: number;
+  natural?: number;
+  success: boolean;
+  damage: number;
 }
 
 export interface CheckView {
@@ -258,6 +322,13 @@ export interface SeatView {
   hp: number | null;
   /** At 0 hit points: dying (rolling death saves), stable or dead. */
   dying?: { successes: number; failures: number; state: "dying" | "stable" | "dead" };
+  conditions?: ConditionId[];
+  /** 1–6 levels of exhaustion. */
+  exhaustion?: number;
+  /** Spent uses per resource id. */
+  used?: Record<string, number>;
+  /** Hit dice left to spend. */
+  hitDice?: number;
 }
 
 export type TableRole = "gm" | "player" | "spectator";
@@ -279,6 +350,8 @@ export interface TokenView {
   condition?: "bloodied" | "down";
   /** Kept from players (game master only sees it, marked). */
   hidden?: boolean;
+  /** Monster tokens; heroes carry theirs on the seat. */
+  conditions?: ConditionId[];
 }
 
 export interface MusicView {
@@ -387,7 +460,18 @@ export type GameClientMessage =
   | { type: "gameMusicAuto" }
   /** Game master: show text to everyone (the scene's intro when omitted). */
   | { type: "gameNarrate"; text?: string }
-  | { type: "gameNarrationClose" };
+  | { type: "gameNarrationClose" }
+  /** A condition on a hero (seat key) or a monster token; players only on their own hero. */
+  | { type: "gameCondition"; target: string; condition: ConditionId; active: boolean }
+  | { type: "gameExhaustion"; key: string; level: number }
+  /** How many uses of a resource are spent. */
+  | { type: "gameResource"; key: string; resourceId: string; used: number }
+  /** Game master: every hero rests. */
+  | { type: "gameRest"; kind: "short" | "long" }
+  /** Spend a hit die: roll it plus Constitution and heal. */
+  | { type: "gameHitDie"; key: string }
+  /** A saving-throw attack against several tokens: every save is rolled and the damage applied at once. */
+  | { type: "gameSaveAttack"; source: { type: "attack"; index: number } | { type: "monsterAttack"; tokenId: string; index: number }; targets: string[] };
 
 export type GameServerMessage =
   | { type: "gameState"; table: TableView | null }
@@ -408,6 +492,8 @@ const shortId = (value: unknown): value is string => typeof value === "string" &
 const cell = (value: unknown): boolean => Number.isInteger(value) && (value as number) >= 0 && (value as number) < 64;
 const point = (value: unknown): boolean => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 64;
 const seatKey = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 160;
+const isCondition = (value: unknown): value is ConditionId => typeof value === "string" && (CONDITIONS as readonly string[]).includes(value);
+const index16 = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) < 16;
 
 export function parseRollSource(value: unknown): RollSource | null {
   if (!isObject(value)) return null;
@@ -496,6 +582,27 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
       return typeof raw.text === "string" && raw.text.trim().length > 0 && raw.text.length <= MAX_NARRATION_LENGTH ? { type: "gameNarrate", text: raw.text.trim() } : invalid;
     case "gameNarrationClose": return { type: "gameNarrationClose" };
     case "gameApply": return shortId(raw.rollId) && typeof raw.half === "boolean" ? { type: "gameApply", rollId: raw.rollId, half: raw.half } : invalid;
+    case "gameCondition":
+      return seatKey(raw.target) && isCondition(raw.condition) && typeof raw.active === "boolean"
+        ? { type: "gameCondition", target: raw.target, condition: raw.condition, active: raw.active } : invalid;
+    case "gameExhaustion":
+      return seatKey(raw.key) && Number.isInteger(raw.level) && (raw.level as number) >= 0 && (raw.level as number) <= MAX_EXHAUSTION
+        ? { type: "gameExhaustion", key: raw.key, level: raw.level as number } : invalid;
+    case "gameResource":
+      return seatKey(raw.key) && shortId(raw.resourceId) && Number.isInteger(raw.used) && (raw.used as number) >= 0 && (raw.used as number) <= 99
+        ? { type: "gameResource", key: raw.key, resourceId: raw.resourceId, used: raw.used as number } : invalid;
+    case "gameRest": return raw.kind === "short" || raw.kind === "long" ? { type: "gameRest", kind: raw.kind } : invalid;
+    case "gameHitDie": return seatKey(raw.key) ? { type: "gameHitDie", key: raw.key } : invalid;
+    case "gameSaveAttack": {
+      const source = raw.source;
+      if (!isObject(source) || !Array.isArray(raw.targets) || !raw.targets.length || raw.targets.length > 20 || !raw.targets.every(shortId)) return invalid;
+      const targets = [...new Set(raw.targets as string[])];
+      if (source.type === "attack" && index16(source.index)) return { type: "gameSaveAttack", source: { type: "attack", index: source.index }, targets };
+      if (source.type === "monsterAttack" && shortId(source.tokenId) && index16(source.index)) {
+        return { type: "gameSaveAttack", source: { type: "monsterAttack", tokenId: source.tokenId, index: source.index }, targets };
+      }
+      return invalid;
+    }
     default: return invalid;
   }
 }

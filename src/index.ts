@@ -5,6 +5,7 @@ import { createAccelerationRelayServer } from "./server/acceleration-relay.js";
 import { normalizeScreenShareIceServers, type ScreenShareIceServer } from "./server/screen-share.js";
 import { SkinRegistry } from "./admin/skin-registry.js";
 import { AdventureLibrary } from "./admin/adventure-library.js";
+import { FileTabletopStore } from "./server/tabletop-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -57,6 +58,8 @@ async function main() {
 
   const adventureLibrary = new AdventureLibrary(path.join(DATA_DIR, "adventures"));
   await adventureLibrary.load((message, details) => logger.warn(details, message));
+  const tabletopStore = new FileTabletopStore(path.join(DATA_DIR, "tables"), (message, details) => logger.warn(details, message));
+  await tabletopStore.open();
 
   const webServer = createWebServer({
     port: APP_PORT,
@@ -78,6 +81,7 @@ async function main() {
       whiteboardStore: new SqliteWhiteboardStore(database),
       chatStorage,
       adventures: adventureLibrary,
+      tabletopStore,
     },
     adminService,
     skinRegistry: new SkinRegistry(path.join(DATA_DIR, "skins")),
@@ -93,6 +97,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down");
     await webServer.stop();
+    await tabletopStore.flush();
     database.close();
     process.exit(0);
   };

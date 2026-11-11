@@ -1,6 +1,6 @@
 import { reactive, shallowRef } from "vue";
 import type { HeroChoices } from "../../../src/shared/hero-builder.js";
-import type { AdventureSummary, CheckSource, GameClientMessage, GameServerMessage, RollMode, RollSource, RollView, TableRole, TableView } from "../../../src/shared/tabletop.js";
+import type { AdventureSummary, CheckSource, ConditionId, GameClientMessage, GameServerMessage, RollMode, RollSource, RollView, TableRole, TableView } from "../../../src/shared/tabletop.js";
 
 export interface GameTransport {
   isOpen(): boolean;
@@ -112,6 +112,12 @@ export class GameClient {
   fog(cells: number[], reveal: boolean): void { if (cells.length) this.send({ type: "gameFog", cells, reveal }); }
   fogAll(reveal: boolean): void { this.send({ type: "gameFogAll", reveal }); }
   ping(x: number, y: number): void { this.send({ type: "gamePing", x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }); }
+  condition(target: string, condition: ConditionId, active: boolean): void { this.send({ type: "gameCondition", target, condition, active }); }
+  exhaustion(key: string, level: number): void { this.send({ type: "gameExhaustion", key, level: Math.max(0, Math.min(6, level)) }); }
+  resource(key: string, resourceId: string, used: number): void { this.send({ type: "gameResource", key, resourceId, used: Math.max(0, used) }); }
+  rest(kind: "short" | "long"): void { this.send({ type: "gameRest", kind }); }
+  hitDie(key: string): void { this.send({ type: "gameHitDie", key }); }
+  saveAttack(source: Extract<GameClientMessage, { type: "gameSaveAttack" }>["source"], targets: string[]): void { this.send({ type: "gameSaveAttack", source, targets }); }
 
   dispose(): void {
     this.close();

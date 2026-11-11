@@ -45,6 +45,9 @@
         <span v-else class="gmap-token-initial">{{ initial(token.name) }}</span>
         <span v-if="barOf(token) !== null" class="gmap-token-bar"><span :style="{ width: `${barOf(token)}%` }"></span></span>
         <span v-if="token.condition === 'down' || barOf(token) === 0" class="gmap-token-x" aria-hidden="true">✕</span>
+        <span v-if="conditionsOf(token).length" class="gmap-token-conds" aria-hidden="true">
+          <i v-for="id in conditionsOf(token).slice(0, 3)" :key="id">{{ CONDITION_ICON[id] }}</i><i v-if="conditionsOf(token).length > 3">+{{ conditionsOf(token).length - 3 }}</i>
+        </span>
         <span class="gmap-token-name">{{ token.name }}</span>
       </button>
 
@@ -90,6 +93,14 @@
         </span>
         <button type="button" class="gmap-close" :aria-label="x.close" @click="selectedId = null">×</button>
       </div>
+      <GameConditions
+        v-if="(role === 'gm' && selected.kind === 'monster') || conditionsOf(selected).length || (selected.kind === 'hero' && seatOf(selected)?.exhaustion)"
+        :x="x"
+        :conditions="conditionsOf(selected)"
+        :exhaustion="selected.kind === 'hero' ? seatOf(selected)?.exhaustion : 0"
+        :editable="role === 'gm' && selected.kind === 'monster'"
+        @toggle="(id, active) => client.condition(selected!.id, id, active)"
+      />
       <template v-if="role === 'gm' && selected.kind === 'monster'">
         <div class="gmap-hp">
           <span class="gmap-muted">{{ x.hp }}</span>
@@ -102,6 +113,7 @@
           <li v-for="(attack, index) in selectedMonster.attacks" :key="attack.name">
             <strong>{{ attack.name }}</strong>
             <button v-if="attack.bonus !== null" type="button" class="gmap-chip gmap-chip-gold" :title="x.attackShort" @click="client.roll({ type: 'monsterAttack', tokenId: selected.id, index })">{{ signed(attack.bonus) }}</button>
+            <button v-else-if="attackSaveOf(attack)" type="button" class="gmap-chip gmap-chip-war" @click="emit('saveAttack', selected.id, index, attack)">{{ x.care.saveAttack }}</button>
             <button type="button" class="gmap-chip" :title="x.damageShort" @click="client.roll({ type: 'monsterDamage', tokenId: selected.id, index })">{{ attack.damage }}</button>
             <small class="gmap-muted">{{ attack.note }}</small>
           </li>
@@ -119,7 +131,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { formatModifier, type AdventureSummary, type MapView, type SceneMap, type SeatView, type TableRole, type TokenView } from "../../../../src/shared/tabletop.js";
+import { attackSaveOf, formatModifier, type AdventureSummary, type ConditionId, type HeroAttack, type MapView, type SceneMap, type SeatView, type TableRole, type TokenView } from "../../../../src/shared/tabletop.js";
+import GameConditions from "./GameConditions.vue";
+import { CONDITION_ICON } from "../../game/conditions.js";
 import type { GameClient } from "../../game/game-client.js";
 import type { DndText } from "../../game/dnd-text.js";
 
@@ -138,7 +152,12 @@ const props = defineProps<{
   /** Whose turn it is in combat. */
   activeTokenId?: string | null;
 }>();
-const emit = defineEmits<{ "update:placing": [string | null]; "update:selectedId": [string | null] }>();
+const emit = defineEmits<{ "update:placing": [string | null]; "update:selectedId": [string | null]; saveAttack: [tokenId: string, index: number, attack: HeroAttack] }>();
+const seatOf = (token: TokenView) => token.kind === "hero" ? props.seats.find(seat => seat.key === token.seatKey) : undefined;
+/** Heroes carry their conditions on the seat, monsters on the token. */
+function conditionsOf(token: TokenView): readonly ConditionId[] {
+  return (token.kind === "hero" ? seatOf(token)?.conditions : token.conditions) ?? [];
+}
 
 /** World pixels per cell; the map pictures are drawn at this scale. */
 const CELL = 64;
@@ -622,6 +641,8 @@ watch(() => props.client.lastPing.value, ping => {
 .gmap-token-bloodied .gmap-token-bar span { background: #e8c77f; }
 .gmap-token-monster .gmap-token-bar span { background: #e08a8a; }
 .gmap-token-x { position: absolute; inset: 0; display: grid; place-items: center; color: #e08a8a; font-size: 34px; font-weight: 800; text-shadow: 0 2px 6px #000; pointer-events: none; }
+.gmap-token-conds { position: absolute; top: -4px; right: -6px; display: flex; gap: 1px; padding: 1px 3px; border-radius: 999px; background: rgba(10, 11, 13, 0.85); font-size: 13px; line-height: 16px; pointer-events: none; }
+.gmap-token-conds i { font-style: normal; color: #f1e6cf; }
 .gmap-token-name {
   position: absolute;
   left: 50%;
@@ -693,6 +714,7 @@ watch(() => props.client.lastPing.value, ping => {
 .gmap-chip { min-height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid #3a3c44; background: transparent; color: #e8e6e1; font: inherit; font-size: 12px; cursor: pointer; }
 .gmap-chip:hover { border-color: #d9b46c; }
 .gmap-chip-gold { color: #d9b46c; font-weight: 600; }
+.gmap-chip-war { border-color: #b84a3e !important; color: #f3c9c9; }
 .gmap-row { display: flex; flex-wrap: wrap; gap: 6px; }
 @media (prefers-reduced-motion: reduce) {
   .gmap-token { transition: none; }

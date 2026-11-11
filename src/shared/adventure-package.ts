@@ -6,8 +6,10 @@ import {
   type Ability,
   type AdventureScene,
   type AdventureSummary,
+  type AttackSave,
   type EncounterToken,
   type HeroAttack,
+  type HeroResource,
   type HeroSheet,
   type MonsterSheet,
   type MusicTrack,
@@ -213,8 +215,30 @@ function parseAttacks(value: unknown, path: string): HeroAttack[] {
       bonus: raw.bonus === null || raw.bonus === undefined ? null : integer(raw.bonus, `${at}.bonus`, -10, 30),
       damage,
       note: text(raw.note ?? "", `${at}.note`, 300, true),
+      ...(raw.save !== undefined ? { save: parseSave(raw.save, `${at}.save`) } : {}),
     };
   });
+}
+
+function abilityId(item: unknown, at: string): Ability {
+  if (typeof item !== "string" || !(ABILITIES as readonly string[]).includes(item)) throw new AdventurePackageError(`unknown ability (${ABILITIES.join(", ")})`, at);
+  return item as Ability;
+}
+
+function parseSave(value: unknown, path: string): AttackSave {
+  const raw = object(value, path);
+  return { ability: abilityId(raw.ability, `${path}.ability`), dc: integer(raw.dc, `${path}.dc`, 1, 30), half: raw.half === true };
+}
+
+function parseResources(value: unknown, path: string): HeroResource[] {
+  const resources = list(value, path, 12).map((item, index) => {
+    const at = `${path}[${index}]`;
+    const raw = object(item, at);
+    if (raw.recharge !== "short" && raw.recharge !== "long") throw new AdventurePackageError("short or long", `${at}.recharge`);
+    return { id: slug(raw.id, `${at}.id`), name: text(raw.name, `${at}.name`, 60), max: integer(raw.max, `${at}.max`, 1, 99), recharge: raw.recharge as "short" | "long" };
+  });
+  unique(resources.map(item => item.id), path);
+  return resources;
 }
 
 function parseMonster(value: unknown, path: string, portrait: (value: unknown) => string | undefined): MonsterSheet {
@@ -230,6 +254,11 @@ function parseMonster(value: unknown, path: string, portrait: (value: unknown) =
     attacks: parseAttacks(raw.attacks, `${path}.attacks`),
     traits: list(raw.traits ?? [], `${path}.traits`, MAX_LIST).map((item, index) => text(item, `${path}.traits[${index}]`, 300)),
   };
+  if (raw.saves !== undefined) {
+    const saves = object(raw.saves, `${path}.saves`);
+    monster.saves = {};
+    for (const [key, bonus] of Object.entries(saves)) monster.saves[abilityId(key, `${path}.saves`)] = integer(bonus, `${path}.saves.${key}`, -10, 20);
+  }
   const picture = portrait(raw.portrait);
   if (picture) monster.portrait = picture;
   return monster;
@@ -268,6 +297,12 @@ function parseHero(value: unknown, path: string, portrait: (value: unknown) => s
     story: text(raw.story ?? "", `${path}.story`, 1000, true),
   };
   if (raw.spells !== undefined) hero.spells = strings(raw.spells, `${path}.spells`);
+  if (raw.hitDie !== undefined) {
+    const die = integer(raw.hitDie, `${path}.hitDie`, 6, 12);
+    if (![6, 8, 10, 12].includes(die)) throw new AdventurePackageError("6, 8, 10 or 12", `${path}.hitDie`);
+    hero.hitDie = die;
+  }
+  if (raw.resources !== undefined) hero.resources = parseResources(raw.resources, `${path}.resources`);
   const picture = portrait(raw.portrait);
   if (picture) hero.portrait = picture;
   return hero;

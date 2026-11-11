@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TabletopCoordinator, type TableParticipant } from "./tabletop-coordinator.js";
+import { TabletopCoordinator, conditionMode, type TableParticipant, type TabletopStore } from "./tabletop-coordinator.js";
 import { parseDiceExpression, parseGameClientMessage, skillBonus, type AdventureSummary, type GameClientMessage, type GameServerMessage, type TableView } from "../shared/tabletop.js";
 import { BUILT_IN_ADVENTURES, findHero } from "../shared/tabletop-adventures.js";
 
@@ -11,7 +11,7 @@ const BARE_ADVENTURES = BUILT_IN_ADVENTURES.map(adventure => ({
   scenes: adventure.scenes.map(({ encounter: _encounter, reveal: _reveal, music: _music, ...scene }) => scene),
 }));
 
-function fixture(dice: number[] = [], adventures: readonly AdventureSummary[] = BARE_ADVENTURES) {
+function fixture(dice: number[] = [], adventures: readonly AdventureSummary[] = BARE_ADVENTURES, store?: TabletopStore) {
   const sent: Array<{ entryId: string; message: GameServerMessage }> = [];
   let now = 1_000;
   let id = 0;
@@ -21,6 +21,7 @@ function fixture(dice: number[] = [], adventures: readonly AdventureSummary[] = 
     now: () => (now += 1000),
     randomId: () => `id${++id}`,
     adventures: () => adventures,
+    ...(store ? { store } : {}),
   });
   const person = (entryId: string, nickname: string, tableKey: string | null = "ts#1"): TableParticipant => ({ entryId, nickname, seatKey: `uid:${nickname}`, tableKey });
   const send = (who: TableParticipant, message: GameClientMessage) => coordinator.handleMessage(who, message);
@@ -417,4 +418,176 @@ test("hero builder: a player's own hero is built by the gateway, plays like any 
   f.send(sasha, { type: "gameCustomHero", choices });
   f.send(sasha, { type: "gameSeat", role: "spectator" });
   assert.deepEqual(f.state("a").customHeroes, [], "and so does leaving the seat");
+});
+
+/** A table in the bell hall with Ilva (Sasha), Osmund (Kria) and Grom (Lena). */
+function hallTable(f: ReturnType<typeof fixture>) {
+  const gm = f.person("a", "Alex");
+  const sasha = f.person("b", "Sasha");
+  const kria = f.person("c", "Kria");
+  const lena = f.person("d", "Lena");
+  for (const who of [gm, sasha, kria, lena]) f.send(who, { type: "gameOpen" });
+  f.send(gm, { type: "gameSeat", role: "gm" });
+  f.send(gm, { type: "gameAdventure", adventureId: "solgard-bell" });
+  for (const [who, hero] of [[sasha, "ilva"], [kria, "osmund"], [lena, "grom"]] as const) {
+    f.send(who, { type: "gameSeat", role: "player" });
+    f.send(who, { type: "gameHero", heroId: hero });
+    f.send(who, { type: "gameReady", ready: true });
+  }
+  f.send(gm, { type: "gameStart" });
+  f.send(gm, { type: "gameScene", index: 2 });
+  return { gm, sasha, kria, lena };
+}
+
+test("conditions: players mark their own hero, the master marks monsters, and rolls follow the rules", () => {
+  const f = fixture([5, 18, 5, 18, 12, 3, 17]);
+  const { gm, sasha, kria } = hallTable(f);
+  f.send(sasha, { type: "gameCondition", target: "uid:Kria", condition: "poisoned", active: true });
+  assert.equal(f.lastError("b"), "NOT_YOUR_HERO");
+  f.send(sasha, { type: "gameCondition", target: "uid:Sasha", condition: "poisoned", active: true });
+  f.send(sasha, { type: "gameCondition", target: "uid:Sasha", condition: "invisible", active: true });
+  assert.deepEqual(f.state("a").players[0]!.conditions, ["invisible", "poisoned"]);
+  // Poisoned: disadvantage on a check.
+  f.send(sasha, { type: "gameRoll", source: { type: "skill", skill: "stealth" }, mode: "normal", hidden: false });
+  let roll = f.state("b").rolls.at(-1)!;
+  assert.equal(roll.mode, "disadvantage");
+  assert.equal(roll.total, 5 + 7);
+  assert.deepEqual(roll.reasons, ["отравлен: помеха"]);
+  // Poisoned and invisible at once cancel out on an attack, asking for advantage changes nothing.
+  f.send(sasha, { type: "gameRoll", source: { type: "attack", index: 0 }, mode: "advantage", hidden: false });
+  roll = f.state("b").rolls.at(-1)!;
+  assert.equal(roll.mode, "normal");
+
+  f.send(gm, { type: "gameTokenAdd", monsterId: "skeleton", x: 11, y: 13 });
+  const skeleton = f.state("a").map!.tokens.find(token => token.kind === "monster")!;
+  f.send(kria, { type: "gameCondition", target: skeleton.id, condition: "prone", active: true });
+  assert.equal(f.lastError("c"), "GM_ONLY");
+  f.send(gm, { type: "gameCondition", target: skeleton.id, condition: "restrained", active: true });
+  assert.deepEqual(f.state("b").map!.tokens.find(token => token.id === skeleton.id)!.conditions, ["restrained"], "players see conditions on visible monsters");
+  f.send(gm, { type: "gameExhaustion", key: "uid:Kria", level: 3 });
+  assert.equal(f.state("c").players[1]!.exhaustion, 3);
+
+  assert.deepEqual(conditionMode("normal", "attack", {}, null, { conditions: ["restrained"] }), { mode: "advantage", reasons: ["цель опутан: преимущество"] });
+  assert.equal(conditionMode("normal", "save", { conditions: ["paralyzed"] }, "dex").reasons[0], "провал спасброска Силы и Ловкости автоматически");
+  f.send(gm, { type: "gameEnd" });
+  for (const who of [sasha, kria, f.person("d", "Lena")]) f.send(who, { type: "gameReady", ready: true });
+  f.send(gm, { type: "gameStart" });
+  assert.equal(f.state("a").phase, "playing");
+  assert.equal(f.state("a").players[0]!.conditions, undefined, "a new game starts clean");
+});
+
+test("resources, hit dice and rests", () => {
+  const f = fixture([6, 4]);
+  const { gm, sasha, kria, lena } = hallTable(f);
+  assert.equal(f.state("d").players[2]!.hitDice, 1);
+  f.send(lena, { type: "gameResource", key: "uid:Lena", resourceId: "second-wind", used: 1 });
+  f.send(kria, { type: "gameResource", key: "uid:Kria", resourceId: "slot1", used: 5 });
+  assert.deepEqual(f.state("a").players[1]!.used, { slot1: 2 }, "never more than the maximum");
+  f.send(sasha, { type: "gameResource", key: "uid:Sasha", resourceId: "slot1", used: 1 });
+  assert.equal(f.lastError("b"), "UNKNOWN_RESOURCE");
+  f.send(sasha, { type: "gameResource", key: "uid:Lena", resourceId: "second-wind", used: 0 });
+  assert.equal(f.lastError("b"), "NOT_YOUR_HERO");
+
+  f.send(gm, { type: "gameHp", key: "uid:Lena", hp: 3 });
+  f.send(lena, { type: "gameHitDie", key: "uid:Lena" });
+  let view = f.state("d");
+  assert.equal(view.players[2]!.hp, 3 + 6 + 3, "d10 + Con +3");
+  assert.equal(view.players[2]!.hitDice, 0);
+  assert.equal(view.rolls.at(-1)!.healed, 9);
+  f.send(lena, { type: "gameHitDie", key: "uid:Lena" });
+  assert.equal(f.lastError("d"), "NO_HIT_DICE");
+
+  f.send(sasha, { type: "gameRest", kind: "short" });
+  assert.equal(f.lastError("b"), "GM_ONLY");
+  f.send(gm, { type: "gameRest", kind: "short" });
+  view = f.state("a");
+  assert.deepEqual(view.players[2]!.used, undefined, "second wind comes back on a short rest");
+  assert.deepEqual(view.players[1]!.used, { slot1: 2 }, "spell slots do not");
+  f.send(gm, { type: "gameHp", key: "uid:Kria", hp: 2 });
+  f.send(gm, { type: "gameExhaustion", key: "uid:Kria", level: 2 });
+  f.send(gm, { type: "gameRest", kind: "long" });
+  view = f.state("a");
+  assert.equal(view.players[1]!.hp, 10);
+  assert.equal(view.players[1]!.used, undefined);
+  assert.equal(view.players[1]!.exhaustion, 1);
+  assert.equal(view.players[2]!.hitDice, 1);
+  assert.match(view.rolls.at(-1)!.label, /Долгий отдых/);
+});
+
+test("saving-throw attacks roll every target's save and apply the damage at once", () => {
+  // Damage 1d8 = 6; then saves: skeleton 15 (+2 Dex = 17, saves), ghoul hidden 3 (fails).
+  const f = fixture([6, 15, 3, 7, 4, 2, 9]);
+  const { gm, sasha, kria } = hallTable(f);
+  f.send(gm, { type: "gameTokenAdd", monsterId: "skeleton", x: 11, y: 13 });
+  f.send(gm, { type: "gameTokenAdd", monsterId: "ghoul", x: 12, y: 13 });
+  const monsters = f.state("a").map!.tokens.filter(token => token.kind === "monster");
+  f.send(gm, { type: "gameTokenHide", id: monsters[1]!.id, hidden: true });
+  f.send(kria, { type: "gameSaveAttack", source: { type: "attack", index: 1 }, targets: monsters.map(token => token.id) });
+  assert.equal(f.lastError("c"), "UNKNOWN_TOKEN", "players cannot aim at what they cannot see");
+  f.send(gm, { type: "gameTokenHide", id: monsters[1]!.id, hidden: false });
+  f.send(kria, { type: "gameSaveAttack", source: { type: "attack", index: 0 }, targets: [monsters[0]!.id] });
+  assert.equal(f.lastError("c"), "NOT_A_SAVE_ATTACK", "a mace hits with an attack roll");
+  f.send(gm, { type: "gameTokenHide", id: monsters[1]!.id, hidden: true });
+  f.send(gm, { type: "gameFogAll", reveal: true });
+  f.send(gm, { type: "gameTokenHide", id: monsters[1]!.id, hidden: false });
+  f.send(kria, { type: "gameSaveAttack", source: { type: "attack", index: 1 }, targets: monsters.map(token => token.id) });
+  const gmView = f.state("a");
+  const roll = gmView.rolls.at(-1)!;
+  assert.equal(roll.total, 6);
+  assert.equal(roll.dc, 13);
+  assert.deepEqual(roll.saves!.map(item => [item.name, item.total, item.success, item.damage]), [["Скелет 1", 17, true, 0], ["Упырь 1", 5, false, 6]]);
+  assert.deepEqual(gmView.map!.tokens.filter(token => token.kind === "monster").map(token => token.hp), [13, 16]);
+  assert.equal(f.state("c").rolls.at(-1)!.dc, undefined, "players do not see the difficulty");
+
+  // The master's monster breathes on a concentrating cleric: damage, then a concentration save.
+  f.send(gm, { type: "gameTokenAdd", monsterId: "cult-fanatic", x: 5, y: 5 });
+  const fanatic = f.state("a").map!.tokens.find(token => token.monsterId === "cult-fanatic")!;
+  const osmund = f.state("a").map!.tokens.find(token => token.heroId === "osmund")!;
+  f.send(kria, { type: "gameCondition", target: "uid:Kria", condition: "concentration", active: true });
+  f.send(gm, { type: "gameSaveAttack", source: { type: "monsterAttack", tokenId: fanatic.id, index: 1 }, targets: [osmund.id] });
+  const view = f.state("c");
+  const flame = view.rolls.at(-2)!;
+  assert.equal(flame.saves![0]!.success, false, "4 − 1 Dex < 11");
+  assert.equal(flame.saves![0]!.damage, 7);
+  assert.equal(view.players[1]!.hp, 3);
+  const concentration = view.rolls.at(-1)!;
+  assert.match(concentration.label, /Концентрация/);
+  assert.equal(concentration.success, false, "2 + 2 Con < DC 10");
+  assert.equal(view.players[1]!.conditions, undefined, "concentration is lost");
+});
+
+test("tables survive a gateway restart through the store", () => {
+  const saved = new Map<string, unknown>();
+  const store: TabletopStore = { load: key => saved.get(key) ?? null, save: (key, snapshot) => { if (snapshot === null) saved.delete(key); else saved.set(key, JSON.parse(JSON.stringify(snapshot))); } };
+  const f = fixture([], BARE_ADVENTURES, store);
+  const { gm, kria } = hallTable(f);
+  f.send(gm, { type: "gameTokenAdd", monsterId: "skeleton", x: 11, y: 13 });
+  f.send(gm, { type: "gameHp", key: "uid:Kria", hp: 4 });
+  f.send(kria, { type: "gameResource", key: "uid:Kria", resourceId: "slot1", used: 1 });
+  f.send(gm, { type: "gameFog", cells: [0, 1, 2], reveal: true });
+  const before = f.state("c");
+
+  const again = fixture([], BARE_ADVENTURES, store);
+  const kria2 = again.person("x", "Kria");
+  again.send(kria2, { type: "gameOpen" });
+  const after = again.state("x");
+  assert.equal(after.phase, "playing");
+  assert.equal(after.scene, 2);
+  assert.equal(after.you.role, "player");
+  assert.deepEqual(after.players.map(seat => [seat.heroId, seat.hp, seat.online]), before.players.map(seat => [seat.heroId, seat.hp, seat.key === "uid:Kria"]));
+  assert.deepEqual(after.players[1]!.used, { slot1: 1 });
+  assert.equal(after.map!.fog, before.map!.fog);
+  assert.deepEqual(after.map!.tokens.map(token => token.name), before.map!.tokens.map(token => token.name));
+  assert.equal(after.rolls.length, before.rolls.length);
+
+  for (const who of ["a", "b", "c", "d"]) f.coordinator.removePeer(who);
+  for (const name of ["Alex", "Sasha", "Lena"]) {
+    const person = again.person(`p-${name}`, name);
+    again.send(person, { type: "gameOpen" });
+    again.send(person, { type: "gameSeat", role: "spectator" });
+  }
+  again.send(kria2, { type: "gameSeat", role: "spectator" });
+  again.coordinator.removePeer("x");
+  for (const name of ["Alex", "Sasha", "Lena"]) again.coordinator.removePeer(`p-${name}`);
+  assert.equal(saved.size, 0, "an emptied table is deleted");
 });

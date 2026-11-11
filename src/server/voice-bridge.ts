@@ -7,7 +7,7 @@ import { WhiteboardCoordinator, whiteboardBoardKey } from "./whiteboard-coordina
 import { MemoryWhiteboardStore, type WhiteboardStore } from "./whiteboard-store.js";
 import { parseWhiteboardClientMessage } from "../shared/whiteboard.js";
 import { parseGameClientMessage } from "../shared/tabletop.js";
-import { TabletopCoordinator, tabletopTableKey, type TableParticipant } from "./tabletop-coordinator.js";
+import { TabletopCoordinator, tabletopTableKey, type TableParticipant, type TabletopStore } from "./tabletop-coordinator.js";
 import { handleCommand } from "./voice-commands.js";
 import { createAudioFlowStats, snapshotAudioStats, type AudioFlowStats } from "./audio-stats.js";
 export type { AudioFlowStats } from "./audio-stats.js";
@@ -79,6 +79,8 @@ export interface VoiceBridgeOptions {
   whiteboardStore?: WhiteboardStore;
   /** Chat attachments and server-side chat history; absent disables both. */
   chatStorage?: ChatStorage;
+  /** Where game tables are kept across restarts; memory only without it. */
+  tabletopStore?: TabletopStore;
 }
 
 /** What an HTTP chat request may act for: one connected session's server and channel. */
@@ -224,6 +226,7 @@ export class VoiceBridge {
     this.tabletops = new TabletopCoordinator({
       adventures: () => [...BUILT_IN_ADVENTURES, ...(options.adventures?.list() ?? [])],
       isCustomAdventure: id => options.adventures?.has(id) ?? false,
+      ...(options.tabletopStore ? { store: options.tabletopStore } : {}),
       send: (entryId, message) => {
         const entry = this.entries.get(entryId);
         if (entry?.ws.readyState !== WebSocket.OPEN) return;

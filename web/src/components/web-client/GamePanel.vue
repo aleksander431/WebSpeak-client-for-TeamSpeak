@@ -183,6 +183,15 @@
               <span class="gm-muted">{{ myHero.race }} · {{ myHero.cls }} {{ myHero.level }} {{ x.levelShort }}</span>
             </span>
           </div>
+          <GameConditions
+            :x="x"
+            :conditions="mySeat.conditions ?? []"
+            :exhaustion="mySeat.exhaustion"
+            editable
+            with-exhaustion
+            @toggle="(id, active) => client.condition(mySeat!.key, id, active)"
+            @exhaustion="level => client.exhaustion(mySeat!.key, level)"
+          />
           <div class="gm-stat-row">
             <div class="gm-stat">
               <div class="gm-hp">
@@ -206,6 +215,20 @@
         </div>
 
         <div class="gm-card">
+          <h2>{{ x.care.resources }}</h2>
+          <GameResources
+            :x="x"
+            :hero="myHero"
+            :seat="mySeat"
+            :editable="true"
+            :in-combat="Boolean(combat)"
+            :die-prefix="diePrefix"
+            @use="(id, used) => client.resource(mySeat!.key, id, used)"
+            @hit-die="client.hitDie(mySeat!.key)"
+          />
+        </div>
+
+        <div class="gm-card">
           <h2>{{ x.actions }}</h2>
           <p v-if="table.map" class="gm-target-line">
             <template v-if="targetToken">{{ x.target }}: <b>{{ targetToken.name }}</b> <button type="button" class="gm-link gm-link-s" :aria-label="x.clearTarget" @click="selectedTokenId = null">×</button></template>
@@ -214,6 +237,7 @@
           <div v-for="(attack, index) in myHero.attacks" :key="attack.name" class="gm-action">
             <span class="gm-action-text"><strong>{{ attack.name }}</strong><span class="gm-muted gm-small">{{ attack.note }}</span></span>
             <button v-if="attack.bonus !== null" type="button" class="gm-chip gm-chip-gold" @click="roll({ type: 'attack', index })">{{ signed(attack.bonus) }}</button>
+            <button v-else-if="table.map && attackSaveOf(attack)" type="button" class="gm-chip gm-chip-war" :title="saveRule(attack)" @click="openSave({ type: 'attack', index }, attack)">{{ x.care.saveAttack }}</button>
             <button type="button" class="gm-chip" @click="roll({ type: 'damage', index })">{{ attack.damage.replace(/d/g, x === TEXT_RU ? 'к' : 'd') }}</button>
             <button type="button" class="gm-chip" :title="x.crit" @click="roll({ type: 'damage', index, crit: true })">{{ x.crit }}</button>
           </div>
@@ -260,13 +284,32 @@
           </form>
         </div>
         <div class="gm-card">
-          <h2>{{ x.party }}</h2>
+          <div class="gm-card-head gm-party-head">
+            <h2>{{ x.party }}</h2>
+            <span class="gm-row gm-rest" :title="x.care.restHint">
+              <button type="button" class="gm-chip" :disabled="Boolean(combat)" @click="client.rest('short')">☕ {{ x.care.shortRest }}</button>
+              <button type="button" class="gm-chip" :disabled="Boolean(combat)" @click="client.rest('long')">🌙 {{ x.care.longRest }}</button>
+            </span>
+          </div>
           <div v-for="seat in partySeats" :key="seat.key" class="gm-party">
             <img v-if="seat.hero.portrait" class="gm-avatar gm-portrait" :src="seat.hero.portrait" alt="" /><span v-else class="gm-avatar">{{ initial(seat.hero.name) }}</span>
             <span class="gm-party-text">
               <strong>{{ seat.hero.name }}</strong>
               <span class="gm-muted gm-small">{{ seat.nickname }}<template v-if="!seat.online"> · {{ x.offline }}</template> · {{ x.ac }} {{ seat.hero.ac }}<template v-if="seat.dying"> · <b class="gm-bad">{{ dyingText(seat.dying) }}</b></template></span>
               <span class="gm-bar"><span :style="{ width: `${Math.max(0, Math.min(100, ((seat.hp ?? 0) / seat.hero.maxHp) * 100))}%` }" :class="hpClass(seat.hp, seat.hero.maxHp)"></span></span>
+              <GameConditions
+                :x="x"
+                :conditions="seat.conditions ?? []"
+                :exhaustion="seat.exhaustion"
+                compact
+                editable
+                with-exhaustion
+                @toggle="(id, active) => client.condition(seat.key, id, active)"
+                @exhaustion="level => client.exhaustion(seat.key, level)"
+              />
+              <span v-if="seat.hero.resources?.length" class="gm-res-line">
+                <span v-for="resource in seat.hero.resources" :key="resource.id" :title="resource.name">{{ resource.name.split(' (')[0] }} <b>{{ resource.max - Math.min(resource.max, seat.used?.[resource.id] ?? 0) }}</b>/{{ resource.max }}</span>
+              </span>
             </span>
             <span class="gm-hp">
               <button type="button" class="gm-mini" :aria-label="x.hpMinus" @click="client.setHp(seat.key, (seat.hp ?? 0) - 1)">−</button>
@@ -377,6 +420,7 @@
             <span v-for="(attack, index) in activeMonster.sheet.attacks" :key="attack.name" class="gm-attack-pair">
               <b>{{ attack.name }}</b>
               <button v-if="attack.bonus !== null" type="button" class="gm-chip gm-chip-gold" :title="x.attackShort" @click="roll({ type: 'monsterAttack', tokenId: activeMonster.token.id, index })">{{ signed(attack.bonus) }}</button>
+              <button v-else-if="attackSaveOf(attack)" type="button" class="gm-chip gm-chip-war" :title="saveRule(attack)" @click="openSave({ type: 'monsterAttack', tokenId: activeMonster.token.id, index }, attack)">{{ x.care.saveAttack }}</button>
               <button type="button" class="gm-chip" :title="x.damageShort" @click="roll({ type: 'monsterDamage', tokenId: activeMonster.token.id, index })">{{ dice(attack.damage) }}</button>
               <button type="button" class="gm-chip" :title="x.crit" @click="roll({ type: 'monsterDamage', tokenId: activeMonster.token.id, index, crit: true })">{{ x.crit }}</button>
             </span>
@@ -399,6 +443,7 @@
           :you-key="table.you.key"
           :seats="table.players"
           :x="x"
+          @save-attack="(tokenId, index, attack) => openSave({ type: 'monsterAttack', tokenId, index }, attack)"
         />
         <figure v-else class="gm-art" :key="scene?.id">
           <img v-if="scene?.art" :src="scene.art" alt="" />
@@ -434,6 +479,7 @@
             <img v-if="seat.hero.portrait" class="gm-avatar gm-portrait" :src="seat.hero.portrait" alt="" /><span v-else class="gm-avatar">{{ initial(seat.hero.name) }}</span>
             <span class="gm-party-text">
               <strong>{{ seat.hero.name }}<small v-if="seat.dying" class="gm-bad"> · {{ dyingText(seat.dying) }}</small></strong>
+              <GameConditions v-if="seat.conditions?.length || seat.exhaustion" :x="x" :conditions="seat.conditions ?? []" :exhaustion="seat.exhaustion" compact />
               <span class="gm-bar"><span :style="{ width: `${Math.max(0, Math.min(100, ((seat.hp ?? 0) / seat.hero.maxHp) * 100))}%` }" :class="hpClass(seat.hp, seat.hero.maxHp)"></span></span>
             </span>
             <span class="gm-muted gm-small">{{ seat.hp }}/{{ seat.hero.maxHp }}</span>
@@ -468,6 +514,16 @@
               <span v-if="item.targetName" class="gm-log-target">→ {{ item.targetName }}<template v-if="item.targetAc !== undefined"> ({{ x.ac }} {{ item.targetAc }})</template></span>
               <span v-if="item.hit !== undefined" :class="item.hit ? 'gm-ok' : 'gm-bad'">{{ item.hit ? x.hitText : x.missText }}</span>
               <span v-if="item.deathSave" :class="item.deathSave === 'failure' ? 'gm-bad' : 'gm-ok'">{{ item.deathSave === 'revived' ? x.revived : item.deathSave === 'success' ? x.success : x.failure }}</span>
+              <span v-if="item.healed !== undefined" class="gm-ok">+{{ item.healed }} {{ x.care.healed }}</span>
+              <ul v-if="item.saves?.length" class="gm-log-saves">
+                <li v-for="entry in item.saves" :key="entry.tokenId">
+                  <span>{{ entry.name }}</span>
+                  <span class="gm-muted">{{ entry.total }}</span>
+                  <b :class="entry.success ? 'gm-ok' : 'gm-bad'">{{ entry.success ? x.care.saved : x.care.failedSave }}</b>
+                  <span v-if="entry.damage" class="gm-bad">−{{ entry.damage }}</span>
+                </li>
+              </ul>
+              <span v-if="item.reasons?.length" class="gm-log-reasons">{{ item.reasons.join(" · ") }}</span>
               <span v-if="role === 'gm' && item.damage" class="gm-apply">
                 <template v-if="item.applied"><span class="gm-muted gm-small">✓ {{ x.applied }}</span></template>
                 <template v-else>
@@ -499,9 +555,25 @@
           </div>
           <strong :class="['gm-display', 'gm-roll-title', rollClass(shownRoll)]">{{ rollHeadline(shownRoll) }}</strong>
           <span class="gm-roll-sum">{{ shownRoll.label }}<template v-if="shownRoll.targetName"> → {{ shownRoll.targetName }}</template> · <b>{{ shownRoll.total }}</b></span>
+          <ul v-if="shownRoll.saves?.length" class="gm-roll-saves">
+            <li v-for="entry in shownRoll.saves" :key="entry.tokenId" :class="entry.success ? 'gm-ok' : 'gm-bad'">{{ entry.name }}: {{ entry.success ? x.care.saved : x.care.failedSave }}<template v-if="entry.damage"> · −{{ entry.damage }}</template></li>
+          </ul>
+          <span v-if="shownRoll.reasons?.length" class="gm-roll-reasons">{{ shownRoll.reasons.join(" · ") }}</span>
         </template>
       </div>
     </div>
+    <GameSaveAttack
+      v-if="saveDialog && table?.map"
+      :x="x"
+      :title="x.care.saveTitle.replace('{name}', saveDialog.attack.name)"
+      :rule="saveRule(saveDialog.attack)"
+      :damage="dice(saveDialog.attack.damage)"
+      :tokens="saveCandidates"
+      :preselected="selectedTokenId ? [selectedTokenId] : []"
+      :portrait-of="tokenPortrait"
+      @cancel="saveDialog = null"
+      @confirm="targets => { client.saveAttack(saveDialog!.source, targets); saveDialog = null; }"
+    />
     <HeroBuilder
       v-if="builderOpen"
       :x="x"
@@ -516,10 +588,13 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { ABILITIES, MAX_PLAYERS, SKILL_IDS, abilityModifier, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
+import { ABILITIES, MAX_PLAYERS, SKILL_IDS, abilityModifier, attackSaveOf, type GameClientMessage, type HeroAttack, type TokenView, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
 
 import GameMap from "./GameMap.vue";
 import HeroBuilder from "./HeroBuilder.vue";
+import GameConditions from "./GameConditions.vue";
+import GameResources from "./GameResources.vue";
+import GameSaveAttack from "./GameSaveAttack.vue";
 import { buildHero, heroPortraitUrl, type HeroChoices } from "../../../../src/shared/hero-builder.js";
 import { useHeroLibrary, type SavedHero } from "../../game/hero-library.js";
 import { GameMusicPlayer } from "../../game/music-player.js";
@@ -568,6 +643,27 @@ const playerChecks = computed(() => role.value === "player"
 const scene = computed(() => adventure.value?.scenes[table.value?.scene ?? 0]);
 const sceneMap = computed(() => scene.value?.map);
 const hasLeft = computed(() => role.value === "gm" || (role.value === "player" && Boolean(myHero.value && mySeat.value)));
+// ---- Saving-throw attacks ---------------------------------------------------
+
+const saveDialog = ref<{ source: Extract<GameClientMessage, { type: "gameSaveAttack" }>["source"]; attack: HeroAttack } | null>(null);
+function openSave(source: Extract<GameClientMessage, { type: "gameSaveAttack" }>["source"], attack: HeroAttack): void {
+  saveDialog.value = { source, attack };
+}
+function saveRule(attack: HeroAttack): string {
+  const save = attackSaveOf(attack);
+  if (!save) return "";
+  return x.value.care.saveRule.replace("{ability}", x.value.abilityName[save.ability]).replace("{dc}", String(save.dc)).replace("{half}", save.half ? x.value.care.saveHalf : "");
+}
+/** Everything on the map this viewer sees, except the one breathing. */
+const saveCandidates = computed(() => (table.value?.map?.tokens ?? []).filter(token => {
+  const source = saveDialog.value?.source;
+  if (source?.type === "monsterAttack") return token.id !== source.tokenId;
+  return token.seatKey !== table.value?.you.key;
+}));
+function tokenPortrait(token: TokenView): string | undefined {
+  return token.kind === "hero" ? findHero(null, token.heroId)?.portrait : findMonster(null, token.monsterId)?.portrait;
+}
+
 // ---- Own heroes (hero builder) ---------------------------------------------
 
 const library = useHeroLibrary();
@@ -932,6 +1028,17 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-hero-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .gm-hero-stats { font-size: 12px; color: #c9c6bf; }
 .gm-hero-own { cursor: default; }
+.gm-party-head { justify-content: space-between; }
+.gm-rest { gap: 6px; }
+.gm-rest .gm-chip { min-height: 30px; font-size: 12px; }
+.gm-rest .gm-chip:disabled { opacity: .45; cursor: default; }
+.gm-res-line { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: var(--gm-muted); }
+.gm-res-line b { color: var(--gm-gold); }
+.gm-log-saves { display: flex; flex-direction: column; gap: 2px; flex-basis: 100%; margin: 2px 0 0; padding: 0 0 0 10px; list-style: none; border-left: 2px solid var(--gm-line-2); font-size: 12px; }
+.gm-log-saves li { display: flex; gap: 8px; }
+.gm-log-reasons { flex-basis: 100%; font-size: 11px; color: var(--gm-gold); }
+.gm-roll-saves { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.gm-roll-reasons { font-size: 12px; color: var(--gm-gold); }
 .gm-own-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 2px; }
 .gm-hero-new { border-style: dashed; background: transparent; }
 .gm-hero-new:hover { border-color: var(--gm-gold); }

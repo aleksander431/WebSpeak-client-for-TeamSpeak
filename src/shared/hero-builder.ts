@@ -5,6 +5,7 @@ import {
   formatModifier,
   type Ability,
   type HeroAttack,
+  type HeroResource,
   type HeroSheet,
   type Skill,
 } from "./tabletop.js";
@@ -279,13 +280,18 @@ export function buildHero(choices: HeroChoices, id: string, portraitUrl: (portra
     const add = weapon.addModifier ?? weapon.ability !== "spell";
     const damage = `${weapon.die}${add && modifier ? formatModifier(modifier) : ""}`;
     if (weapon.save) {
-      return { name: weapon.name, bonus: null, damage, note: `${weapon.note}; спасбросок ${ABILITY_SHORT[weapon.save]} СЛ ${saveDc}` };
+      return { name: weapon.name, bonus: null, damage, note: `${weapon.note}; спасбросок ${ABILITY_SHORT[weapon.save]} СЛ ${saveDc}`, save: { ability: weapon.save, dc: saveDc, half: false } };
     }
     return { name: weapon.name, bonus: PROFICIENCY + modifier + archery, damage, note: weapon.note };
   });
   if (race.id === "dragonborn" && choices.ancestry) {
     const breath = DRAGON[choices.ancestry];
-    attacks.push({ name: "Оружие дыхания", bonus: null, damage: "2d6", note: `${breath.damage}, ${breath.shape}, раз на короткий отдых; спасбросок ${ABILITY_SHORT[breath.save]} СЛ ${8 + PROFICIENCY + mod("con")}, половина при успехе` });
+    const breathDc = 8 + PROFICIENCY + mod("con");
+    attacks.push({
+      name: "Оружие дыхания", bonus: null, damage: "2d6",
+      note: `${breath.damage}, ${breath.shape}, раз на короткий отдых; спасбросок ${ABILITY_SHORT[breath.save]} СЛ ${breathDc}, половина при успехе`,
+      save: { ability: breath.save, dc: breathDc, half: true },
+    });
   }
 
   const raceFeatures = race.id === "dragonborn" && choices.ancestry
@@ -312,7 +318,56 @@ export function buildHero(choices: HeroChoices, id: string, portraitUrl: (portra
     ...(plan.spells.length ? { spells: plan.spells } : {}),
     story: choices.story ?? "",
     ...(choices.portrait && portraitUrl(choices.portrait) ? { portrait: portraitUrl(choices.portrait) } : {}),
+    hitDie: cls.hitDie,
+    resources: heroResources(cls.id, race.id, 1, mod),
   };
+}
+
+const FULL_CASTER_SLOTS: number[][] = [[2], [3], [4, 2], [4, 3], [4, 3, 2], [4, 3, 3], [4, 3, 3, 1], [4, 3, 3, 2], [4, 3, 3, 3, 1], [4, 3, 3, 3, 2]];
+const HALF_CASTER_SLOTS: number[][] = [[], [2], [3], [3], [4, 2], [4, 2], [4, 3], [4, 3], [4, 3, 2], [4, 3, 2]];
+/** Warlocks: [slots, slot level]. */
+const PACT_SLOTS: Array<[number, number]> = [[1, 1], [2, 1], [2, 2], [2, 2], [2, 3], [2, 3], [2, 4], [2, 4], [2, 5], [2, 5]];
+
+/** Spell slots by circle for a class at a level (SRD 5.1). */
+export function spellSlots(cls: ClassId, level: number): number[] {
+  const index = Math.max(1, Math.min(10, level)) - 1;
+  if (["bard", "cleric", "druid", "sorcerer", "wizard"].includes(cls)) return FULL_CASTER_SLOTS[index]!;
+  if (cls === "paladin" || cls === "ranger") return HALF_CASTER_SLOTS[index]!;
+  return [];
+}
+
+/** What a hero spends and regains on rests at a level: spell slots and limited features. */
+export function heroResources(cls: ClassId, race: RaceId, level: number, mod: (ability: Ability) => number): HeroResource[] {
+  const result: HeroResource[] = [];
+  const add = (id: string, name: string, max: number, recharge: "short" | "long") => { if (max > 0) result.push({ id, name, max, recharge }); };
+  if (cls === "warlock") {
+    const [count, circle] = PACT_SLOTS[Math.max(1, Math.min(10, level)) - 1]!;
+    add("pact", `Ячейки договора (${circle}-й круг)`, count, "short");
+  } else {
+    spellSlots(cls, level).forEach((count, index) => add(`slot${index + 1}`, `Ячейки ${index + 1}-го круга`, count, "long"));
+  }
+  switch (cls) {
+    case "barbarian": add("rage", "Ярость", level >= 6 ? 4 : level >= 3 ? 3 : 2, "long"); break;
+    case "bard": add("inspiration", "Вдохновение барда", Math.max(1, mod("cha")), level >= 5 ? "short" : "long"); break;
+    case "cleric": if (level >= 2) add("channel", "Божественный канал", level >= 6 ? 2 : 1, "short"); break;
+    case "druid": if (level >= 2) add("wild-shape", "Дикий облик", 2, "short"); break;
+    case "fighter":
+      add("second-wind", "Второе дыхание", 1, "short");
+      if (level >= 2) add("action-surge", "Всплеск действий", 1, "short");
+      break;
+    case "monk": if (level >= 2) add("ki", "Ци", level, "short"); break;
+    case "paladin":
+      add("lay-on-hands", "Наложение рук (хиты)", 5 * level, "long");
+      add("divine-sense", "Божественное чувство", 1 + Math.max(0, mod("cha")), "long");
+      if (level >= 3) add("channel", "Божественный канал", 1, "short");
+      break;
+    case "sorcerer": if (level >= 2) add("sorcery", "Единицы чародейства", level, "long"); break;
+    case "wizard": add("arcane-recovery", "Магическое восстановление", 1, "long"); break;
+    default: break;
+  }
+  if (race === "dragonborn") add("breath", "Оружие дыхания", 1, "short");
+  if (race === "half-orc") add("relentless", "Непоколебимая стойкость", 1, "long");
+  return result;
 }
 
 const ABILITY_SHORT: Record<Ability, string> = { str: "Сил", dex: "Лов", con: "Тел", int: "Инт", wis: "Мдр", cha: "Хар" };
