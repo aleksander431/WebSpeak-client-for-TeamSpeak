@@ -99,10 +99,10 @@
           <button type="button" :aria-label="x.hpPlus" @click="client.setTokenHp(selected.id, (selected.hp ?? 0) + 1)">+</button>
         </div>
         <ul v-if="selectedMonster" class="gmap-attacks">
-          <li v-for="attack in selectedMonster.attacks" :key="attack.name">
+          <li v-for="(attack, index) in selectedMonster.attacks" :key="attack.name">
             <strong>{{ attack.name }}</strong>
-            <span v-if="attack.bonus !== null">{{ signed(attack.bonus) }}</span>
-            <span>{{ attack.damage }}</span>
+            <button v-if="attack.bonus !== null" type="button" class="gmap-chip gmap-chip-gold" :title="x.attackShort" @click="client.roll({ type: 'monsterAttack', tokenId: selected.id, index })">{{ signed(attack.bonus) }}</button>
+            <button type="button" class="gmap-chip" :title="x.damageShort" @click="client.roll({ type: 'monsterDamage', tokenId: selected.id, index })">{{ attack.damage }}</button>
             <small class="gmap-muted">{{ attack.note }}</small>
           </li>
         </ul>
@@ -134,8 +134,12 @@ const props = defineProps<{
   seats: SeatView[];
   x: DndText;
   placing: string | null;
+  /** The selected token: also the target of attacks. */
+  selectedId: string | null;
+  /** Whose turn it is in combat. */
+  activeTokenId?: string | null;
 }>();
-const emit = defineEmits<{ "update:placing": [string | null] }>();
+const emit = defineEmits<{ "update:placing": [string | null]; "update:selectedId": [string | null] }>();
 
 /** World pixels per cell; the map pictures are drawn at this scale. */
 const CELL = 64;
@@ -239,11 +243,12 @@ onMounted(() => {
     initialFit();
   });
   if (viewport.value) resizeObserver.observe(viewport.value);
-  window.addEventListener("keydown", onKey);
+  // Capture phase: Esc that cancels a placement or selection must not also close the game panel.
+  window.addEventListener("keydown", onKey, true);
 });
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
-  window.removeEventListener("keydown", onKey);
+  window.removeEventListener("keydown", onKey, true);
   flushPaint();
   pingTimers.forEach(clearTimeout);
 });
@@ -251,7 +256,7 @@ watch(() => props.sceneMap.image, () => nextTick(initialFit));
 
 function onKey(event: KeyboardEvent): void {
   if (event.key === "Escape" && (props.placing || selectedId.value)) {
-    event.stopPropagation();
+    event.preventDefault();
     emit("update:placing", null);
     selectedId.value = null;
   }
@@ -460,7 +465,10 @@ function onDoubleClick(event: MouseEvent): void {
 
 // ---- Tokens ----------------------------------------------------------------
 
-const selectedId = ref<string | null>(null);
+const selectedId = computed<string | null>({
+  get: () => props.selectedId,
+  set: value => emit("update:selectedId", value),
+});
 const selected = computed(() => props.map.tokens.find(token => token.id === selectedId.value) ?? null);
 const selectedMonster = computed(() => selected.value?.kind === "monster" ? findMonster(props.adventureId, selected.value.monsterId) : undefined);
 const selectedHero = computed(() => selected.value?.kind === "hero" ? findHero(props.adventureId, selected.value.heroId) : undefined);
@@ -495,6 +503,7 @@ function tokenClass(token: TokenView): unknown[] {
     "gmap-token-mine": token.seatKey === props.youKey,
     "gmap-token-hidden": token.hidden,
     "gmap-token-selected": selectedId.value === token.id,
+    "gmap-token-active": props.activeTokenId === token.id,
     "gmap-token-dragging": drag.value?.id === token.id && drag.value.moved,
     "gmap-token-bloodied": token.condition === "bloodied" || (bar !== null && bar > 0 && bar <= 50),
     "gmap-token-down": token.condition === "down" || bar === 0,
@@ -603,6 +612,8 @@ watch(() => props.client.lastPing.value, ping => {
 .gmap-token-monster img, .gmap-token-monster .gmap-token-initial { border-color: #b84a3e; background: #4a2020; }
 .gmap-token-mine img, .gmap-token-mine .gmap-token-initial { border-color: #f3dcae; box-shadow: 0 0 0 3px rgba(243, 220, 174, 0.35), 0 3px 10px rgba(0, 0, 0, 0.7); }
 .gmap-token-selected img, .gmap-token-selected .gmap-token-initial { box-shadow: 0 0 0 4px #fff6e0, 0 3px 12px rgba(0, 0, 0, 0.8); }
+.gmap-token-active img, .gmap-token-active .gmap-token-initial { box-shadow: 0 0 0 3px #f3dcae, 0 0 22px 6px rgba(243, 220, 174, 0.75); animation: gmap-turn 1.6s ease-in-out infinite; }
+@keyframes gmap-turn { 50% { box-shadow: 0 0 0 3px #f3dcae, 0 0 10px 2px rgba(243, 220, 174, 0.4); } }
 .gmap-token-hidden { opacity: .55; }
 .gmap-token-hidden img, .gmap-token-hidden .gmap-token-initial { border-style: dashed; }
 .gmap-token-bloodied img { filter: sepia(.4) saturate(1.6) hue-rotate(-20deg); }
@@ -679,9 +690,14 @@ watch(() => props.client.lastPing.value, ping => {
 .gmap-attacks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .gmap-attacks li { display: flex; flex-wrap: wrap; gap: 2px 8px; padding: 6px 8px; border-radius: 8px; background: #23252b; font-size: 13px; }
 .gmap-attacks small { width: 100%; }
+.gmap-attacks li { align-items: center; }
+.gmap-chip { min-height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid #3a3c44; background: transparent; color: #e8e6e1; font: inherit; font-size: 12px; cursor: pointer; }
+.gmap-chip:hover { border-color: #d9b46c; }
+.gmap-chip-gold { color: #d9b46c; font-weight: 600; }
 .gmap-row { display: flex; flex-wrap: wrap; gap: 6px; }
 @media (prefers-reduced-motion: reduce) {
   .gmap-token { transition: none; }
+  .gmap-token-active img, .gmap-token-active .gmap-token-initial { animation: none; }
   .gmap-ping span { animation: none; opacity: .8; }
 }
 </style>

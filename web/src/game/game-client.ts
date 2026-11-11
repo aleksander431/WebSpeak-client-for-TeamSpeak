@@ -75,9 +75,15 @@ export class GameClient {
   hero(heroId: string | null): void { this.send({ type: "gameHero", heroId }); }
   start(): void { this.send({ type: "gameStart" }); }
   end(): void { this.send({ type: "gameEnd" }); }
-  roll(source: RollSource, mode: RollMode = "normal", hidden = false, checkId?: string): void {
-    this.send({ type: "gameRoll", source, mode, hidden, ...(checkId ? { checkId } : {}) });
+  roll(source: RollSource, mode: RollMode = "normal", hidden = false, checkId?: string, targetId?: string): void {
+    this.send({ type: "gameRoll", source, mode, hidden, ...(checkId ? { checkId } : {}), ...(targetId ? { targetId } : {}) });
   }
+  combatStart(): void { this.send({ type: "gameCombatStart" }); }
+  combatEnd(): void { this.send({ type: "gameCombatEnd" }); }
+  combatNext(): void { this.send({ type: "gameCombatNext" }); }
+  combatPrev(): void { this.send({ type: "gameCombatPrev" }); }
+  combatRollAll(): void { this.send({ type: "gameCombatRollAll" }); }
+  apply(rollId: string, half: boolean): void { this.send({ type: "gameApply", rollId, half }); }
   setHp(key: string, hp: number): void { this.send({ type: "gameHp", key, hp: Math.round(hp) }); }
   requestCheck(source: CheckSource, dc: number, mode: RollMode, targets: string[]): void {
     this.send({ type: "gameCheck", source, dc, mode, targets });

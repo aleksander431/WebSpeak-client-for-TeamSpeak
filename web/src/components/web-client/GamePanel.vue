@@ -5,7 +5,7 @@
     role="dialog"
     aria-modal="true"
     :aria-label="x.dnd"
-    @keydown.esc="emit('close')"
+    @keydown.esc="onEscape"
   >
     <header class="gm-top" data-ws-part="voice.game.header">
       <div class="gm-crumbs">
@@ -119,6 +119,15 @@
     <main v-else :class="['gm-body', 'gm-play', { 'gm-play-nosheet': !hasLeft || wide }]">
       <!-- Player: own hero sheet -->
       <section v-if="role === 'player' && myHero && mySeat" v-show="!wide" class="gm-col gm-sheet gm-scroll" :aria-label="myHero.name">
+        <div v-if="mySeat.dying" :class="['gm-card', 'gm-dying', `gm-dying-${mySeat.dying.state}`]" role="status">
+          <h2>{{ x.deathSaves }}</h2>
+          <strong class="gm-display gm-display-s">{{ mySeat.dying.state === 'dead' ? x.deadLabel : mySeat.dying.state === 'stable' ? x.stableLabel : x.dyingLabel }}</strong>
+          <div class="gm-pips">
+            <span class="gm-ok">✓</span><i v-for="n in 3" :key="`s${n}`" :class="['gm-pip', { 'gm-pip-ok': n <= mySeat.dying.successes }]"></i>
+            <span class="gm-bad">✕</span><i v-for="n in 3" :key="`f${n}`" :class="['gm-pip', { 'gm-pip-bad': n <= mySeat.dying.failures }]"></i>
+          </div>
+          <button v-if="mySeat.dying.state === 'dying'" type="button" class="gm-btn gm-btn-big gm-btn-gold" @click="roll({ type: 'deathSave' })">{{ x.rollDeathSave }}</button>
+        </div>
         <div class="gm-card">
           <div class="gm-hero-head">
             <img v-if="myHero.portrait" class="gm-avatar gm-avatar-xl gm-portrait" :src="myHero.portrait" alt="" /><span v-else class="gm-avatar gm-avatar-xl">{{ initial(myHero.name) }}</span>
@@ -151,6 +160,10 @@
 
         <div class="gm-card">
           <h2>{{ x.actions }}</h2>
+          <p v-if="table.map" class="gm-target-line">
+            <template v-if="targetToken">{{ x.target }}: <b>{{ targetToken.name }}</b> <button type="button" class="gm-link gm-link-s" :aria-label="x.clearTarget" @click="selectedTokenId = null">×</button></template>
+            <span v-else class="gm-muted gm-small">{{ x.combatHint }}</span>
+          </p>
           <div v-for="(attack, index) in myHero.attacks" :key="attack.name" class="gm-action">
             <span class="gm-action-text"><strong>{{ attack.name }}</strong><span class="gm-muted gm-small">{{ attack.note }}</span></span>
             <button v-if="attack.bonus !== null" type="button" class="gm-chip gm-chip-gold" @click="roll({ type: 'attack', index })">{{ signed(attack.bonus) }}</button>
@@ -187,7 +200,7 @@
             <img v-if="seat.hero.portrait" class="gm-avatar gm-portrait" :src="seat.hero.portrait" alt="" /><span v-else class="gm-avatar">{{ initial(seat.hero.name) }}</span>
             <span class="gm-party-text">
               <strong>{{ seat.hero.name }}</strong>
-              <span class="gm-muted gm-small">{{ seat.nickname }}<template v-if="!seat.online"> · {{ x.offline }}</template> · {{ x.ac }} {{ seat.hero.ac }}</span>
+              <span class="gm-muted gm-small">{{ seat.nickname }}<template v-if="!seat.online"> · {{ x.offline }}</template> · {{ x.ac }} {{ seat.hero.ac }}<template v-if="seat.dying"> · <b class="gm-bad">{{ dyingText(seat.dying) }}</b></template></span>
               <span class="gm-bar"><span :style="{ width: `${Math.max(0, Math.min(100, ((seat.hp ?? 0) / seat.hero.maxHp) * 100))}%` }" :class="hpClass(seat.hp, seat.hero.maxHp)"></span></span>
             </span>
             <span class="gm-hp">
@@ -257,11 +270,62 @@
           </select>
           <strong v-else class="gm-display gm-display-s">{{ scene?.title }}</strong>
           <button v-if="role === 'gm'" type="button" class="gm-mini" :aria-label="x.nextScene" :title="x.nextScene" :disabled="!adventure || table.scene >= adventure.scenes.length - 1" @click="client.scene(table.scene + 1)">›</button>
+          <button v-if="role === 'gm' && sceneMap && !combat" type="button" class="gm-btn gm-btn-war" @click="client.combatStart()">⚔ {{ x.startCombat }}</button>
           <button v-if="hasLeft" type="button" class="gm-btn gm-wide-toggle" :aria-pressed="wide" @click="wide = !wide">{{ wide ? (role === 'gm' ? x.showTools : x.showSheet) : x.widen }}</button>
         </header>
+        <div v-if="combat" class="gm-combat" data-ws-part="voice.game.combat">
+          <div class="gm-combat-top">
+            <strong class="gm-gold gm-nowrap">{{ combat.phase === 'initiative' ? x.waitingInitiative : `${x.round} ${combat.round}` }}</strong>
+            <span v-if="combat.phase === 'running'" class="gm-combat-turn">
+              <b v-if="myTurn" class="gm-gold gm-your-turn">{{ x.yourTurn }}</b>
+              <template v-else-if="activeCombatant">{{ x.turnOf }}: <b>{{ activeCombatant.name }}</b></template>
+              <template v-else-if="combat.activeHidden">{{ x.hiddenTurn }}</template>
+            </span>
+            <span class="gm-combat-actions">
+              <button v-if="role === 'player' && myCombatant && myCombatant.initiative === null" type="button" class="gm-btn gm-btn-gold" @click="roll({ type: 'initiative' })">{{ x.rollInitiative }}</button>
+              <button v-if="role === 'gm' && combat.phase === 'initiative'" type="button" class="gm-btn" @click="client.combatRollAll()">{{ x.rollAllInitiative }}</button>
+              <button v-if="myTurn" type="button" class="gm-btn gm-btn-gold" @click="client.combatNext()">{{ x.endTurn }}</button>
+              <template v-if="role === 'gm' && combat.phase === 'running'">
+                <button type="button" class="gm-mini" :aria-label="x.prevTurn" :title="x.prevTurn" @click="client.combatPrev()">‹</button>
+                <button type="button" class="gm-btn gm-btn-gold" @click="client.combatNext()">{{ x.nextTurn }}</button>
+              </template>
+              <button v-if="role === 'gm'" type="button" class="gm-btn" @click="client.combatEnd()">{{ x.endCombat }}</button>
+            </span>
+          </div>
+          <ol class="gm-order">
+            <li v-for="item in combat.order" :key="item.id">
+              <button
+                type="button"
+                :class="['gm-order-item', { 'gm-order-on': item.id === combat.activeId, 'gm-order-out': isOut(item), 'gm-order-mine': item.seatKey === table.you.key, 'gm-order-foe': item.kind === 'monster', 'gm-order-target': item.tokenId === targetToken?.id }]"
+                :aria-current="item.id === combat.activeId ? 'true' : undefined"
+                :title="item.name"
+                @click="selectedTokenId = item.tokenId"
+              >
+                <img v-if="portraitOf(item)" :src="portraitOf(item)" alt="" />
+                <span v-else class="gm-order-initial">{{ initial(item.name) }}</span>
+                <span class="gm-order-init">{{ item.initiative ?? "—" }}</span>
+                <span class="gm-order-name">{{ item.name }}</span>
+              </button>
+            </li>
+          </ol>
+          <div v-if="activeMonster" class="gm-combat-attacks">
+            <span v-for="(attack, index) in activeMonster.sheet.attacks" :key="attack.name" class="gm-attack-pair">
+              <b>{{ attack.name }}</b>
+              <button v-if="attack.bonus !== null" type="button" class="gm-chip gm-chip-gold" :title="x.attackShort" @click="roll({ type: 'monsterAttack', tokenId: activeMonster.token.id, index })">{{ signed(attack.bonus) }}</button>
+              <button type="button" class="gm-chip" :title="x.damageShort" @click="roll({ type: 'monsterDamage', tokenId: activeMonster.token.id, index })">{{ dice(attack.damage) }}</button>
+              <button type="button" class="gm-chip" :title="x.crit" @click="roll({ type: 'monsterDamage', tokenId: activeMonster.token.id, index, crit: true })">{{ x.crit }}</button>
+            </span>
+            <span class="gm-target-line">
+              <template v-if="targetToken">{{ x.target }}: <b>{{ targetToken.name }}</b> <button type="button" class="gm-link gm-link-s" :aria-label="x.clearTarget" @click="selectedTokenId = null">×</button></template>
+              <span v-else class="gm-muted">{{ x.noTarget }}</span>
+            </span>
+          </div>
+        </div>
         <GameMap
           v-if="table.map && sceneMap"
           v-model:placing="placing"
+          v-model:selected-id="selectedTokenId"
+          :active-token-id="activeCombatant?.tokenId ?? null"
           :client="client"
           :map="table.map"
           :scene-map="sceneMap"
@@ -290,7 +354,7 @@
           <div v-for="seat in partySeats" :key="seat.key" class="gm-party gm-party-s">
             <img v-if="seat.hero.portrait" class="gm-avatar gm-portrait" :src="seat.hero.portrait" alt="" /><span v-else class="gm-avatar">{{ initial(seat.hero.name) }}</span>
             <span class="gm-party-text">
-              <strong>{{ seat.hero.name }}</strong>
+              <strong>{{ seat.hero.name }}<small v-if="seat.dying" class="gm-bad"> · {{ dyingText(seat.dying) }}</small></strong>
               <span class="gm-bar"><span :style="{ width: `${Math.max(0, Math.min(100, ((seat.hp ?? 0) / seat.hero.maxHp) * 100))}%` }" :class="hpClass(seat.hp, seat.hero.maxHp)"></span></span>
             </span>
             <span class="gm-muted gm-small">{{ seat.hp }}/{{ seat.hero.maxHp }}</span>
@@ -322,6 +386,16 @@
               <span v-if="!item.secret" class="gm-log-dice">{{ diceText(item) }}</span>
               <strong v-if="!item.secret" :class="['gm-log-total', rollClass(item)]">{{ item.total }}</strong>
               <span v-if="item.success !== undefined" :class="item.success ? 'gm-ok' : 'gm-bad'">{{ item.success ? x.success : x.failure }}<template v-if="item.dc !== undefined"> · {{ item.dc }}</template></span>
+              <span v-if="item.targetName" class="gm-log-target">→ {{ item.targetName }}<template v-if="item.targetAc !== undefined"> ({{ x.ac }} {{ item.targetAc }})</template></span>
+              <span v-if="item.hit !== undefined" :class="item.hit ? 'gm-ok' : 'gm-bad'">{{ item.hit ? x.hitText : x.missText }}</span>
+              <span v-if="item.deathSave" :class="item.deathSave === 'failure' ? 'gm-bad' : 'gm-ok'">{{ item.deathSave === 'revived' ? x.revived : item.deathSave === 'success' ? x.success : x.failure }}</span>
+              <span v-if="role === 'gm' && item.damage" class="gm-apply">
+                <template v-if="item.applied"><span class="gm-muted gm-small">✓ {{ x.applied }}</span></template>
+                <template v-else>
+                  <button type="button" class="gm-chip gm-chip-war" @click="client.apply(item.id, false)">{{ x.applyDamage }} {{ item.total }}</button>
+                  <button type="button" class="gm-chip" @click="client.apply(item.id, true)">{{ x.applyHalf }} {{ Math.floor((item.total ?? 0) / 2) }}</button>
+                </template>
+              </span>
             </li>
           </ol>
         </div>
@@ -345,7 +419,7 @@
             </span>
           </div>
           <strong :class="['gm-display', 'gm-roll-title', rollClass(shownRoll)]">{{ rollHeadline(shownRoll) }}</strong>
-          <span class="gm-roll-sum">{{ shownRoll.label }} · <b>{{ shownRoll.total }}</b></span>
+          <span class="gm-roll-sum">{{ shownRoll.label }}<template v-if="shownRoll.targetName"> → {{ shownRoll.targetName }}</template> · <b>{{ shownRoll.total }}</b></span>
         </template>
       </div>
     </div>
@@ -354,8 +428,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { ABILITIES, MAX_PLAYERS, SKILL_IDS, abilityModifier, formatModifier, saveBonus, skillBonus, type CheckSource, type RollMode, type RollSource, type RollView } from "../../../../src/shared/tabletop.js";
-import { BUILT_IN_ADVENTURES, findAdventure, findHero } from "../../../../src/shared/tabletop-adventures.js";
+import { ABILITIES, MAX_PLAYERS, SKILL_IDS, abilityModifier, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
+import { BUILT_IN_ADVENTURES, findAdventure, findHero, findMonster } from "../../../../src/shared/tabletop-adventures.js";
 import GameMap from "./GameMap.vue";
 import type { GameClient } from "../../game/game-client.js";
 import { dndText } from "../../game/dnd-text.js";
@@ -387,6 +461,45 @@ const playerChecks = computed(() => role.value === "player"
 const scene = computed(() => adventure.value?.scenes[table.value?.scene ?? 0]);
 const sceneMap = computed(() => scene.value?.map);
 const hasLeft = computed(() => role.value === "gm" || (role.value === "player" && Boolean(myHero.value && mySeat.value)));
+// ---- Combat ----------------------------------------------------------------
+
+/** The token selected on the map: also what attacks aim at. */
+const selectedTokenId = ref<string | null>(null);
+watch(() => table.value?.scene, () => { selectedTokenId.value = null; });
+const combat = computed(() => table.value?.combat ?? null);
+const activeCombatant = computed(() => combat.value?.order.find(item => item.id === combat.value?.activeId) ?? null);
+const myCombatant = computed(() => combat.value?.order.find(item => item.kind === "hero" && item.seatKey === table.value?.you.key) ?? null);
+const myTurn = computed(() => role.value === "player" && combat.value?.phase === "running" && Boolean(activeCombatant.value) && activeCombatant.value?.seatKey === table.value?.you.key);
+const targetToken = computed(() => {
+  const token = table.value?.map?.tokens.find(candidate => candidate.id === selectedTokenId.value);
+  if (!token) return null;
+  if (role.value === "player" && token.seatKey === table.value?.you.key) return null;
+  if (role.value === "gm" && activeCombatant.value?.tokenId === token.id) return null;
+  return token;
+});
+const activeMonster = computed(() => {
+  const item = activeCombatant.value;
+  if (role.value !== "gm" || item?.kind !== "monster") return null;
+  const token = table.value?.map?.tokens.find(candidate => candidate.id === item.tokenId);
+  const sheet = findMonster(table.value?.adventureId, item.monsterId);
+  return token && sheet ? { token, sheet } : null;
+});
+function isOut(item: CombatantView): boolean {
+  if (item.kind === "hero") return table.value?.players.find(seat => seat.key === item.seatKey)?.dying?.state === "dead";
+  const token = table.value?.map?.tokens.find(candidate => candidate.id === item.tokenId);
+  return token?.condition === "down" || token?.hp === 0;
+}
+function portraitOf(item: CombatantView): string | undefined {
+  return item.kind === "hero" ? findHero(table.value?.adventureId, item.heroId)?.portrait : findMonster(table.value?.adventureId, item.monsterId)?.portrait;
+}
+function dyingText(dying: NonNullable<SeatView["dying"]>): string {
+  return dying.state === "dead" ? x.value.deadLabel : dying.state === "stable" ? x.value.stableLabel : x.value.dyingLabel;
+}
+function onEscape(event: KeyboardEvent): void {
+  if (!event.defaultPrevented) emit("close");
+}
+const dice = (expression: string) => expression.replace(/d/g, x.value === TEXT_RU ? "к" : "d");
+
 /** Hide the left column to give the scene more room. */
 const wide = ref(false);
 /** The monster the game master is placing on the map. */
@@ -429,8 +542,10 @@ function sendCheck(): void {
   props.client.requestCheck(source, Math.max(1, Math.min(40, Math.round(Number(checkDc.value) || 10))), checkMode.value, checkTargets.value);
 }
 
+const AIMED = new Set(["attack", "damage", "monsterAttack", "monsterDamage"]);
 function roll(source: RollSource): void {
-  props.client.roll(source, mode.value, role.value === "gm" && hiddenRoll.value);
+  const target = AIMED.has(source.type) ? targetToken.value?.id : undefined;
+  props.client.roll(source, mode.value, role.value === "gm" && hiddenRoll.value, undefined, target);
 }
 function rollCustom(): void {
   const expr = customExpr.value.trim();
@@ -468,6 +583,8 @@ function rollHeadline(item: RollView): string {
   if (item.natural === 20) return x.value.critSuccess;
   if (item.natural === 1) return x.value.critFail;
   if (item.success !== undefined) return item.success ? x.value.success : x.value.failure;
+  if (item.hit !== undefined) return item.hit ? x.value.hitText : x.value.missText;
+  if (item.deathSave) return item.deathSave === "revived" ? x.value.revived : item.deathSave === "success" ? x.value.success : x.value.failure;
   return String(item.total ?? "");
 }
 
@@ -535,6 +652,44 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-sheet { flex: 1 1 340px; max-width: 420px; }
 .gm-play { display: grid; grid-template-columns: minmax(260px, 330px) minmax(0, 1fr) minmax(240px, 300px); align-items: stretch; overflow: hidden; padding: 14px; gap: 14px; }
 .gm-play-nosheet { grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); }
+.gm-btn-war { min-height: 34px; font-size: 13px; border-color: #b84a3e; color: #f3c9c9; white-space: nowrap; flex: none; }
+.gm-btn-war:hover:not(:disabled) { background: #3a2222; }
+.gm-combat { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 14px; border: 1px solid #4a2a26; background: linear-gradient(180deg, #221816, #1a1b20); }
+.gm-combat-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.gm-combat-turn { flex: 1 1 auto; min-width: 0; }
+.gm-your-turn { font-size: 18px; animation: gm-pulse 1.4s ease-in-out infinite; }
+@keyframes gm-pulse { 50% { opacity: .55; } }
+.gm-combat-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: auto; }
+.gm-combat-actions .gm-btn { min-height: 34px; font-size: 13px; }
+.gm-order { margin: 0; padding: 2px 0 4px; list-style: none; display: flex; gap: 8px; overflow-x: auto; }
+.gm-order-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 64px; padding: 6px 2px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--gm-text); font: inherit; cursor: pointer; }
+.gm-order-item img, .gm-order-initial { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #d9b46c; display: grid; place-items: center; background: #2c4a3a; font-weight: 700; }
+.gm-order-foe img, .gm-order-foe .gm-order-initial { border-color: #b84a3e; background: #4a2020; }
+.gm-order-init { position: absolute; top: 2px; right: 6px; min-width: 20px; padding: 0 4px; border-radius: 999px; background: #0a0b0d; border: 1px solid var(--gm-line-2); font-size: 11px; font-weight: 700; }
+.gm-order-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--gm-muted); }
+.gm-order-on { border-color: #f3dcae; background: #3a3020; }
+.gm-order-on .gm-order-name { color: #f3dcae; }
+.gm-order-target { border-color: #e08a8a; border-style: dashed; }
+.gm-order-out { opacity: .4; }
+.gm-order-out img { filter: grayscale(1); }
+.gm-combat-attacks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding-top: 6px; border-top: 1px solid #3a2a28; }
+.gm-attack-pair { display: inline-flex; align-items: center; gap: 4px; }
+.gm-attack-pair .gm-chip { min-height: 30px; min-width: 0; font-size: 12px; }
+.gm-target-line { margin: 0; display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.gm-link-s { margin-left: 0; min-width: 28px; min-height: 28px; font-size: 16px; }
+.gm-log-target { color: #c9c6bf; font-size: 12px; }
+.gm-apply { display: inline-flex; gap: 4px; width: 100%; }
+.gm-apply .gm-chip { min-height: 30px; font-size: 12px; }
+.gm-chip.gm-chip-war { border-color: #b84a3e; color: #f3c9c9; background: #2a1a18; }
+.gm-dying { border-color: #6a2a26; background: #221616; }
+.gm-dying-stable { border-color: #3a5a3a; background: #182018; }
+.gm-dying-dead { border-color: #3a3c44; background: #141519; }
+.gm-pips { display: flex; align-items: center; gap: 6px; }
+.gm-pips span + .gm-pip { margin-left: 2px; }
+.gm-pips .gm-bad { margin-left: 10px; }
+.gm-pip { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--gm-line-2); }
+.gm-pip-ok { background: var(--gm-ok); border-color: var(--gm-ok); }
+.gm-pip-bad { background: var(--gm-bad); border-color: var(--gm-bad); }
 .gm-wide-toggle { margin-left: auto; min-height: 34px; font-size: 13px; white-space: nowrap; flex: none; }
 .gm-nowrap { white-space: nowrap; }
 .gm-play > .gm-sheet, .gm-play > .gm-side { max-width: none; min-height: 0; }
@@ -675,7 +830,7 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 @keyframes gm-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes gm-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .gm-roll, .gm-roll-die, .gm-roll-title, .gm-roll-sum, .gm-spinner, .gm-art img { animation: none; }
+  .gm-roll, .gm-roll-die, .gm-roll-title, .gm-roll-sum, .gm-spinner, .gm-art img, .gm-your-turn { animation: none; }
 }
 @media (max-width: 720px) {
   .gm-body { padding: 12px; }

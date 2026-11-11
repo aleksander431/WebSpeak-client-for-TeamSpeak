@@ -72,6 +72,8 @@ export interface MonsterSheet {
   maxHp: number;
   ac: number;
   speed: number;
+  /** Dexterity score, for initiative. */
+  dex: number;
   attacks: HeroAttack[];
   traits: string[];
   portrait?: string;
@@ -163,7 +165,11 @@ export type RollSource =
   | { type: "save"; ability: Ability }
   | { type: "attack"; index: number }
   | { type: "damage"; index: number; crit?: boolean }
-  | { type: "initiative" };
+  | { type: "initiative" }
+  | { type: "deathSave" }
+  /** Game master only: a monster token's attack or damage. */
+  | { type: "monsterAttack"; tokenId: string; index: number }
+  | { type: "monsterDamage"; tokenId: string; index: number; crit?: boolean };
 
 export type CheckSource = Extract<RollSource, { type: "ability" | "skill" | "save" }>;
 
@@ -189,6 +195,17 @@ export interface RollView {
   /** For a requested check: whether it met the (hidden) difficulty. */
   success?: boolean;
   dc?: number;
+  /** The token the roll was aimed at (attacks and damage). */
+  targetId?: string;
+  targetName?: string;
+  /** Attack rolls against a target: hit or miss (the target's armour class only for the game master). */
+  hit?: boolean;
+  targetAc?: number;
+  /** Damage rolls against a target: whether the game master has applied it. */
+  damage?: boolean;
+  applied?: boolean;
+  /** Death saving throws: the outcome. */
+  deathSave?: "success" | "failure" | "revived";
 }
 
 export interface CheckView {
@@ -210,6 +227,8 @@ export interface SeatView {
   ready: boolean;
   heroId: string | null;
   hp: number | null;
+  /** At 0 hit points: dying (rolling death saves), stable or dead. */
+  dying?: { successes: number; failures: number; state: "dying" | "stable" | "dead" };
 }
 
 export type TableRole = "gm" | "player" | "spectator";
@@ -233,6 +252,29 @@ export interface TokenView {
   hidden?: boolean;
 }
 
+export interface CombatantView {
+  id: string;
+  tokenId: string;
+  kind: "hero" | "monster";
+  name: string;
+  seatKey?: string;
+  heroId?: string;
+  monsterId?: string;
+  /** null until rolled. */
+  initiative: number | null;
+}
+
+export interface CombatView {
+  /** "initiative" while heroes still roll; then turns run. */
+  phase: "initiative" | "running";
+  round: number;
+  /** The combatant whose turn it is, or null when this viewer may not see it (a hidden monster). */
+  activeId: string | null;
+  /** True when the turn belongs to someone this viewer cannot see. */
+  activeHidden?: boolean;
+  order: CombatantView[];
+}
+
 export interface MapView {
   cols: number;
   rows: number;
@@ -253,6 +295,7 @@ export interface TableView {
   scene: number;
   /** The current scene's map, if it has one. */
   map: MapView | null;
+  combat: CombatView | null;
 }
 
 export type GameClientMessage =
@@ -264,7 +307,7 @@ export type GameClientMessage =
   | { type: "gameHero"; heroId: string | null }
   | { type: "gameStart" }
   | { type: "gameEnd" }
-  | { type: "gameRoll"; source: RollSource; mode: RollMode; hidden: boolean; checkId?: string }
+  | { type: "gameRoll"; source: RollSource; mode: RollMode; hidden: boolean; checkId?: string; targetId?: string }
   | { type: "gameHp"; key: string; hp: number }
   | { type: "gameCheck"; source: CheckSource; dc: number; mode: RollMode; targets: string[] }
   | { type: "gameCheckCancel"; checkId: string }
@@ -276,7 +319,13 @@ export type GameClientMessage =
   | { type: "gameTokenHide"; id: string; hidden: boolean }
   | { type: "gameFog"; cells: number[]; reveal: boolean }
   | { type: "gameFogAll"; reveal: boolean }
-  | { type: "gamePing"; x: number; y: number };
+  | { type: "gamePing"; x: number; y: number }
+  | { type: "gameCombatStart" }
+  | { type: "gameCombatEnd" }
+  | { type: "gameCombatNext" }
+  | { type: "gameCombatPrev" }
+  | { type: "gameCombatRollAll" }
+  | { type: "gameApply"; rollId: string; half: boolean };
 
 export type GameServerMessage =
   | { type: "gameState"; table: TableView | null }
@@ -307,6 +356,13 @@ export function parseRollSource(value: unknown): RollSource | null {
     case "damage": return Number.isInteger(value.index) && (value.index as number) >= 0 && (value.index as number) < 16
       ? { type: "damage", index: value.index as number, ...(value.crit === true ? { crit: true } : {}) } : null;
     case "initiative": return { type: "initiative" };
+    case "deathSave": return { type: "deathSave" };
+    case "monsterAttack":
+      return shortId(value.tokenId) && Number.isInteger(value.index) && (value.index as number) >= 0 && (value.index as number) < 16
+        ? { type: "monsterAttack", tokenId: value.tokenId, index: value.index as number } : null;
+    case "monsterDamage":
+      return shortId(value.tokenId) && Number.isInteger(value.index) && (value.index as number) >= 0 && (value.index as number) < 16
+        ? { type: "monsterDamage", tokenId: value.tokenId, index: value.index as number, ...(value.crit === true ? { crit: true } : {}) } : null;
     default: return null;
   }
 }
@@ -333,7 +389,12 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
       const source = parseRollSource(raw.source);
       if (!source || !isMode(raw.mode) || typeof raw.hidden !== "boolean") return invalid;
       if (raw.checkId !== undefined && !shortId(raw.checkId)) return invalid;
-      return { type: "gameRoll", source, mode: raw.mode, hidden: raw.hidden, ...(typeof raw.checkId === "string" ? { checkId: raw.checkId } : {}) };
+      if (raw.targetId !== undefined && !shortId(raw.targetId)) return invalid;
+      return {
+        type: "gameRoll", source, mode: raw.mode, hidden: raw.hidden,
+        ...(typeof raw.checkId === "string" ? { checkId: raw.checkId } : {}),
+        ...(typeof raw.targetId === "string" ? { targetId: raw.targetId } : {}),
+      };
     }
     case "gameHp":
       return seatKey(raw.key) && Number.isInteger(raw.hp) && (raw.hp as number) >= -100 && (raw.hp as number) <= 999 ? { type: "gameHp", key: raw.key, hp: raw.hp as number } : invalid;
@@ -357,6 +418,12 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
       return { type: "gameFog", cells: [...new Set(raw.cells as number[])], reveal: raw.reveal };
     case "gameFogAll": return typeof raw.reveal === "boolean" ? { type: "gameFogAll", reveal: raw.reveal } : invalid;
     case "gamePing": return point(raw.x) && point(raw.y) ? { type: "gamePing", x: raw.x as number, y: raw.y as number } : invalid;
+    case "gameCombatStart": return { type: "gameCombatStart" };
+    case "gameCombatEnd": return { type: "gameCombatEnd" };
+    case "gameCombatNext": return { type: "gameCombatNext" };
+    case "gameCombatPrev": return { type: "gameCombatPrev" };
+    case "gameCombatRollAll": return { type: "gameCombatRollAll" };
+    case "gameApply": return shortId(raw.rollId) && typeof raw.half === "boolean" ? { type: "gameApply", rollId: raw.rollId, half: raw.half } : invalid;
     default: return invalid;
   }
 }

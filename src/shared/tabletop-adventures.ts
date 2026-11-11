@@ -118,7 +118,7 @@ const grom: HeroSheet = {
 // SRD 5.1 creatures (names and texts in Russian).
 const MONSTERS: MonsterSheet[] = [
   {
-    id: "skeleton", name: "Скелет", cr: "1/4", maxHp: 13, ac: 13, speed: 30,
+    id: "skeleton", name: "Скелет", cr: "1/4", maxHp: 13, ac: 13, speed: 30, dex: 14,
     attacks: [
       { name: "Короткий меч", bonus: 4, damage: "1d6+2", note: "рукопашная, колющий" },
       { name: "Короткий лук", bonus: 4, damage: "1d6+2", note: "дальнобойная 80/320 фт, колющий" },
@@ -126,17 +126,17 @@ const MONSTERS: MonsterSheet[] = [
     traits: ["Уязвимость к дробящему урону", "Иммунитет к яду и истощению", "Тёмное зрение 60 фт"],
   },
   {
-    id: "zombie", name: "Зомби", cr: "1/4", maxHp: 22, ac: 8, speed: 20,
+    id: "zombie", name: "Зомби", cr: "1/4", maxHp: 22, ac: 8, speed: 20, dex: 6,
     attacks: [{ name: "Удар", bonus: 3, damage: "1d6+1", note: "рукопашная, дробящий" }],
     traits: ["Стойкость нежити: при падении до 0 хитов спасбросок Телосложения СЛ 5 + урон, при успехе остаётся 1 хит (не от излучения и не от крита)", "Иммунитет к яду", "Тёмное зрение 60 фт"],
   },
   {
-    id: "giant-rat", name: "Гигантская крыса", cr: "1/8", maxHp: 7, ac: 12, speed: 30,
+    id: "giant-rat", name: "Гигантская крыса", cr: "1/8", maxHp: 7, ac: 12, speed: 30, dex: 15,
     attacks: [{ name: "Укус", bonus: 4, damage: "1d4+2", note: "рукопашная, колющий" }],
     traits: ["Тактика стаи: преимущество, если союзник рядом с целью", "Острый нюх", "Тёмное зрение 60 фт"],
   },
   {
-    id: "ghoul", name: "Упырь", cr: "1", maxHp: 22, ac: 12, speed: 30,
+    id: "ghoul", name: "Упырь", cr: "1", maxHp: 22, ac: 12, speed: 30, dex: 15,
     attacks: [
       { name: "Укус", bonus: 2, damage: "2d6+2", note: "рукопашная, колющий" },
       { name: "Когти", bonus: 4, damage: "2d4+2", note: "рукопашная, рубящий; спасбросок Телосложения СЛ 10 или паралич на 1 минуту (не эльфы и не нежить)" },
@@ -144,17 +144,17 @@ const MONSTERS: MonsterSheet[] = [
     traits: ["Иммунитет к яду и очарованию", "Тёмное зрение 60 фт"],
   },
   {
-    id: "specter", name: "Призрак", cr: "1", maxHp: 22, ac: 12, speed: 50,
+    id: "specter", name: "Призрак", cr: "1", maxHp: 22, ac: 12, speed: 50, dex: 14,
     attacks: [{ name: "Вытягивание жизни", bonus: 4, damage: "3d6", note: "рукопашная, некротический; спасбросок Телосложения СЛ 10, иначе максимум хитов уменьшается на урон" }],
     traits: ["Летает и проходит сквозь стены", "Сопротивление обычному оружию, кислоте, огню, грому, молнии", "Чувствительность к солнцу: помеха на атаки и проверки Мудрости (Внимательность)"],
   },
   {
-    id: "cultist", name: "Культист", cr: "1/8", maxHp: 9, ac: 12, speed: 30,
+    id: "cultist", name: "Культист", cr: "1/8", maxHp: 9, ac: 12, speed: 30, dex: 12,
     attacks: [{ name: "Скимитар", bonus: 3, damage: "1d6+1", note: "рукопашная, рубящий" }],
     traits: ["Тёмная преданность: преимущество на спасброски от очарования и испуга"],
   },
   {
-    id: "cult-fanatic", name: "Фанатик культа", cr: "2", maxHp: 33, ac: 13, speed: 30,
+    id: "cult-fanatic", name: "Фанатик культа", cr: "2", maxHp: 33, ac: 13, speed: 30, dex: 14,
     attacks: [
       { name: "Кинжал", bonus: 4, damage: "1d4+2", note: "две атаки за ход, рукопашная или метательная 20/60 фт" },
       { name: "Священное пламя", bonus: null, damage: "1d8", note: "60 фт, спасбросок Ловкости СЛ 11, излучение" },

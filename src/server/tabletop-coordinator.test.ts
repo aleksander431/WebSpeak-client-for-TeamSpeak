@@ -210,3 +210,96 @@ test("maps: hero tokens at the entrance, fog hides monsters from players, scenes
   f.send(gm, { type: "gameEnd" });
   assert.equal(f.state("a").map, null);
 });
+
+test("combat: initiative, turns, attacks against a target, damage in one click, death saves", () => {
+  const f = fixture();
+  const gm = f.person("a", "Alex");
+  const sasha = f.person("b", "Sasha");
+  const kria = f.person("c", "Kria");
+  for (const who of [gm, sasha, kria]) f.send(who, { type: "gameOpen" });
+  f.send(gm, { type: "gameSeat", role: "gm" });
+  f.send(gm, { type: "gameAdventure", adventureId: "solgard-bell" });
+  for (const [who, hero] of [[sasha, "ilva"], [kria, "grom"]] as const) {
+    f.send(who, { type: "gameSeat", role: "player" });
+    f.send(who, { type: "gameHero", heroId: hero });
+    f.send(who, { type: "gameReady", ready: true });
+  }
+  f.send(gm, { type: "gameStart" });
+  f.send(gm, { type: "gameCombatStart" });
+  assert.equal(f.lastError("a"), "NO_MAP");
+  f.send(gm, { type: "gameScene", index: 2 });
+  f.send(gm, { type: "gameTokenAdd", monsterId: "skeleton", x: 11, y: 13 });
+  f.send(gm, { type: "gameTokenAdd", monsterId: "ghoul", x: 3, y: 3 });
+  const tokens = f.state("a").map!.tokens;
+  const ilva = tokens.find(token => token.heroId === "ilva")!;
+  const skeleton = tokens.find(token => token.monsterId === "skeleton")!;
+
+  f.send(sasha, { type: "gameCombatStart" });
+  assert.equal(f.lastError("b"), "GM_ONLY");
+  f.dice.push(15, 3);
+  f.send(gm, { type: "gameCombatStart" });
+  let combat = f.state("a").combat!;
+  assert.equal(combat.phase, "initiative");
+  assert.deepEqual(combat.order.map(item => [item.name, item.initiative]), [["Ильва Тенепряд", null], ["Гром Дарвин", null], ["Скелет 1", 17], ["Упырь 1", 5]]);
+  assert.equal(f.state("b").combat!.order.length, 3, "players do not see the ghoul in the dark");
+
+  f.dice.push(18);
+  f.send(sasha, { type: "gameRoll", source: { type: "initiative" }, mode: "normal", hidden: false });
+  f.dice.push(4);
+  f.send(gm, { type: "gameCombatRollAll" });
+  combat = f.state("a").combat!;
+  assert.equal(combat.phase, "running");
+  assert.equal(combat.round, 1);
+  assert.deepEqual(combat.order.map(item => [item.name, item.initiative]), [["Ильва Тенепряд", 21], ["Скелет 1", 17], ["Упырь 1", 5], ["Гром Дарвин", 5]], "ties go to the higher Dexterity");
+  assert.equal(combat.activeId, combat.order[0]!.id);
+
+  f.send(kria, { type: "gameCombatNext" });
+  assert.equal(f.lastError("c"), "NOT_YOUR_TURN");
+  f.send(sasha, { type: "gameCombatNext" });
+  assert.equal(f.state("b").combat!.activeId, combat.order[1]!.id, "the skeleton's turn");
+
+  f.send(sasha, { type: "gameRoll", source: { type: "monsterAttack", tokenId: skeleton.id, index: 0 }, mode: "normal", hidden: false });
+  assert.equal(f.lastError("b"), "GM_ONLY");
+  f.dice.push(12);
+  f.send(gm, { type: "gameRoll", source: { type: "monsterAttack", tokenId: skeleton.id, index: 0 }, mode: "normal", hidden: false, targetId: ilva.id });
+  let seen = f.state("b").rolls.at(-1)!;
+  assert.deepEqual([seen.heroName, seen.label, seen.total, seen.targetName, seen.hit, seen.targetAc], ["Скелет 1", "Атака: Короткий меч", 16, "Ильва Тенепряд", true, undefined]);
+  assert.equal(f.state("a").rolls.at(-1)!.targetAc, 14);
+
+  f.dice.push(5);
+  f.send(gm, { type: "gameRoll", source: { type: "monsterDamage", tokenId: skeleton.id, index: 0 }, mode: "normal", hidden: false, targetId: ilva.id });
+  const hit = f.state("a").rolls.at(-1)!;
+  assert.deepEqual([hit.total, hit.damage, hit.applied], [7, true, false]);
+  f.send(sasha, { type: "gameApply", rollId: hit.id, half: false });
+  assert.equal(f.lastError("b"), "GM_ONLY");
+  f.send(gm, { type: "gameApply", rollId: hit.id, half: false });
+  assert.equal(f.state("b").players.find(seat => seat.heroId === "ilva")!.hp, 3);
+  f.send(gm, { type: "gameApply", rollId: hit.id, half: false });
+  assert.equal(f.lastError("a"), "ALREADY_APPLIED");
+  f.dice.push(6);
+  f.send(gm, { type: "gameRoll", source: { type: "monsterDamage", tokenId: skeleton.id, index: 0 }, mode: "normal", hidden: false, targetId: ilva.id });
+  f.send(gm, { type: "gameApply", rollId: f.state("a").rolls.at(-1)!.id, half: false });
+  assert.deepEqual(f.state("b").players.find(seat => seat.heroId === "ilva")!.dying, { successes: 0, failures: 0, state: "dying" });
+
+  f.send(kria, { type: "gameRoll", source: { type: "deathSave" }, mode: "normal", hidden: false });
+  assert.equal(f.lastError("c"), "NOT_DYING");
+  f.dice.push(9);
+  f.send(sasha, { type: "gameRoll", source: { type: "deathSave" }, mode: "normal", hidden: false });
+  assert.equal(f.state("b").rolls.at(-1)!.deathSave, "failure");
+  f.dice.push(1);
+  f.send(sasha, { type: "gameRoll", source: { type: "deathSave" }, mode: "normal", hidden: false });
+  assert.equal(f.state("b").players.find(seat => seat.heroId === "ilva")!.dying!.state, "dead", "a natural 1 counts twice");
+
+  f.send(gm, { type: "gameCombatNext" });
+  assert.equal(f.state("b").combat!.activeId, null, "the ghoul acts unseen");
+  assert.equal(f.state("b").combat!.activeHidden, true);
+  f.send(gm, { type: "gameTokenHp", id: skeleton.id, hp: 0 });
+  f.send(gm, { type: "gameCombatNext" });
+  f.send(kria, { type: "gameCombatNext" });
+  combat = f.state("a").combat!;
+  assert.equal(combat.round, 2);
+  assert.equal(combat.order.find(item => item.id === combat.activeId)!.name, "Упырь 1", "the dead hero and the destroyed skeleton are skipped");
+
+  f.send(gm, { type: "gameScene", index: 3 });
+  assert.equal(f.state("a").combat, null, "a fight belongs to its map");
+});
