@@ -346,6 +346,8 @@ export interface TableView {
   music: MusicView | null;
   musicAuto: boolean;
   narration: NarrationView | null;
+  /** Players' own heroes at this table (built by the gateway). */
+  customHeroes: HeroSheet[];
   /** Adventures the game master may choose from. */
   adventures: Array<{ id: string; title: string; summary: string; level: number; length: string; custom: boolean }>;
 }
@@ -357,6 +359,8 @@ export type GameClientMessage =
   | { type: "gameReady"; ready: boolean }
   | { type: "gameAdventure"; adventureId: string }
   | { type: "gameHero"; heroId: string | null }
+  /** A player's own hero: the choices only, the gateway builds the sheet. */
+  | { type: "gameCustomHero"; choices: unknown }
   | { type: "gameStart" }
   | { type: "gameEnd" }
   | { type: "gameRoll"; source: RollSource; mode: RollMode; hidden: boolean; checkId?: string; targetId?: string }
@@ -445,6 +449,7 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
     case "gameReady": return typeof raw.ready === "boolean" ? { type: "gameReady", ready: raw.ready } : invalid;
     case "gameAdventure": return shortId(raw.adventureId) ? { type: "gameAdventure", adventureId: raw.adventureId } : invalid;
     case "gameHero": return raw.heroId === null || shortId(raw.heroId) ? { type: "gameHero", heroId: raw.heroId as string | null } : invalid;
+    case "gameCustomHero": return raw.choices && typeof raw.choices === "object" && !Array.isArray(raw.choices) ? { type: "gameCustomHero", choices: raw.choices } : invalid;
     case "gameRoll": {
       const source = parseRollSource(raw.source);
       if (!source || !isMode(raw.mode) || typeof raw.hidden !== "boolean") return invalid;

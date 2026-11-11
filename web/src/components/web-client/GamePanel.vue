@@ -87,11 +87,11 @@
           </label>
         </div>
 
-        <div v-if="adventure" class="gm-card">
+        <div v-if="baseAdventure" class="gm-card">
           <div class="gm-card-head"><h2>{{ role === 'player' ? x.heroPick : x.heroes }}</h2></div>
           <div class="gm-hero-grid">
             <button
-              v-for="hero in adventure.heroes"
+              v-for="hero in baseAdventure.heroes"
               :key="hero.id"
               type="button"
               :class="['gm-hero', { 'gm-hero-on': mySeat?.heroId === hero.id, 'gm-hero-taken': takenBy(hero.id) && mySeat?.heroId !== hero.id }]"
@@ -109,6 +109,42 @@
             </button>
           </div>
           <p v-if="previewHero" class="gm-story">{{ previewHero.story }}</p>
+        </div>
+
+        <div v-if="role === 'player' || customHeroes.length" class="gm-card gm-own-heroes">
+          <div class="gm-card-head">
+            <h2>{{ x.builder.myHeroes }}</h2>
+            <span class="gm-muted">{{ x.builder.myHeroesLead }}</span>
+          </div>
+          <div class="gm-hero-grid">
+            <div v-for="item in ownHeroes" :key="item.saved.id" :class="['gm-hero', 'gm-hero-own', { 'gm-hero-on': item.active }]">
+              <img v-if="item.sheet.portrait" class="gm-avatar gm-avatar-l gm-portrait" :src="item.sheet.portrait" alt="" /><span v-else class="gm-avatar gm-avatar-l">{{ initial(item.sheet.name) }}</span>
+              <span class="gm-hero-text">
+                <strong>{{ item.sheet.name }}</strong>
+                <span class="gm-muted">{{ item.sheet.race }} · {{ item.sheet.cls }}</span>
+                <span class="gm-hero-stats">{{ x.hp }} {{ item.sheet.maxHp }} · {{ x.ac }} {{ item.sheet.ac }}</span>
+                <span class="gm-own-actions">
+                  <span v-if="item.active" class="gm-tag">{{ x.builder.playing }}</span>
+                  <button v-else-if="role === 'player'" type="button" class="gm-act gm-act-gold" @click="playSaved(item.saved)">{{ x.builder.play }}</button>
+                  <button type="button" class="gm-act" @click="openBuilder(item.saved)">{{ x.builder.edit }}</button>
+                  <button type="button" class="gm-act" @click="removeSaved(item.saved.id)">{{ confirmRemove === item.saved.id ? x.builder.removeConfirm : x.builder.remove }}</button>
+                </span>
+              </span>
+            </div>
+            <div v-for="hero in othersCustom" :key="hero.id" class="gm-hero gm-hero-taken">
+              <img v-if="hero.portrait" class="gm-avatar gm-avatar-l gm-portrait" :src="hero.portrait" alt="" /><span v-else class="gm-avatar gm-avatar-l">{{ initial(hero.name) }}</span>
+              <span class="gm-hero-text">
+                <strong>{{ hero.name }}</strong>
+                <span class="gm-muted">{{ hero.race }} · {{ hero.cls }}</span>
+                <span class="gm-tag">{{ x.heroTaken }}: {{ takenBy(hero.id) }}</span>
+              </span>
+            </div>
+            <button v-if="role === 'player'" type="button" class="gm-hero gm-hero-new" @click="openBuilder(null)">
+              <span class="gm-avatar gm-avatar-l gm-avatar-plus" aria-hidden="true">+</span>
+              <span class="gm-hero-text"><strong>{{ x.builder.create }}</strong><span class="gm-muted">{{ x.builder.level1 }} · SRD 5.1</span></span>
+            </button>
+          </div>
+          <p v-if="myCustom?.story" class="gm-story">{{ myCustom.story }}</p>
         </div>
       </section>
 
@@ -466,6 +502,15 @@
         </template>
       </div>
     </div>
+    <HeroBuilder
+      v-if="builderOpen"
+      :x="x"
+      :initial="builderFor?.choices ?? null"
+      :can-play="role === 'player' && table?.phase === 'lobby'"
+      :die-prefix="diePrefix"
+      @cancel="builderOpen = false"
+      @save="onBuilderSave"
+    />
   </div>
 </template>
 
@@ -474,6 +519,9 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { ABILITIES, MAX_PLAYERS, SKILL_IDS, abilityModifier, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
 
 import GameMap from "./GameMap.vue";
+import HeroBuilder from "./HeroBuilder.vue";
+import { buildHero, heroPortraitUrl, type HeroChoices } from "../../../../src/shared/hero-builder.js";
+import { useHeroLibrary, type SavedHero } from "../../game/hero-library.js";
 import { GameMusicPlayer } from "../../game/music-player.js";
 import type { GameClient } from "../../game/game-client.js";
 import { dndText } from "../../game/dnd-text.js";
@@ -488,16 +536,25 @@ const table = computed(() => props.client.state.table);
 const role = computed(() => table.value?.you.role ?? "spectator");
 const roleLabel = computed(() => role.value === "gm" ? x.value.gm : role.value === "player" ? x.value.player : x.value.spectator);
 /** The chosen adventure, as the gateway sent it to this viewer. */
-const adventure = computed(() => {
+const baseAdventure = computed(() => {
   const data = props.client.adventureData.value;
   return data && data.id === table.value?.adventureId ? data : undefined;
 });
-const findHero = (_adventureId: string | null | undefined, heroId: string | null | undefined) => heroId ? adventure.value?.heroes.find(hero => hero.id === heroId) : undefined;
+/** Players' own heroes at this table (the gateway built them). */
+const customHeroes = computed(() => table.value?.customHeroes ?? []);
+/** The adventure with the table's own heroes added, for sheets, tokens and the party. */
+const adventure = computed(() => {
+  const data = baseAdventure.value;
+  if (!data || !customHeroes.value.length) return data;
+  return { ...data, heroes: [...data.heroes, ...customHeroes.value] };
+});
+const findHero = (_adventureId: string | null | undefined, heroId: string | null | undefined) => heroId
+  ? customHeroes.value.find(hero => hero.id === heroId) ?? baseAdventure.value?.heroes.find(hero => hero.id === heroId) : undefined;
 const findMonster = (_adventureId: string | null | undefined, monsterId: string | null | undefined) => monsterId ? adventure.value?.monsters.find(monster => monster.id === monsterId) : undefined;
 const mySeat = computed(() => table.value?.players.find(seat => seat.key === table.value?.you.key) ?? null);
 const myHero = computed(() => findHero(table.value?.adventureId, mySeat.value?.heroId));
 const ownReady = computed(() => role.value === "gm" ? Boolean(table.value?.gm?.ready) : Boolean(mySeat.value?.ready));
-const previewHero = computed(() => myHero.value ?? null);
+const previewHero = computed(() => (myHero.value && !myHero.value.id.startsWith("pc-") ? myHero.value : null));
 const canStart = computed(() => {
   const players = table.value?.players.filter(seat => seat.heroId) ?? [];
   return Boolean(table.value?.adventureId) && players.length > 0 && players.every(seat => seat.ready);
@@ -511,6 +568,50 @@ const playerChecks = computed(() => role.value === "player"
 const scene = computed(() => adventure.value?.scenes[table.value?.scene ?? 0]);
 const sceneMap = computed(() => scene.value?.map);
 const hasLeft = computed(() => role.value === "gm" || (role.value === "player" && Boolean(myHero.value && mySeat.value)));
+// ---- Own heroes (hero builder) ---------------------------------------------
+
+const library = useHeroLibrary();
+const builderOpen = ref(false);
+const builderFor = ref<SavedHero | null>(null);
+const confirmRemove = ref<string | null>(null);
+/** Which saved hero this browser last sent, to mark it as the one in play. */
+const playedSaved = ref<string | null>(null);
+const myCustom = computed(() => customHeroes.value.find(hero => hero.id === mySeat.value?.heroId) ?? null);
+const ownHeroes = computed(() => library.heroes.value.map(saved => {
+  const sheet = buildHero(saved.choices, saved.id, heroPortraitUrl);
+  const custom = myCustom.value;
+  const active = Boolean(custom && (playedSaved.value ? playedSaved.value === saved.id
+    : custom.name === sheet.name && custom.race === sheet.race && custom.cls === sheet.cls));
+  return { saved, sheet, active };
+}));
+const othersCustom = computed(() => customHeroes.value.filter(hero => hero.id !== mySeat.value?.heroId));
+watch(() => mySeat.value?.heroId, () => { if (!myCustom.value) playedSaved.value = null; });
+
+function openBuilder(saved: SavedHero | null): void {
+  builderFor.value = saved;
+  builderOpen.value = true;
+}
+function onBuilderSave(choices: HeroChoices, play: boolean): void {
+  const saved = library.save(choices, builderFor.value?.id);
+  builderOpen.value = false;
+  if (play || (myCustom.value && playedSaved.value === saved.id)) playSaved(saved);
+}
+function playSaved(saved: SavedHero): void {
+  playedSaved.value = saved.id;
+  props.client.customHero(saved.choices);
+}
+let removeTimer: ReturnType<typeof setTimeout> | undefined;
+function removeSaved(id: string): void {
+  if (confirmRemove.value !== id) {
+    confirmRemove.value = id;
+    clearTimeout(removeTimer);
+    removeTimer = setTimeout(() => { confirmRemove.value = null; }, 3000);
+    return;
+  }
+  confirmRemove.value = null;
+  library.remove(id);
+}
+
 // ---- Combat ----------------------------------------------------------------
 
 /** The token selected on the map: also what attacks aim at. */
@@ -830,6 +931,14 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-hero-taken { opacity: .5; }
 .gm-hero-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .gm-hero-stats { font-size: 12px; color: #c9c6bf; }
+.gm-hero-own { cursor: default; }
+.gm-own-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 2px; }
+.gm-hero-new { border-style: dashed; background: transparent; }
+.gm-hero-new:hover { border-color: var(--gm-gold); }
+.gm-avatar-plus { background: var(--gm-gold-soft); color: var(--gm-gold); font-size: 28px; font-weight: 300; }
+.gm-act { padding: 2px 0; border: 0; background: none; color: var(--gm-muted); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--gm-line-2); }
+.gm-act:hover { color: var(--gm-text); }
+.gm-act-gold { color: var(--gm-gold); font-weight: 600; }
 .gm-tag { align-self: flex-start; padding: 1px 8px; border-radius: 6px; background: var(--gm-gold-soft); color: var(--gm-gold); font-size: 11px; }
 .gm-story { margin: 0; font-family: "Cormorant Garamond", Georgia, serif; font-size: 18px; line-height: 1.4; color: #f1e6cf; }
 

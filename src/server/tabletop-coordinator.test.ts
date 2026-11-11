@@ -371,3 +371,50 @@ test("story: prepared encounters, lit areas, narration and music that follows sc
   f.send(gm, { type: "gameEnd" });
   assert.equal(f.state("b").music, null);
 });
+
+test("hero builder: a player's own hero is built by the gateway, plays like any other and leaves with its seat", () => {
+  const f = fixture([15, 12]);
+  const gm = f.person("a", "Alex");
+  const sasha = f.person("b", "Sasha");
+  for (const who of [gm, sasha]) f.send(who, { type: "gameOpen" });
+  f.send(gm, { type: "gameSeat", role: "gm" });
+  f.send(sasha, { type: "gameSeat", role: "player" });
+  const choices = {
+    name: "Вера", race: "human", cls: "ranger", method: "array",
+    abilities: { str: 12, dex: 15, con: 14, int: 8, wis: 13, cha: 10 },
+    classSkills: ["perception", "stealth", "survival"], backgroundSkills: ["athletics", "nature"], portrait: "human-f-fighter",
+  };
+  f.send(gm, { type: "gameCustomHero", choices });
+  assert.equal(f.lastError("a"), "PLAYERS_ONLY");
+  f.send(sasha, { type: "gameCustomHero", choices: { ...choices, name: "" } });
+  assert.equal(f.lastError("b"), "HERO_NAME");
+  f.send(sasha, { type: "gameCustomHero", choices: { ...choices, abilities: { ...choices.abilities, str: 18 } } });
+  assert.equal(f.lastError("b"), "HERO_ABILITIES", "numbers are checked, not trusted");
+  f.send(sasha, { type: "gameCustomHero", choices });
+  let view = f.state("a");
+  const hero = view.customHeroes[0]!;
+  assert.equal(hero.name, "Вера");
+  assert.match(hero.id, /^pc-/);
+  assert.equal(hero.portrait, "/dnd/portraits/human-f-fighter.webp");
+  assert.equal(view.players[0]!.heroId, hero.id);
+  assert.equal(view.players[0]!.hp, hero.maxHp);
+
+  f.send(gm, { type: "gameAdventure", adventureId: "solgard-bell" });
+  assert.equal(f.state("b").players[0]!.heroId, hero.id, "an own hero stays when the adventure changes");
+  f.send(sasha, { type: "gameReady", ready: true });
+  f.send(gm, { type: "gameStart" });
+  assert.equal(f.state("b").phase, "playing");
+  f.send(sasha, { type: "gameRoll", source: { type: "skill", skill: "stealth" }, mode: "normal", hidden: false });
+  view = f.state("b");
+  assert.equal(view.rolls.at(-1)!.total, 15 + 5, "Dex +3 (15+1 human) and proficiency +2");
+  f.send(sasha, { type: "gameCustomHero", choices });
+  assert.equal(f.lastError("b"), "GAME_RUNNING");
+  f.send(gm, { type: "gameEnd" });
+
+  f.send(sasha, { type: "gameHero", heroId: "ilva" });
+  view = f.state("a");
+  assert.deepEqual(view.customHeroes, [], "picking an adventure hero drops the own one");
+  f.send(sasha, { type: "gameCustomHero", choices });
+  f.send(sasha, { type: "gameSeat", role: "spectator" });
+  assert.deepEqual(f.state("a").customHeroes, [], "and so does leaving the seat");
+});

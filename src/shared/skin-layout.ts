@@ -438,6 +438,7 @@ const PUBLIC_PART_IDS = new Set<string>([
   "voice.game.music",
   "voice.game.story",
   "voice.game.narration",
+  "voice.game.builder",
   "voice.workspace",
 ]);
 

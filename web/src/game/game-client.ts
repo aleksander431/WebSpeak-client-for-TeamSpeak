@@ -1,4 +1,5 @@
 import { reactive, shallowRef } from "vue";
+import type { HeroChoices } from "../../../src/shared/hero-builder.js";
 import type { AdventureSummary, CheckSource, GameClientMessage, GameServerMessage, RollMode, RollSource, RollView, TableRole, TableView } from "../../../src/shared/tabletop.js";
 
 export interface GameTransport {
@@ -80,6 +81,8 @@ export class GameClient {
   ready(ready: boolean): void { this.send({ type: "gameReady", ready }); }
   adventure(adventureId: string): void { this.send({ type: "gameAdventure", adventureId }); }
   hero(heroId: string | null): void { this.send({ type: "gameHero", heroId }); }
+  /** A hero of the player's own: the gateway checks the choices and builds the sheet. */
+  customHero(choices: HeroChoices): void { this.send({ type: "gameCustomHero", choices }); }
   start(): void { this.send({ type: "gameStart" }); }
   end(): void { this.send({ type: "gameEnd" }); }
   roll(source: RollSource, mode: RollMode = "normal", hidden = false, checkId?: string, targetId?: string): void {
