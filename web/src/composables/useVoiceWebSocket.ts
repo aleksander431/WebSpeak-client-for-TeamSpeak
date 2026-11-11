@@ -18,6 +18,7 @@ export type { ScreenShareOutputSettings, ScreenShareCaptureStats, ScreenSharePee
 import { parseServerMessage } from "../../../src/shared/server-messages.js";
 import { parseChatSessionAccess, type ChatSessionAccess } from "../../../src/shared/chat-storage.js";
 import { parseWhiteboardServerMessage, type WhiteboardClientMessage, type WhiteboardServerMessage } from "../../../src/shared/whiteboard.js";
+import { parseGameServerMessage, type GameClientMessage, type GameServerMessage } from "../../../src/shared/tabletop.js";
 import type { ChatMessage } from "../../../src/shared/voice-models.js";
 import { CHAT_COMMAND_MAX_LENGTH, type ClientCommandPayloads, type ClientCommandType } from "../../../src/shared/client-commands.js";
 export type { ScreenShareStreamDescription as ScreenShareStream, ScreenShareViewerDescription as ScreenShareViewer, ScreenSharePeerSignal as ScreenShareSignal } from "../../../src/shared/screen-share.js";
@@ -321,6 +322,18 @@ export function useVoiceWebSocket() {
     subscribe(listener: (message: WhiteboardServerMessage) => void): () => void {
       whiteboardListeners.add(listener);
       return () => { whiteboardListeners.delete(listener); };
+    },
+  };
+  // Channel games share the voice socket the same way.
+  const gameListeners = new Set<(message: GameServerMessage) => void>();
+  const games = {
+    isOpen: () => ws.value?.readyState === WebSocket.OPEN && state.connected,
+    send(message: GameClientMessage) {
+      if (ws.value?.readyState === WebSocket.OPEN) ws.value.send(JSON.stringify(message));
+    },
+    subscribe(listener: (message: GameServerMessage) => void): () => void {
+      gameListeners.add(listener);
+      return () => { gameListeners.delete(listener); };
     },
   };
   const inputDevices = reactive<AudioInputDevice[]>([]);
@@ -1203,6 +1216,11 @@ export function useVoiceWebSocket() {
       if (message) for (const listener of whiteboardListeners) listener(message);
       return;
     }
+    if (typeof rawType === "string" && rawType.startsWith("game")) {
+      const message = parseGameServerMessage(raw);
+      if (message) for (const listener of gameListeners) listener(message);
+      return;
+    }
     const msg = parseServerMessage(raw);
     if (!msg) return;
     // Both controllers see every sharing message; each keeps only its own streams.
@@ -1700,6 +1718,7 @@ export function useVoiceWebSocket() {
     ...screenShare.api,
     ...cameraApi,
     whiteboard,
+    games,
     chatAccess,
     ws,
     state,

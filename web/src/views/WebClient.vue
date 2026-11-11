@@ -711,6 +711,17 @@
                       name="whiteboard"
                       :size="14"
                     /> <span>{{ t("whiteboard") }}</span></button
+                  ><button
+                    v-if="voiceState.connected && !isMobileViewport"
+                    type="button"
+                    class="whiteboard-open-button"
+                    data-ws-part="voice.game-open"
+                    :title="t('gameOpenHint')"
+                    @click="openGame"
+                    ><Icon
+                      name="dice"
+                      :size="14"
+                    /> <span>{{ t("game") }}</span></button
                   ><span class="section-counter">{{
                   t("onlineShort", { count: currentMembers.length })
                 }}</span></span></div
@@ -998,6 +1009,14 @@
       />
     </Teleport>
 
+    <GamePanel
+      v-if="gameClient.state.open"
+      :client="gameClient"
+      :channel-name="currentChannelName"
+      :language="language"
+      @close="closeGame"
+    />
+
     <ScreenShareSettingsDialog
       v-if="screenShareSettingsOpen"
       :model="screenShareControls"
@@ -1125,6 +1144,8 @@ import VoiceServerBanner from "../components/web-client/VoiceServerBanner.vue";
 import VisitorCount from "../components/web-client/VisitorCount.vue";
 import ScreenShareSettingsDialog from "../components/web-client/ScreenShareSettingsDialog.vue";
 import WhiteboardPanel from "../components/web-client/WhiteboardPanel.vue";
+import GamePanel from "../components/web-client/GamePanel.vue";
+import { GameClient } from "../game/game-client.js";
 import { WhiteboardClient } from "../whiteboard/whiteboard-client.js";
 import { useDesktopBridge } from "../composables/useDesktopBridge.js";
 import { WEB_CLIENT_T, pageLanguage } from "../composables/useWebClientT.js";
@@ -1186,6 +1207,7 @@ import { combineTeamSpeakTarget, DEFAULT_TEAM_SPEAK_PORT, isValidTeamSpeakPort, 
 const {
   state: voiceState,
   whiteboard: whiteboardTransport,
+  games: gameTransport,
   serverInfo: voiceServerInfo,
   sessionEpoch,
   memberConversationKey,
@@ -1375,6 +1397,20 @@ onUnmounted(() => {
   closeWhiteboardWindow();
 });
 onUnmounted(stopWhiteboardMessages);
+// The channel's game table (D&D) shares the voice socket like the whiteboard.
+const gameClient = new GameClient(gameTransport);
+watch(() => voiceState.connected, connected => {
+  gameClient.setConnected(connected);
+  if (!connected && !voiceState.reconnecting) gameClient.close();
+});
+// The table is made for desktop screens; phones do not offer it.
+function openGame() {
+  if (voiceState.connected && !isMobileViewport.value) gameClient.open();
+}
+function closeGame() {
+  gameClient.close();
+}
+onUnmounted(() => gameClient.dispose());
 const { panelOpen: performancePanelOpen } = performance;
 
 const query = new URLSearchParams(location.search);
@@ -1408,6 +1444,7 @@ const localPersistenceAvailable = isLocalPersistenceAvailable();
 const identityReady = ref(!localPersistenceAvailable);
 const mobileSection = ref<"channels" | "chat" | "voice" | "more">("channels");
 const isMobileViewport = ref(window.matchMedia("(max-width: 740px)").matches);
+watch(isMobileViewport, mobile => { if (mobile) gameClient.close(); });
 let mobileAwayController: MobileAwayController | undefined;
 let backgroundRecovery: BackgroundRecoveryController | undefined;
 let callMediaSession: CallMediaSessionController | undefined;
@@ -2183,6 +2220,7 @@ const skinPluginActions = {
   },
   "voice.stopScreenShare": () => { if (screenShareActive.value) stopScreenShare(); },
   "voice.openWhiteboard": () => { if (voiceState.connected) openWhiteboard(); },
+  "voice.openGame": () => openGame(),
   "voice.toggleCamera": () => toggleCamera(),
   "voice.joinScreenShare": (args: Record<string, string | number | boolean>) => {
     if (!voiceState.connected || typeof args.streamId !== "string") return;

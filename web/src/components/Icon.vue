@@ -130,6 +130,10 @@
       <path d="m5.8 18.55-2.1 2.1 3.75-.45m10.75-1.65 2.1 2.1-3.75-.45" fill="#f2a53d" stroke="#f2a53d" stroke-width="1.5" />
     </template>
     <path v-else-if="name === 'check'" d="m5 12 4 4L19 6" />
+    <template v-else-if="name === 'dice'">
+      <path d="M12 2.5 20.5 7.3v9.4L12 21.5l-8.5-4.8V7.3L12 2.5Z" />
+      <path d="M12 8.2 16 15H8l4-6.8Z" />
+    </template>
     <template v-else-if="name === 'whiteboard'">
       <rect x="3" y="4" width="18" height="13" rx="1.5" />
       <path d="M8 21l2-4m6 4-2-4M7 13l3-3 2 2 4-4" />

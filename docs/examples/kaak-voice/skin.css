@@ -4752,7 +4752,8 @@
 }
 
 /* Whiteboard entry next to the invite link (same look). */
-[data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"] {
+[data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"],
+[data-ws-plugin-part="kaak-workspace.voice-stage-game"] {
   display: grid;
   flex: 0 0 34px;
   place-items: center;
@@ -4767,7 +4768,8 @@
   transition: color .16s ease, background-color .16s ease, border-color .16s ease;
 }
 
-[data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"] .voice-stage-action-icon {
+[data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"] .voice-stage-action-icon,
+[data-ws-plugin-part="kaak-workspace.voice-stage-game"] .voice-stage-action-icon {
   display: block;
   flex: 0 0 18px;
   width: 18px;
@@ -4776,10 +4778,17 @@
 }
 
 [data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"]:hover,
-[data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"]:focus-visible {
+[data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"]:focus-visible,
+[data-ws-plugin-part="kaak-workspace.voice-stage-game"]:hover,
+[data-ws-plugin-part="kaak-workspace.voice-stage-game"]:focus-visible {
   color: var(--skin-kaak-text);
   border-color: #5a7e35;
   background: #33363b;
+}
+
+/* The game table is desktop-only. */
+@media (max-width: 740px) {
+  [data-ws-plugin-part="kaak-workspace.voice-stage-game"] { display: none; }
 }
 
 /* Whisper: the host hold-to-whisper strip, shown once whisper targets are chosen

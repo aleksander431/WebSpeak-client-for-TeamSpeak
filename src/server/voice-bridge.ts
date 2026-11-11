@@ -4,6 +4,8 @@ import { ScreenShareCoordinator } from "./screen-share-coordinator.js";
 import { WhiteboardCoordinator, whiteboardBoardKey } from "./whiteboard-coordinator.js";
 import { MemoryWhiteboardStore, type WhiteboardStore } from "./whiteboard-store.js";
 import { parseWhiteboardClientMessage } from "../shared/whiteboard.js";
+import { parseGameClientMessage } from "../shared/tabletop.js";
+import { TabletopCoordinator, tabletopTableKey, type TableParticipant } from "./tabletop-coordinator.js";
 import { handleCommand } from "./voice-commands.js";
 import { createAudioFlowStats, snapshotAudioStats, type AudioFlowStats } from "./audio-stats.js";
 export type { AudioFlowStats } from "./audio-stats.js";
@@ -159,6 +161,7 @@ export class VoiceBridge {
   private readonly ownAvatarCopies = new Map<string, Uint8Array>();
   private readonly screenShares: ScreenShareCoordinator;
   private readonly whiteboards: WhiteboardCoordinator;
+  private readonly tabletops: TabletopCoordinator;
   private readonly identityLeases = new IdentityLeaseStore();
   private wss: WebSocketServer | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -213,6 +216,17 @@ export class VoiceBridge {
         }
       },
       logger: { warn: (message, details) => this.logger.warn(details ?? {}, message) },
+    });
+    this.tabletops = new TabletopCoordinator({
+      send: (entryId, message) => {
+        const entry = this.entries.get(entryId);
+        if (entry?.ws.readyState !== WebSocket.OPEN) return;
+        try {
+          entry.ws.send(JSON.stringify(message));
+        } catch (error: unknown) {
+          this.logger.warn({ entryId, messageType: message.type, errorName: error instanceof Error ? error.name : "unknown" }, "Could not send game message to browser");
+        }
+      },
     });
   }
 
@@ -604,6 +618,11 @@ export class VoiceBridge {
         }
       };
 
+      // Game seats follow the person: unique id when known, else the nickname.
+      const tableParticipant = (): Omit<TableParticipant, "tableKey"> => {
+        const uid = tsClient.getOwnUid();
+        return { entryId, nickname: entry!.nickname, seatKey: uid ? `uid:${uid}` : `nick:${entry!.nickname.toLowerCase()}` };
+      };
       const events = new SessionEventCoordinator({
         state: entry, client: tsClient, nickname, requestedChannel: channelName,
         isCurrent: () => this.entries.get(entryId) === entry && session.state !== "disconnecting" && session.state !== "idle" && session.state !== "failed",
@@ -625,6 +644,7 @@ export class VoiceBridge {
           this.screenShares.onClientMove(entry!, id, channelId);
           if (id === tsClient.getClientId()) {
             this.whiteboards.onBoardChanged({ entryId, nickname: entry!.nickname, boardKey: whiteboardBoardKey(teamSpeakTargetKey(entry!.target), channelId) });
+            this.tabletops.onTableChanged({ ...tableParticipant(), tableKey: tabletopTableKey(teamSpeakTargetKey(entry!.target), channelId) });
           }
         },
         onNotification: notification => this.screenShares.handleNotification(entry!, notification),
@@ -679,6 +699,7 @@ export class VoiceBridge {
           if (session.state !== "connected") return;
           this.screenShares.removePeer(entryId);
           this.whiteboards.removePeer(entryId);
+          this.tabletops.removePeer(entryId);
           resetDirectoryForReconnect();
           sendJson({ type: "disconnected", recoverable: isRecoverable(normalized) });
           scheduleReconnect(normalized);
@@ -751,6 +772,22 @@ export class VoiceBridge {
             nickname: entry!.nickname,
             boardKey: whiteboardBoardKey(teamSpeakTargetKey(entry!.target), tsClient.getChannelId()),
           }, whiteboardMessage);
+          return;
+        }
+        const gameMessage = parseGameClientMessage(rawMessage);
+        if (gameMessage) {
+          const rejectGame = (code: string) => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "gameError", code }));
+          };
+          if ("error" in gameMessage) {
+            rejectGame(gameMessage.error.code);
+            return;
+          }
+          if (!tsReady || session.state !== "connected") {
+            rejectGame("SESSION_NOT_READY");
+            return;
+          }
+          this.tabletops.handleMessage({ ...tableParticipant(), tableKey: tabletopTableKey(teamSpeakTargetKey(entry!.target), tsClient.getChannelId()) }, gameMessage);
           return;
         }
         const command = parseClientCommand(rawMessage);
@@ -1074,6 +1111,7 @@ export class VoiceBridge {
     if (this.chatTokens.get(entry.chatToken) === entry) this.chatTokens.delete(entry.chatToken);
     this.screenShares.removePeer(entry.id);
     this.whiteboards.removePeer(entry.id);
+    this.tabletops.removePeer(entry.id);
     if (this.entries.get(entry.id) === entry) this.entries.delete(entry.id);
     entry.events?.close();
     entry.events = null;

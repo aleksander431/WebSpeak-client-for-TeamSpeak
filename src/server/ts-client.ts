@@ -527,6 +527,11 @@ export class TSClient extends EventEmitter {
     }
   }
 
+  /** This client's unique id once its own entry is in the live view, else "". */
+  getOwnUid(): string {
+    try { return this.connected ? this.client?.ownAvatarMarker()?.uid ?? "" : ""; } catch { return ""; }
+  }
+
   /** Delete this client's TeamSpeak avatar. Resolves with its unique id, or null when the session changed. */
   async removeOwnAvatar(): Promise<{ uid: string } | null> {
     const client = this.client;
