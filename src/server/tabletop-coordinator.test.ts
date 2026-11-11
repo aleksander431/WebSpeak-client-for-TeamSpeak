@@ -138,3 +138,75 @@ test("seats survive reconnects and follow the person between channels", () => {
   f.coordinator.onTableChanged({ ...again, tableKey: "ts#1" });
   assert.equal(f.state("z").gm?.online, true);
 });
+
+test("maps: hero tokens at the entrance, fog hides monsters from players, scenes keep their state", () => {
+  const f = fixture();
+  const gm = f.person("a", "Alex");
+  const sasha = f.person("b", "Sasha");
+  const kria = f.person("c", "Kria");
+  for (const who of [gm, sasha, kria]) f.send(who, { type: "gameOpen" });
+  f.send(gm, { type: "gameSeat", role: "gm" });
+  f.send(gm, { type: "gameAdventure", adventureId: "solgard-bell" });
+  for (const [who, hero] of [[sasha, "ilva"], [kria, "grom"]] as const) {
+    f.send(who, { type: "gameSeat", role: "player" });
+    f.send(who, { type: "gameHero", heroId: hero });
+    f.send(who, { type: "gameReady", ready: true });
+  }
+  f.send(gm, { type: "gameStart" });
+  assert.equal(f.state("b").map, null, "the tavern is a story scene");
+  f.send(gm, { type: "gameTokenAdd", monsterId: "skeleton", x: 1, y: 1 });
+  assert.equal(f.lastError("a"), "NO_MAP");
+
+  f.send(sasha, { type: "gameScene", index: 2 });
+  assert.equal(f.lastError("b"), "GM_ONLY");
+  f.send(gm, { type: "gameScene", index: 2 });
+  const map = f.state("b").map!;
+  assert.equal(map.cols * map.rows, map.fog.length);
+  const heroes = map.tokens.filter(token => token.kind === "hero");
+  assert.deepEqual(heroes.map(token => [token.heroId, token.x, token.y]), [["ilva", 11, 15], ["grom", 12, 15]]);
+  assert.equal(map.fog[13 * map.cols + 11], "1", "light around the heroes");
+  assert.equal(map.fog[2 * map.cols + 2], "0");
+
+  const ilva = heroes.find(token => token.heroId === "ilva")!;
+  const grom = heroes.find(token => token.heroId === "grom")!;
+  f.send(sasha, { type: "gameTokenMove", id: ilva.id, x: 2, y: 2 });
+  assert.equal(f.lastError("b"), "IN_FOG");
+  f.send(sasha, { type: "gameTokenMove", id: grom.id, x: 12, y: 14 });
+  assert.equal(f.lastError("b"), "NOT_YOUR_TOKEN");
+  f.send(sasha, { type: "gameTokenMove", id: ilva.id, x: 12, y: 15 });
+  assert.equal(f.lastError("b"), "CELL_TAKEN");
+  f.send(sasha, { type: "gameTokenMove", id: ilva.id, x: 11, y: 14 });
+  assert.deepEqual(f.state("c").map!.tokens.find(token => token.id === ilva.id)!.y, 14);
+
+  f.send(gm, { type: "gameTokenAdd", monsterId: "skeleton", x: 3, y: 3 });
+  f.send(gm, { type: "gameTokenAdd", monsterId: "skeleton", x: 4, y: 3 });
+  const gmTokens = f.state("a").map!.tokens.filter(token => token.kind === "monster");
+  assert.deepEqual(gmTokens.map(token => [token.name, token.hp]), [["Скелет 1", 13], ["Скелет 2", 13]]);
+  assert.equal(f.state("b").map!.tokens.filter(token => token.kind === "monster").length, 0, "under fog");
+
+  f.send(gm, { type: "gameFog", cells: [3 * 24 + 3, 3 * 24 + 4], reveal: true });
+  let seen = f.state("b").map!.tokens.filter(token => token.kind === "monster");
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0]!.hp, undefined, "players never see monster hit points");
+  f.send(gm, { type: "gameTokenHp", id: gmTokens[0]!.id, hp: 6 });
+  f.send(gm, { type: "gameTokenHide", id: gmTokens[1]!.id, hidden: true });
+  seen = f.state("b").map!.tokens.filter(token => token.kind === "monster");
+  assert.deepEqual(seen.map(token => [token.name, token.condition]), [["Скелет 1", "bloodied"]]);
+  assert.equal(f.state("a").map!.tokens.find(token => token.id === gmTokens[1]!.id)!.hidden, true);
+
+  f.send(sasha, { type: "gamePing", x: 5.5, y: 3.5 });
+  const ping = f.sent.filter(item => item.entryId === "c" && item.message.type === "gamePinged").at(-1)!.message;
+  assert.deepEqual(ping, { type: "gamePinged", by: "Ильва Тенепряд", x: 5.5, y: 3.5, gm: false });
+
+  f.send(gm, { type: "gameScene", index: 3 });
+  assert.equal(f.state("b").map!.tokens.filter(token => token.kind === "monster").length, 0, "a fresh crypt");
+  f.send(gm, { type: "gameScene", index: 2 });
+  assert.equal(f.state("a").map!.tokens.filter(token => token.kind === "monster").length, 2, "the hall as we left it");
+  f.send(gm, { type: "gameFogAll", reveal: false });
+  assert.equal(f.state("b").map!.fog.includes("1"), false);
+
+  f.send(kria, { type: "gameSeat", role: "spectator" });
+  assert.equal(f.state("a").map!.tokens.some(token => token.heroId === "grom"), false, "a hero leaves with its player");
+  f.send(gm, { type: "gameEnd" });
+  assert.equal(f.state("a").map, null);
+});

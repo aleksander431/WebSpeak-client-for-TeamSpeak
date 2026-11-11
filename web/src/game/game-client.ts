@@ -20,6 +20,9 @@ export class GameClient {
   });
   /** The newest roll, for the dice animation; replaced (not mutated) per roll. */
   readonly lastRoll = shallowRef<RollView | null>(null);
+  /** The newest ping on the map (a fresh object per ping). */
+  readonly lastPing = shallowRef<{ id: number; by: string; x: number; y: number; gm: boolean } | null>(null);
+  private pingCount = 0;
   private readonly unsubscribe: () => void;
 
   constructor(private readonly transport: GameTransport) {
@@ -36,6 +39,10 @@ export class GameClient {
       if (this.state.open) this.lastRoll.value = message.roll;
       return;
     }
+    if (message.type === "gamePinged") {
+      if (this.state.open) this.lastPing.value = { id: ++this.pingCount, by: message.by, x: message.x, y: message.y, gm: message.gm };
+      return;
+    }
     this.state.error = message.code;
   }
 
@@ -50,6 +57,7 @@ export class GameClient {
     this.state.open = false;
     this.state.table = null;
     this.lastRoll.value = null;
+    this.lastPing.value = null;
   }
 
   /** After a reconnect the gateway forgot the subscription: open again. */
@@ -75,6 +83,15 @@ export class GameClient {
     this.send({ type: "gameCheck", source, dc, mode, targets });
   }
   cancelCheck(checkId: string): void { this.send({ type: "gameCheckCancel", checkId }); }
+  scene(index: number): void { this.send({ type: "gameScene", index }); }
+  addToken(monsterId: string, x: number, y: number): void { this.send({ type: "gameTokenAdd", monsterId, x, y }); }
+  moveToken(id: string, x: number, y: number): void { this.send({ type: "gameTokenMove", id, x, y }); }
+  removeToken(id: string): void { this.send({ type: "gameTokenRemove", id }); }
+  setTokenHp(id: string, hp: number): void { this.send({ type: "gameTokenHp", id, hp: Math.max(0, Math.round(hp)) }); }
+  hideToken(id: string, hidden: boolean): void { this.send({ type: "gameTokenHide", id, hidden }); }
+  fog(cells: number[], reveal: boolean): void { if (cells.length) this.send({ type: "gameFog", cells, reveal }); }
+  fogAll(reveal: boolean): void { this.send({ type: "gameFogAll", reveal }); }
+  ping(x: number, y: number): void { this.send({ type: "gamePing", x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }); }
 
   dispose(): void {
     this.close();

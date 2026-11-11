@@ -1,4 +1,4 @@
-import type { AdventureSummary, HeroSheet } from "./tabletop.js";
+import type { AdventureSummary, HeroSheet, MonsterSheet } from "./tabletop.js";
 
 /*
  * Built-in adventures. Rules content follows the SRD 5.1 (CC BY 4.0); the
@@ -114,6 +114,58 @@ const grom: HeroSheet = {
   story: "Строил своды под Сольгардом сорок лет назад и помнит, что колокол тогда был целым.",
 };
 
+
+// SRD 5.1 creatures (names and texts in Russian).
+const MONSTERS: MonsterSheet[] = [
+  {
+    id: "skeleton", name: "Скелет", cr: "1/4", maxHp: 13, ac: 13, speed: 30,
+    attacks: [
+      { name: "Короткий меч", bonus: 4, damage: "1d6+2", note: "рукопашная, колющий" },
+      { name: "Короткий лук", bonus: 4, damage: "1d6+2", note: "дальнобойная 80/320 фт, колющий" },
+    ],
+    traits: ["Уязвимость к дробящему урону", "Иммунитет к яду и истощению", "Тёмное зрение 60 фт"],
+  },
+  {
+    id: "zombie", name: "Зомби", cr: "1/4", maxHp: 22, ac: 8, speed: 20,
+    attacks: [{ name: "Удар", bonus: 3, damage: "1d6+1", note: "рукопашная, дробящий" }],
+    traits: ["Стойкость нежити: при падении до 0 хитов спасбросок Телосложения СЛ 5 + урон, при успехе остаётся 1 хит (не от излучения и не от крита)", "Иммунитет к яду", "Тёмное зрение 60 фт"],
+  },
+  {
+    id: "giant-rat", name: "Гигантская крыса", cr: "1/8", maxHp: 7, ac: 12, speed: 30,
+    attacks: [{ name: "Укус", bonus: 4, damage: "1d4+2", note: "рукопашная, колющий" }],
+    traits: ["Тактика стаи: преимущество, если союзник рядом с целью", "Острый нюх", "Тёмное зрение 60 фт"],
+  },
+  {
+    id: "ghoul", name: "Упырь", cr: "1", maxHp: 22, ac: 12, speed: 30,
+    attacks: [
+      { name: "Укус", bonus: 2, damage: "2d6+2", note: "рукопашная, колющий" },
+      { name: "Когти", bonus: 4, damage: "2d4+2", note: "рукопашная, рубящий; спасбросок Телосложения СЛ 10 или паралич на 1 минуту (не эльфы и не нежить)" },
+    ],
+    traits: ["Иммунитет к яду и очарованию", "Тёмное зрение 60 фт"],
+  },
+  {
+    id: "specter", name: "Призрак", cr: "1", maxHp: 22, ac: 12, speed: 50,
+    attacks: [{ name: "Вытягивание жизни", bonus: 4, damage: "3d6", note: "рукопашная, некротический; спасбросок Телосложения СЛ 10, иначе максимум хитов уменьшается на урон" }],
+    traits: ["Летает и проходит сквозь стены", "Сопротивление обычному оружию, кислоте, огню, грому, молнии", "Чувствительность к солнцу: помеха на атаки и проверки Мудрости (Внимательность)"],
+  },
+  {
+    id: "cultist", name: "Культист", cr: "1/8", maxHp: 9, ac: 12, speed: 30,
+    attacks: [{ name: "Скимитар", bonus: 3, damage: "1d6+1", note: "рукопашная, рубящий" }],
+    traits: ["Тёмная преданность: преимущество на спасброски от очарования и испуга"],
+  },
+  {
+    id: "cult-fanatic", name: "Фанатик культа", cr: "2", maxHp: 33, ac: 13, speed: 30,
+    attacks: [
+      { name: "Кинжал", bonus: 4, damage: "1d4+2", note: "две атаки за ход, рукопашная или метательная 20/60 фт" },
+      { name: "Священное пламя", bonus: null, damage: "1d8", note: "60 фт, спасбросок Ловкости СЛ 11, излучение" },
+      { name: "Духовное оружие", bonus: 4, damage: "1d8+2", note: "бонусное действие, 60 фт, силовое поле" },
+    ],
+    traits: ["Тёмная преданность", "Заклинания (СЛ 11): удержание личности, щит веры, нанесение ран, приказ", "Ячейки: 1-й круг 4, 2-й круг 3"],
+  },
+];
+
+const ART = "/dnd/solgard-bell";
+
 export const BUILT_IN_ADVENTURES: AdventureSummary[] = [
   {
     id: "solgard-bell",
@@ -121,8 +173,16 @@ export const BUILT_IN_ADVENTURES: AdventureSummary[] = [
     summary: "Под заброшенной часовней гудит треснувший колокол, и с каждым ударом из катакомб возвращаются мёртвые. Найдите, кто звонит.",
     level: 1,
     length: "Ваншот · 3–4 часа",
-    scenes: ["Таверна «Ржавый якорь»", "Дорога к часовне", "Катакомбы, зал колокола", "Склеп настоятеля", "Святилище культа", "Развязка"],
-    heroes: [ilva, osmund, mirra, tiran, grom],
+    scenes: [
+      { id: "tavern", title: "Таверна «Ржавый якорь»", art: `${ART}/art-tavern.webp` },
+      { id: "road", title: "Дорога к часовне", art: `${ART}/art-road.webp` },
+      { id: "bell-hall", title: "Катакомбы, зал колокола", map: { image: `${ART}/map-bell-hall.webp`, cols: 24, rows: 16, spawn: [[11, 15], [12, 15], [10, 15], [13, 15], [11, 14], [12, 14]] } },
+      { id: "crypt", title: "Склеп настоятеля", map: { image: `${ART}/map-crypt.webp`, cols: 24, rows: 16, spawn: [[11, 15], [12, 15], [11, 14], [12, 14], [10, 15], [13, 15]] } },
+      { id: "sanctum", title: "Святилище культа", map: { image: `${ART}/map-sanctum.webp`, cols: 24, rows: 16, spawn: [[2, 5], [3, 5], [2, 6], [3, 6], [4, 5], [4, 6]] } },
+      { id: "finale", title: "Развязка", art: `${ART}/art-finale.webp` },
+    ],
+    heroes: [ilva, osmund, mirra, tiran, grom].map(hero => ({ ...hero, portrait: `${ART}/hero-${hero.id}.webp` })),
+    monsters: MONSTERS.map(monster => ({ ...monster, portrait: `${ART}/monster-${monster.id}.webp` })),
   },
 ];
 
@@ -132,4 +192,8 @@ export function findAdventure(id: string | null | undefined): AdventureSummary |
 
 export function findHero(adventureId: string | null | undefined, heroId: string | null | undefined): HeroSheet | undefined {
   return findAdventure(adventureId)?.heroes.find(hero => hero.id === heroId);
+}
+
+export function findMonster(adventureId: string | null | undefined, monsterId: string | null | undefined): MonsterSheet | undefined {
+  return findAdventure(adventureId)?.monsters.find(monster => monster.id === monsterId);
 }

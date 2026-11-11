@@ -88,7 +88,7 @@
               :aria-pressed="mySeat?.heroId === hero.id"
               @click="client.hero(hero.id)"
             >
-              <span class="gm-avatar gm-avatar-l">{{ initial(hero.name) }}</span>
+              <img v-if="hero.portrait" class="gm-avatar gm-avatar-l gm-portrait" :src="hero.portrait" alt="" /><span v-else class="gm-avatar gm-avatar-l">{{ initial(hero.name) }}</span>
               <span class="gm-hero-text">
                 <strong>{{ hero.name }}</strong>
                 <span class="gm-muted">{{ hero.race }} · {{ hero.cls }}</span>
@@ -116,12 +116,12 @@
     </main>
 
     <!-- ===== Playing ===== -->
-    <main v-else class="gm-body gm-play">
+    <main v-else :class="['gm-body', 'gm-play', { 'gm-play-nosheet': !hasLeft || wide }]">
       <!-- Player: own hero sheet -->
-      <section v-if="role === 'player' && myHero && mySeat" class="gm-col gm-sheet" :aria-label="myHero.name">
+      <section v-if="role === 'player' && myHero && mySeat" v-show="!wide" class="gm-col gm-sheet gm-scroll" :aria-label="myHero.name">
         <div class="gm-card">
           <div class="gm-hero-head">
-            <span class="gm-avatar gm-avatar-xl">{{ initial(myHero.name) }}</span>
+            <img v-if="myHero.portrait" class="gm-avatar gm-avatar-xl gm-portrait" :src="myHero.portrait" alt="" /><span v-else class="gm-avatar gm-avatar-xl">{{ initial(myHero.name) }}</span>
             <span class="gm-hero-text">
               <strong class="gm-display gm-display-s">{{ myHero.name }}</strong>
               <span class="gm-muted">{{ myHero.race }} · {{ myHero.cls }} {{ myHero.level }} {{ x.levelShort }}</span>
@@ -180,11 +180,11 @@
       </section>
 
       <!-- Game master: the party and checks -->
-      <section v-else-if="role === 'gm'" class="gm-col gm-sheet" :aria-label="x.party">
+      <section v-else-if="role === 'gm'" v-show="!wide" class="gm-col gm-sheet gm-scroll" :aria-label="x.party">
         <div class="gm-card">
           <h2>{{ x.party }}</h2>
           <div v-for="seat in partySeats" :key="seat.key" class="gm-party">
-            <span class="gm-avatar">{{ initial(seat.hero.name) }}</span>
+            <img v-if="seat.hero.portrait" class="gm-avatar gm-portrait" :src="seat.hero.portrait" alt="" /><span v-else class="gm-avatar">{{ initial(seat.hero.name) }}</span>
             <span class="gm-party-text">
               <strong>{{ seat.hero.name }}</strong>
               <span class="gm-muted gm-small">{{ seat.nickname }}<template v-if="!seat.online"> · {{ x.offline }}</template> · {{ x.ac }} {{ seat.hero.ac }}</span>
@@ -229,14 +229,73 @@
             <button type="button" class="gm-btn" @click="client.cancelCheck(check.id)">{{ x.cancel }}</button>
           </div>
         </div>
+
+        <div v-if="sceneMap && adventure" class="gm-card">
+          <h2>{{ x.monsters }}</h2>
+          <p v-if="placing" class="gm-muted gm-small">{{ x.placeHint }}</p>
+          <button
+            v-for="monster in adventure.monsters"
+            :key="monster.id"
+            type="button"
+            :class="['gm-monster', { 'gm-monster-on': placing === monster.id }]"
+            :aria-pressed="placing === monster.id"
+            @click="placing = placing === monster.id ? null : monster.id"
+          >
+            <img v-if="monster.portrait" class="gm-avatar gm-portrait" :src="monster.portrait" alt="" /><span v-else class="gm-avatar">{{ initial(monster.name) }}</span>
+            <span class="gm-party-text"><strong>{{ monster.name }}</strong><span class="gm-muted gm-small">{{ x.cr }} {{ monster.cr }} · {{ x.hp }} {{ monster.maxHp }} · {{ x.ac }} {{ monster.ac }}</span></span>
+          </button>
+        </div>
       </section>
 
-      <section class="gm-col gm-center" :aria-label="x.turnLog">
+
+      <section class="gm-stage" data-ws-part="voice.game.stage" :aria-label="x.scene">
+        <header class="gm-stage-head">
+          <button v-if="role === 'gm'" type="button" class="gm-mini" :aria-label="x.prevScene" :title="x.prevScene" :disabled="table.scene <= 0" @click="client.scene(table.scene - 1)">‹</button>
+          <span v-if="role !== 'gm'" class="gm-muted gm-small gm-nowrap">{{ x.scene }} {{ table.scene + 1 }}/{{ adventure?.scenes.length ?? 1 }}</span>
+          <select v-if="role === 'gm' && adventure" class="gm-input gm-scene-select" :value="table.scene" :aria-label="x.scene" @change="client.scene(Number(($event.target as HTMLSelectElement).value))">
+            <option v-for="(item, index) in adventure.scenes" :key="item.id" :value="index">{{ index + 1 }}. {{ item.title }} ({{ item.map ? x.mapScene : x.storyScene }})</option>
+          </select>
+          <strong v-else class="gm-display gm-display-s">{{ scene?.title }}</strong>
+          <button v-if="role === 'gm'" type="button" class="gm-mini" :aria-label="x.nextScene" :title="x.nextScene" :disabled="!adventure || table.scene >= adventure.scenes.length - 1" @click="client.scene(table.scene + 1)">›</button>
+          <button v-if="hasLeft" type="button" class="gm-btn gm-wide-toggle" :aria-pressed="wide" @click="wide = !wide">{{ wide ? (role === 'gm' ? x.showTools : x.showSheet) : x.widen }}</button>
+        </header>
+        <GameMap
+          v-if="table.map && sceneMap"
+          v-model:placing="placing"
+          :client="client"
+          :map="table.map"
+          :scene-map="sceneMap"
+          :adventure-id="table.adventureId"
+          :role="role"
+          :you-key="table.you.key"
+          :seats="table.players"
+          :x="x"
+        />
+        <figure v-else class="gm-art" :key="scene?.id">
+          <img v-if="scene?.art" :src="scene.art" alt="" />
+          <figcaption><strong class="gm-display">{{ scene?.title }}</strong></figcaption>
+        </figure>
+      </section>
+
+      <section class="gm-col gm-side gm-scroll" :aria-label="x.turnLog">
         <div v-for="check in playerChecks" :key="check.id" class="gm-card gm-ask" role="alert">
           <span class="gm-muted">{{ x.checkAsked }}</span>
           <strong class="gm-display">{{ check.label }}</strong>
           <span class="gm-muted gm-small">{{ x.checkHiddenDc }}<template v-if="check.mode !== 'normal'"> · {{ check.mode === 'advantage' ? x.advantage : x.disadvantage }}</template></span>
           <button type="button" class="gm-btn gm-btn-big gm-btn-gold" @click="client.roll(check.source, mode, false, check.id)">{{ x.rollCheck }}</button>
+        </div>
+
+        <div v-if="role !== 'gm'" class="gm-card">
+          <h2>{{ x.party }}</h2>
+          <div v-for="seat in partySeats" :key="seat.key" class="gm-party gm-party-s">
+            <img v-if="seat.hero.portrait" class="gm-avatar gm-portrait" :src="seat.hero.portrait" alt="" /><span v-else class="gm-avatar">{{ initial(seat.hero.name) }}</span>
+            <span class="gm-party-text">
+              <strong>{{ seat.hero.name }}</strong>
+              <span class="gm-bar"><span :style="{ width: `${Math.max(0, Math.min(100, ((seat.hp ?? 0) / seat.hero.maxHp) * 100))}%` }" :class="hpClass(seat.hp, seat.hero.maxHp)"></span></span>
+            </span>
+            <span class="gm-muted gm-small">{{ seat.hp }}/{{ seat.hero.maxHp }}</span>
+          </div>
+          <p v-if="table.gm" class="gm-muted gm-small">{{ x.gm }}: {{ table.gm.nickname }}</p>
         </div>
 
         <div v-if="role !== 'spectator'" class="gm-card gm-tray">
@@ -266,23 +325,8 @@
             </li>
           </ol>
         </div>
-      </section>
-
-      <aside v-if="role !== 'gm'" class="gm-col gm-narrow" :aria-label="x.party">
-        <div class="gm-card">
-          <h2>{{ x.party }}</h2>
-          <div v-for="seat in partySeats" :key="seat.key" class="gm-party gm-party-s">
-            <span class="gm-avatar">{{ initial(seat.hero.name) }}</span>
-            <span class="gm-party-text">
-              <strong>{{ seat.hero.name }}</strong>
-              <span class="gm-bar"><span :style="{ width: `${Math.max(0, Math.min(100, ((seat.hp ?? 0) / seat.hero.maxHp) * 100))}%` }" :class="hpClass(seat.hp, seat.hero.maxHp)"></span></span>
-            </span>
-            <span class="gm-muted gm-small">{{ seat.hp }}/{{ seat.hero.maxHp }}</span>
-          </div>
-          <p v-if="table.gm" class="gm-muted gm-small">{{ x.gm }}: {{ table.gm.nickname }}</p>
-        </div>
         <p v-if="role === 'spectator'" class="gm-muted gm-small">{{ x.spectating }}</p>
-      </aside>
+      </section>
     </main>
 
     <!-- Dice animation -->
@@ -312,6 +356,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { ABILITIES, MAX_PLAYERS, SKILL_IDS, abilityModifier, formatModifier, saveBonus, skillBonus, type CheckSource, type RollMode, type RollSource, type RollView } from "../../../../src/shared/tabletop.js";
 import { BUILT_IN_ADVENTURES, findAdventure, findHero } from "../../../../src/shared/tabletop-adventures.js";
+import GameMap from "./GameMap.vue";
 import type { GameClient } from "../../game/game-client.js";
 import { dndText } from "../../game/dnd-text.js";
 
@@ -339,6 +384,14 @@ const partySeats = computed(() => (table.value?.players ?? []).flatMap(seat => {
 }));
 const playerChecks = computed(() => role.value === "player"
   ? (table.value?.checks ?? []).filter(check => check.targets.includes(table.value!.you.key) && !check.done.includes(table.value!.you.key)) : []);
+const scene = computed(() => adventure.value?.scenes[table.value?.scene ?? 0]);
+const sceneMap = computed(() => scene.value?.map);
+const hasLeft = computed(() => role.value === "gm" || (role.value === "player" && Boolean(myHero.value && mySeat.value)));
+/** Hide the left column to give the scene more room. */
+const wide = ref(false);
+/** The monster the game master is placing on the map. */
+const placing = ref<string | null>(null);
+watch(sceneMap, map => { if (!map) placing.value = null; });
 const reversedRolls = computed(() => [...(table.value?.rolls ?? [])].reverse());
 
 const mode = ref<RollMode>("normal");
@@ -480,6 +533,26 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-wide, .gm-center { flex: 999 1 420px; }
 .gm-narrow { flex: 1 1 240px; max-width: 320px; }
 .gm-sheet { flex: 1 1 340px; max-width: 420px; }
+.gm-play { display: grid; grid-template-columns: minmax(260px, 330px) minmax(0, 1fr) minmax(240px, 300px); align-items: stretch; overflow: hidden; padding: 14px; gap: 14px; }
+.gm-play-nosheet { grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); }
+.gm-wide-toggle { margin-left: auto; min-height: 34px; font-size: 13px; white-space: nowrap; flex: none; }
+.gm-nowrap { white-space: nowrap; }
+.gm-play > .gm-sheet, .gm-play > .gm-side { max-width: none; min-height: 0; }
+.gm-scroll { overflow: auto; padding-right: 2px; }
+.gm-stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
+.gm-stage-head { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.gm-stage-head .gm-display-s { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gm-scene-select { flex: 1 1 auto; width: auto; max-width: 520px; }
+.gm-mini:disabled { opacity: .35; cursor: default; }
+.gm-art { position: relative; flex: 1; min-height: 0; margin: 0; overflow: hidden; border-radius: 14px; border: 1px solid var(--gm-line); background: #08090b; }
+.gm-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; animation: gm-art-in 1.2s ease both; }
+.gm-art figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 60px 28px 22px; background: linear-gradient(transparent, rgba(8, 9, 11, 0.92)); }
+.gm-art .gm-display { font-size: 40px; text-shadow: 0 2px 12px #000; }
+@keyframes gm-art-in { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: none; } }
+.gm-portrait { object-fit: cover; padding: 0; }
+.gm-monster { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; border: 1px solid transparent; background: var(--gm-raised); color: var(--gm-text); font: inherit; text-align: left; cursor: pointer; }
+.gm-monster:hover { border-color: var(--gm-line-2); }
+.gm-monster-on { border-color: var(--gm-gold); background: #221f18; }
 .gm-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; background: var(--gm-card); border: 1px solid var(--gm-line); }
 .gm-card-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .gm-card-head h2 { margin: 0; }
@@ -519,7 +592,8 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-story { margin: 0; font-family: "Cormorant Garamond", Georgia, serif; font-size: 18px; line-height: 1.4; color: #f1e6cf; }
 
 .gm-hero-head { display: flex; gap: 12px; align-items: center; }
-.gm-stat-row { display: grid; grid-template-columns: minmax(0, 1.7fr) repeat(3, minmax(0, 1fr)); gap: 8px; }
+.gm-stat-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.gm-stat-row > .gm-stat:first-child { grid-column: 1 / -1; flex-direction: row; justify-content: center; gap: 12px; }
 .gm-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 4px; border-radius: 10px; background: var(--gm-raised); border: 1px solid transparent; color: var(--gm-text); font: inherit; }
 .gm-stat strong { font-size: 20px; }
 .gm-stat-btn { cursor: pointer; border-color: var(--gm-line-2); }
@@ -562,14 +636,14 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 
 .gm-ask { border-color: var(--gm-gold); background: #1d1a16; align-items: flex-start; }
 .gm-tray { gap: 12px; }
-.gm-dice-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.gm-dice-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .gm-die { min-height: 44px; border-radius: 10px; border: 1px solid var(--gm-line-2); background: var(--gm-raised); color: var(--gm-text); font: inherit; cursor: pointer; }
 .gm-modes { gap: 6px; }
 .gm-mode { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--gm-line); cursor: pointer; }
 .gm-mode-on { border-color: var(--gm-gold); background: var(--gm-gold-soft); }
 .gm-mode input { position: absolute; opacity: 0; pointer-events: none; }
 .gm-check { display: flex; align-items: center; gap: 8px; color: var(--gm-muted); }
-.gm-log-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
+.gm-log-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .gm-log-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 10px; border-radius: 8px; background: var(--gm-raised); }
 .gm-log-secret { background: transparent; border: 1px dashed var(--gm-line-2); }
 .gm-log-who { font-weight: 600; }
@@ -601,7 +675,7 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 @keyframes gm-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes gm-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .gm-roll, .gm-roll-die, .gm-roll-title, .gm-roll-sum, .gm-spinner { animation: none; }
+  .gm-roll, .gm-roll-die, .gm-roll-title, .gm-roll-sum, .gm-spinner, .gm-art img { animation: none; }
 }
 @media (max-width: 720px) {
   .gm-body { padding: 12px; }

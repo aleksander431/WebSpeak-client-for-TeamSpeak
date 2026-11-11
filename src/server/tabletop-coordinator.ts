@@ -1,4 +1,5 @@
 import {
+  MAX_MAP_TOKENS,
   MAX_PLAYERS,
   ROLL_LOG_SIZE,
   SKILLS,
@@ -13,6 +14,9 @@ import {
   type GameClientMessage,
   type GameServerMessage,
   type HeroSheet,
+  type MapView,
+  type SceneMap,
+  type TokenView,
   type RollDie,
   type RollMode,
   type RollSource,
@@ -21,7 +25,7 @@ import {
   type TableRole,
   type TableView,
 } from "../shared/tabletop.js";
-import { findAdventure, findHero } from "../shared/tabletop-adventures.js";
+import { findAdventure, findHero, findMonster } from "../shared/tabletop-adventures.js";
 
 /*
  * Channel game tables. No Node-only imports, like the whiteboard coordinator.
@@ -65,6 +69,28 @@ interface CheckRecord {
   done: string[];
 }
 
+interface TokenRecord {
+  id: string;
+  kind: "hero" | "monster";
+  x: number;
+  y: number;
+  name: string;
+  seatKey?: string;
+  heroId?: string;
+  monsterId?: string;
+  hp?: number;
+  maxHp?: number;
+  hidden: boolean;
+}
+
+/** One scene's board: what was revealed and where everyone stands. Kept per scene so going back finds it as it was. */
+interface SceneState {
+  fog: Uint8Array;
+  tokens: TokenRecord[];
+  /** Next number per monster kind ("Скелет 3"). */
+  counters: Map<string, number>;
+}
+
 interface TableState {
   phase: "lobby" | "playing";
   adventureId: string | null;
@@ -72,6 +98,8 @@ interface TableState {
   players: SeatState[];
   rolls: RollRecord[];
   checks: CheckRecord[];
+  scene: number;
+  scenes: Map<number, SceneState>;
   updatedAt: number;
 }
 
@@ -92,6 +120,8 @@ export function tabletopTableKey(targetKey: string, channelId: bigint | number |
 }
 
 const RATE = { rate: 8, burst: 20 };
+/** Cells revealed around a hero when it first appears on a map. */
+const SPAWN_REVEAL_RADIUS = 2;
 /** Tables nobody touched for this long are dropped once nobody watches them. */
 const IDLE_TABLE_MS = 12 * 60 * 60 * 1000;
 
@@ -165,11 +195,17 @@ export class TabletopCoordinator {
       return;
     }
     const table = this.table(subscription.tableKey);
+    if (message.type === "gamePing") {
+      const code = this.ping(table, subscription, message.x, message.y);
+      if (code) this.error(participant.entryId, code);
+      return;
+    }
     const code = this.apply(table, subscription, message);
     if (code) {
       this.error(participant.entryId, code);
       return;
     }
+    if (table.phase === "playing") this.syncHeroTokens(table);
     table.updatedAt = this.now();
     this.broadcast(subscription.tableKey);
   }
@@ -209,7 +245,7 @@ export class TabletopCoordinator {
   private table(key: string): TableState {
     let table = this.tables.get(key);
     if (!table) {
-      table = { phase: "lobby", adventureId: null, gm: null, players: [], rolls: [], checks: [], updatedAt: this.now() };
+      table = { phase: "lobby", adventureId: null, gm: null, players: [], rolls: [], checks: [], scene: 0, scenes: new Map(), updatedAt: this.now() };
       this.tables.set(key, table);
     }
     return table;
@@ -233,7 +269,7 @@ export class TabletopCoordinator {
     return table.players.some(seat => seat.key === seatKey) ? "player" : "spectator";
   }
 
-  private apply(table: TableState, who: Subscription, message: Exclude<GameClientMessage, { type: "gameOpen" | "gameClose" }>): string | null {
+  private apply(table: TableState, who: Subscription, message: Exclude<GameClientMessage, { type: "gameOpen" | "gameClose" | "gamePing" }>): string | null {
     const role = this.roleOf(table, who.seatKey);
     const ownSeat = role === "gm" ? table.gm : table.players.find(seat => seat.key === who.seatKey) ?? null;
     switch (message.type) {
@@ -285,12 +321,16 @@ export class TabletopCoordinator {
         if (heroes.some(seat => !seat.ready)) return "PLAYERS_NOT_READY";
         table.phase = "playing";
         table.checks = [];
+        table.scene = 0;
+        table.scenes = new Map();
         return null;
       }
       case "gameEnd":
         if (role !== "gm") return "GM_ONLY";
         table.phase = "lobby";
         table.checks = [];
+        table.scene = 0;
+        table.scenes = new Map();
         for (const seat of [table.gm, ...table.players]) if (seat) seat.ready = false;
         return null;
       case "gameHp": {
@@ -318,7 +358,158 @@ export class TabletopCoordinator {
         return null;
       case "gameRoll":
         return this.roll(table, who, role, ownSeat, message);
+      default:
+        return this.applyMap(table, who, role, message);
     }
+  }
+
+  // ---- Scenes, tokens and fog ------------------------------------------------
+
+  private applyMap(table: TableState, who: Subscription, role: TableRole,
+    message: Extract<GameClientMessage, { type: "gameScene" | "gameTokenAdd" | "gameTokenMove" | "gameTokenRemove" | "gameTokenHp" | "gameTokenHide" | "gameFog" | "gameFogAll" }>): string | null {
+    if (table.phase !== "playing") return "GAME_NOT_RUNNING";
+    if (message.type === "gameScene") {
+      if (role !== "gm") return "GM_ONLY";
+      if (!findAdventure(table.adventureId)?.scenes[message.index]) return "UNKNOWN_SCENE";
+      table.scene = message.index;
+      return null;
+    }
+    const map = this.currentMap(table);
+    if (!map) return "NO_MAP";
+    const scene = this.sceneState(table, map);
+    const inside = (x: number, y: number) => x < map.cols && y < map.rows;
+    const occupied = (x: number, y: number, except?: string) => scene.tokens.some(token => token.x === x && token.y === y && token.id !== except);
+    if (message.type === "gameTokenMove") {
+      const token = scene.tokens.find(candidate => candidate.id === message.id);
+      if (!token) return "UNKNOWN_TOKEN";
+      if (role !== "gm" && !(role === "player" && token.kind === "hero" && token.seatKey === who.seatKey)) return "NOT_YOUR_TOKEN";
+      if (!inside(message.x, message.y)) return "OUT_OF_BOUNDS";
+      if (role !== "gm" && !scene.fog[message.y * map.cols + message.x]) return "IN_FOG";
+      if (occupied(message.x, message.y, token.id)) return "CELL_TAKEN";
+      token.x = message.x;
+      token.y = message.y;
+      return null;
+    }
+    if (role !== "gm") return "GM_ONLY";
+    switch (message.type) {
+      case "gameTokenAdd": {
+        const monster = findMonster(table.adventureId, message.monsterId);
+        if (!monster) return "UNKNOWN_MONSTER";
+        if (!inside(message.x, message.y)) return "OUT_OF_BOUNDS";
+        if (occupied(message.x, message.y)) return "CELL_TAKEN";
+        if (scene.tokens.length >= MAX_MAP_TOKENS) return "TOO_MANY_TOKENS";
+        const number = (scene.counters.get(monster.id) ?? 0) + 1;
+        scene.counters.set(monster.id, number);
+        scene.tokens.push({
+          id: this.randomId(), kind: "monster", x: message.x, y: message.y, name: `${monster.name} ${number}`,
+          monsterId: monster.id, hp: monster.maxHp, maxHp: monster.maxHp, hidden: false,
+        });
+        return null;
+      }
+      case "gameTokenRemove":
+      case "gameTokenHp":
+      case "gameTokenHide": {
+        const token = scene.tokens.find(candidate => candidate.id === message.id);
+        if (!token || token.kind !== "monster") return "UNKNOWN_TOKEN";
+        if (message.type === "gameTokenRemove") scene.tokens = scene.tokens.filter(candidate => candidate !== token);
+        else if (message.type === "gameTokenHp") token.hp = Math.max(0, Math.min(token.maxHp ?? 0, message.hp));
+        else token.hidden = message.hidden;
+        return null;
+      }
+      case "gameFog":
+        for (const cell of message.cells) if (cell < scene.fog.length) scene.fog[cell] = message.reveal ? 1 : 0;
+        return null;
+      case "gameFogAll":
+        scene.fog.fill(message.reveal ? 1 : 0);
+        return null;
+    }
+  }
+
+  private ping(table: TableState, who: Subscription, x: number, y: number): string | null {
+    const role = this.roleOf(table, who.seatKey);
+    if (role === "spectator") return "NOT_SEATED";
+    if (table.phase !== "playing") return "GAME_NOT_RUNNING";
+    const map = this.currentMap(table);
+    if (!map) return "NO_MAP";
+    if (x > map.cols || y > map.rows) return "OUT_OF_BOUNDS";
+    const by = role === "player" ? findHero(table.adventureId, table.players.find(seat => seat.key === who.seatKey)?.heroId)?.name ?? who.nickname : who.nickname;
+    for (const [entryId, subscription] of this.subscriptions) {
+      if (subscription.tableKey === who.tableKey) this.sendRaw(entryId, { type: "gamePinged", by, x, y, gm: role === "gm" });
+    }
+    return null;
+  }
+
+  private currentMap(table: TableState): SceneMap | undefined {
+    return table.phase === "playing" ? findAdventure(table.adventureId)?.scenes[table.scene]?.map : undefined;
+  }
+
+  private sceneState(table: TableState, map: SceneMap): SceneState {
+    let scene = table.scenes.get(table.scene);
+    if (!scene) {
+      scene = { fog: new Uint8Array(map.cols * map.rows), tokens: [], counters: new Map() };
+      table.scenes.set(table.scene, scene);
+    }
+    return scene;
+  }
+
+  /** Every hero has exactly one token on the current map; newcomers appear at the entrance with some light around them. */
+  private syncHeroTokens(table: TableState): void {
+    const map = this.currentMap(table);
+    if (!map) return;
+    const scene = this.sceneState(table, map);
+    const heroes = table.players.filter(seat => seat.heroId);
+    scene.tokens = scene.tokens.filter(token => token.kind !== "hero" || heroes.some(seat => seat.key === token.seatKey && seat.heroId === token.heroId));
+    for (const seat of heroes) {
+      if (scene.tokens.some(token => token.kind === "hero" && token.seatKey === seat.key)) continue;
+      const hero = findHero(table.adventureId, seat.heroId)!;
+      const spot = this.freeSpot(map, scene);
+      if (!spot) continue;
+      scene.tokens.push({ id: this.randomId(), kind: "hero", x: spot[0], y: spot[1], name: hero.name, seatKey: seat.key, heroId: hero.id, hidden: false });
+      for (let dy = -SPAWN_REVEAL_RADIUS; dy <= SPAWN_REVEAL_RADIUS; dy++) {
+        for (let dx = -SPAWN_REVEAL_RADIUS; dx <= SPAWN_REVEAL_RADIUS; dx++) {
+          const x = spot[0] + dx;
+          const y = spot[1] + dy;
+          if (x >= 0 && y >= 0 && x < map.cols && y < map.rows && dx * dx + dy * dy <= SPAWN_REVEAL_RADIUS * SPAWN_REVEAL_RADIUS + 1) scene.fog[y * map.cols + x] = 1;
+        }
+      }
+    }
+  }
+
+  private freeSpot(map: SceneMap, scene: SceneState): [number, number] | null {
+    const free = (x: number, y: number) => !scene.tokens.some(token => token.x === x && token.y === y);
+    for (const [x, y] of map.spawn) if (x < map.cols && y < map.rows && free(x, y)) return [x, y];
+    const [ox, oy] = map.spawn[0] ?? [0, 0];
+    for (let radius = 1; radius < Math.max(map.cols, map.rows); radius++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const x = ox + dx;
+          const y = oy + dy;
+          if (x >= 0 && y >= 0 && x < map.cols && y < map.rows && free(x, y)) return [x, y];
+        }
+      }
+    }
+    return null;
+  }
+
+  private mapFor(table: TableState, role: TableRole): MapView | null {
+    const map = this.currentMap(table);
+    if (!map) return null;
+    const scene = this.sceneState(table, map);
+    const revealed = (token: TokenRecord) => scene.fog[token.y * map.cols + token.x] === 1;
+    const tokens: TokenView[] = [];
+    for (const token of scene.tokens) {
+      const { hidden, hp, maxHp, ...base } = token;
+      if (role === "gm") {
+        tokens.push({ ...base, ...(hp !== undefined ? { hp, maxHp } : {}), ...(hidden ? { hidden: true } : {}) });
+        continue;
+      }
+      if (token.kind === "monster" && (hidden || !revealed(token))) continue;
+      const condition = token.kind === "monster" && maxHp ? (hp! <= 0 ? "down" : hp! * 2 <= maxHp ? "bloodied" : undefined) : undefined;
+      tokens.push({ ...base, ...(condition ? { condition } : {}) });
+    }
+    let fog = "";
+    for (const cell of scene.fog) fog += cell ? "1" : "0";
+    return { cols: map.cols, rows: map.rows, fog, tokens };
   }
 
   private roll(table: TableState, who: Subscription, role: TableRole, seat: SeatState | null,
@@ -449,6 +640,8 @@ export class TabletopCoordinator {
       you: { key: seatKey, role },
       rolls: table.rolls.map(record => this.rollFor(record, role)),
       checks,
+      scene: table.scene,
+      map: this.mapFor(table, role),
     };
   }
 

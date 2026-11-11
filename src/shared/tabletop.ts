@@ -42,6 +42,39 @@ export interface HeroSheet {
   equipment: string[];
   spells?: string[];
   story: string;
+  /** Portrait under the site root. */
+  portrait?: string;
+}
+
+/** A tactical map: a picture with a square grid laid over it (5 ft per cell). */
+export interface SceneMap {
+  /** Path under the site root, e.g. "/dnd/solgard-bell/map-crypt.webp". */
+  image: string;
+  cols: number;
+  rows: number;
+  /** Where the heroes appear on their first visit, in order. */
+  spawn: Array<[number, number]>;
+}
+
+export interface AdventureScene {
+  id: string;
+  title: string;
+  /** A picture for story scenes (shown when there is no map). */
+  art?: string;
+  map?: SceneMap;
+}
+
+export interface MonsterSheet {
+  id: string;
+  name: string;
+  /** Challenge rating as printed, e.g. "1/4". */
+  cr: string;
+  maxHp: number;
+  ac: number;
+  speed: number;
+  attacks: HeroAttack[];
+  traits: string[];
+  portrait?: string;
 }
 
 export interface AdventureSummary {
@@ -50,11 +83,14 @@ export interface AdventureSummary {
   summary: string;
   level: number;
   length: string;
-  scenes: string[];
+  scenes: AdventureScene[];
   heroes: HeroSheet[];
+  monsters: MonsterSheet[];
 }
 
 export const MAX_PLAYERS = 6;
+export const MAX_MAP_TOKENS = 60;
+export const MAX_MAP_CELLS = 64 * 64;
 export const ROLL_LOG_SIZE = 40;
 
 export function abilityModifier(score: number): number {
@@ -178,6 +214,33 @@ export interface SeatView {
 
 export type TableRole = "gm" | "player" | "spectator";
 
+export interface TokenView {
+  id: string;
+  kind: "hero" | "monster";
+  x: number;
+  y: number;
+  name: string;
+  /** Hero tokens: the seat that plays it (it may move it) and the hero. */
+  seatKey?: string;
+  heroId?: string;
+  monsterId?: string;
+  /** Monster hit points: game master only. */
+  hp?: number;
+  maxHp?: number;
+  /** Monsters as players see them: hurt to half or below, or down. */
+  condition?: "bloodied" | "down";
+  /** Kept from players (game master only sees it, marked). */
+  hidden?: boolean;
+}
+
+export interface MapView {
+  cols: number;
+  rows: number;
+  /** One character per cell, row by row: "1" revealed, "0" under fog. */
+  fog: string;
+  tokens: TokenView[];
+}
+
 export interface TableView {
   phase: "lobby" | "playing";
   adventureId: string | null;
@@ -186,6 +249,10 @@ export interface TableView {
   you: { key: string; role: TableRole };
   rolls: RollView[];
   checks: CheckView[];
+  /** Index into the adventure's scenes while playing. */
+  scene: number;
+  /** The current scene's map, if it has one. */
+  map: MapView | null;
 }
 
 export type GameClientMessage =
@@ -200,12 +267,22 @@ export type GameClientMessage =
   | { type: "gameRoll"; source: RollSource; mode: RollMode; hidden: boolean; checkId?: string }
   | { type: "gameHp"; key: string; hp: number }
   | { type: "gameCheck"; source: CheckSource; dc: number; mode: RollMode; targets: string[] }
-  | { type: "gameCheckCancel"; checkId: string };
+  | { type: "gameCheckCancel"; checkId: string }
+  | { type: "gameScene"; index: number }
+  | { type: "gameTokenAdd"; monsterId: string; x: number; y: number }
+  | { type: "gameTokenMove"; id: string; x: number; y: number }
+  | { type: "gameTokenRemove"; id: string }
+  | { type: "gameTokenHp"; id: string; hp: number }
+  | { type: "gameTokenHide"; id: string; hidden: boolean }
+  | { type: "gameFog"; cells: number[]; reveal: boolean }
+  | { type: "gameFogAll"; reveal: boolean }
+  | { type: "gamePing"; x: number; y: number };
 
 export type GameServerMessage =
   | { type: "gameState"; table: TableView | null }
   | { type: "gameRolled"; roll: RollView }
-  | { type: "gameError"; code: string };
+  | { type: "gameError"; code: string }
+  | { type: "gamePinged"; by: string; x: number; y: number; gm: boolean };
 
 // ---- Parsers ---------------------------------------------------------------
 
@@ -215,6 +292,8 @@ const isSkill = (value: unknown): value is Skill => typeof value === "string" &&
 const isMode = (value: unknown): value is RollMode => value === "normal" || value === "advantage" || value === "disadvantage";
 const isRole = (value: unknown): value is TableRole => value === "gm" || value === "player" || value === "spectator";
 const shortId = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+const cell = (value: unknown): boolean => Number.isInteger(value) && (value as number) >= 0 && (value as number) < 64;
+const point = (value: unknown): boolean => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 64;
 const seatKey = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 160;
 
 export function parseRollSource(value: unknown): RollSource | null {
@@ -265,6 +344,19 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
       return { type: "gameCheck", source, dc: raw.dc as number, mode: raw.mode, targets: [...new Set(raw.targets as string[])] };
     }
     case "gameCheckCancel": return shortId(raw.checkId) ? { type: "gameCheckCancel", checkId: raw.checkId } : invalid;
+    case "gameScene": return Number.isInteger(raw.index) && (raw.index as number) >= 0 && (raw.index as number) < 64 ? { type: "gameScene", index: raw.index as number } : invalid;
+    case "gameTokenAdd": return shortId(raw.monsterId) && cell(raw.x) && cell(raw.y) ? { type: "gameTokenAdd", monsterId: raw.monsterId, x: raw.x as number, y: raw.y as number } : invalid;
+    case "gameTokenMove": return shortId(raw.id) && cell(raw.x) && cell(raw.y) ? { type: "gameTokenMove", id: raw.id, x: raw.x as number, y: raw.y as number } : invalid;
+    case "gameTokenRemove": return shortId(raw.id) ? { type: "gameTokenRemove", id: raw.id } : invalid;
+    case "gameTokenHp":
+      return shortId(raw.id) && Number.isInteger(raw.hp) && (raw.hp as number) >= 0 && (raw.hp as number) <= 999 ? { type: "gameTokenHp", id: raw.id, hp: raw.hp as number } : invalid;
+    case "gameTokenHide": return shortId(raw.id) && typeof raw.hidden === "boolean" ? { type: "gameTokenHide", id: raw.id, hidden: raw.hidden } : invalid;
+    case "gameFog":
+      if (typeof raw.reveal !== "boolean" || !Array.isArray(raw.cells) || raw.cells.length > MAX_MAP_CELLS) return invalid;
+      if (!raw.cells.every(value => Number.isInteger(value) && (value as number) >= 0 && (value as number) < MAX_MAP_CELLS)) return invalid;
+      return { type: "gameFog", cells: [...new Set(raw.cells as number[])], reveal: raw.reveal };
+    case "gameFogAll": return typeof raw.reveal === "boolean" ? { type: "gameFogAll", reveal: raw.reveal } : invalid;
+    case "gamePing": return point(raw.x) && point(raw.y) ? { type: "gamePing", x: raw.x as number, y: raw.y as number } : invalid;
     default: return invalid;
   }
 }
@@ -275,5 +367,8 @@ export function parseGameServerMessage(raw: unknown): GameServerMessage | null {
   if (raw.type === "gameState" && (raw.table === null || isObject(raw.table))) return raw as unknown as GameServerMessage;
   if (raw.type === "gameRolled" && isObject(raw.roll)) return raw as unknown as GameServerMessage;
   if (raw.type === "gameError" && typeof raw.code === "string") return { type: "gameError", code: raw.code };
+  if (raw.type === "gamePinged" && typeof raw.by === "string" && typeof raw.x === "number" && typeof raw.y === "number") {
+    return { type: "gamePinged", by: raw.by, x: raw.x, y: raw.y, gm: raw.gm === true };
+  }
   return null;
 }
