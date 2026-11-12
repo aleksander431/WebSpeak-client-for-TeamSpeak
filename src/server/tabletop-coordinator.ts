@@ -7,7 +7,12 @@ import {
   DEFAULT_VISION,
   MAX_EXTRA_MONSTERS,
   VISION_RADII,
+  JOURNAL_KINDS,
+  MAX_JOURNAL_ENTRIES,
   abilityModifier,
+  proficiencyBonus,
+  type JournalKind,
+  type RollPart,
   attackSaveOf,
   formatModifier,
   heroHitDie,
@@ -166,8 +171,12 @@ interface TableState {
   vision: number;
   /** Creatures the master made up during play. */
   extraMonsters: MonsterSheet[];
+  /** The party's journal, oldest first. */
+  journal: JournalRecord[];
   updatedAt: number;
 }
+
+interface JournalRecord { id: string; at: number; by: string; byKey: string; kind: JournalKind; text: string }
 
 interface Subscription {
   tableKey: string;
@@ -491,7 +500,7 @@ export class TabletopCoordinator {
     }
     if (!table) {
       table = { phase: "lobby", adventureId: null, gm: null, players: [], rolls: [], checks: [], scene: 0, scenes: new Map(), combat: null,
-        music: { trackId: null, startedAt: 0, auto: true }, narration: null, vision: DEFAULT_VISION, extraMonsters: [], updatedAt: this.now() };
+        music: { trackId: null, startedAt: 0, auto: true }, narration: null, vision: DEFAULT_VISION, extraMonsters: [], journal: [], updatedAt: this.now() };
       this.tables.set(key, table);
     }
     return table;
@@ -662,6 +671,22 @@ export class TabletopCoordinator {
         return null;
       case "gameApplyTo":
         return this.applyTo(table, who, role, message);
+      case "gameJournalAdd": {
+        if (role === "spectator") return "NOT_SEATED";
+        if (table.journal.length >= MAX_JOURNAL_ENTRIES) return "JOURNAL_FULL";
+        table.journal.push({ id: this.randomId(), at: this.now(), by: who.nickname, byKey: who.seatKey, kind: message.kind, text: message.text });
+        return null;
+      }
+      case "gameJournalEdit":
+      case "gameJournalRemove": {
+        const index = table.journal.findIndex(entry => entry.id === message.id);
+        if (index < 0) return "UNKNOWN_ENTRY";
+        const entry = table.journal[index];
+        if (role !== "gm" && entry.byKey !== who.seatKey) return "NOT_YOURS";
+        if (message.type === "gameJournalRemove") table.journal.splice(index, 1);
+        else Object.assign(entry, { kind: message.kind, text: message.text });
+        return null;
+      }
       case "gameMonsterCreate": {
         if (role !== "gm") return "GM_ONLY";
         if (table.phase !== "playing") return "GAME_NOT_RUNNING";
@@ -1476,6 +1501,7 @@ export class TabletopCoordinator {
       mode: planned.d20 ? mode : "normal",
       ...(result.natural ? { natural: result.natural } : {}),
       ...(reasons.length ? { reasons } : {}),
+      ...(planned.parts?.length ? { parts: planned.parts } : {}),
     };
     if (check) {
       record.checkId = check.id;
@@ -1531,9 +1557,10 @@ export class TabletopCoordinator {
   }
 
   /** What a roll means: the dice, its label and whether it is a d20 roll (advantage applies). */
-  private plan(source: RollSource, hero: HeroSheet | undefined, monster?: MonsterSheet): { expression: DiceExpression; text: string; label: string; d20: boolean } | null {
-    const d20 = (modifier: number, label: string) => ({
+  private plan(source: RollSource, hero: HeroSheet | undefined, monster?: MonsterSheet): { expression: DiceExpression; text: string; label: string; d20: boolean; parts?: RollPart[] } | null {
+    const d20 = (modifier: number, label: string, parts?: RollPart[]) => ({
       expression: { terms: [{ count: 1, sides: 20, sign: 1 as const }], modifier }, text: `1d20${modifier ? formatModifier(modifier) : ""}`, label, d20: true,
+      ...(parts ? { parts: parts.filter(part => part.value !== 0) } : {}),
     });
     if (source.type === "free") {
       const expression = parseDiceExpression(source.expr);
@@ -1544,24 +1571,36 @@ export class TabletopCoordinator {
       if (!attack || !expression) return null;
       if (crit) expression.terms = expression.terms.map(term => ({ ...term, count: term.count * 2 }));
       const text = expression.terms.map(term => `${term.count}d${term.sides}`).join("+") + (expression.modifier ? formatModifier(expression.modifier) : "");
-      return { expression, text, label: `Урон: ${attack.name}${crit ? " (крит)" : ""}`, d20: false };
+      return { expression, text, label: `Урон: ${attack.name}${crit ? " (крит)" : ""}`, d20: false, ...(expression.modifier ? { parts: [{ kind: "flat" as const, value: expression.modifier }] } : {}) };
     };
     if (source.type === "monsterAttack") {
       const attack = monster?.attacks[source.index];
-      return attack && attack.bonus !== null ? d20(attack.bonus, `Атака: ${attack.name}`) : null;
+      return attack && attack.bonus !== null ? d20(attack.bonus, `Атака: ${attack.name}`, [{ kind: "attack", value: attack.bonus }]) : null;
     }
     if (source.type === "monsterDamage") return damage(monster?.attacks[source.index], source.crit);
     if (!hero) return null;
     switch (source.type) {
       case "deathSave": return d20(0, "Спасбросок от смерти");
-      case "ability": return d20(abilityModifier(hero.abilities[source.ability]), `Проверка: ${ABILITY_LABEL[source.ability]}`);
-      case "skill": return d20(skillBonus(hero, source.skill), SKILL_LABEL[source.skill]);
-      case "save": return d20(saveBonus(hero, source.ability), `Спасбросок: ${ABILITY_LABEL[source.ability]}`);
-      case "initiative": return d20(abilityModifier(hero.abilities.dex), "Инициатива");
+      case "ability": return d20(abilityModifier(hero.abilities[source.ability]), `Проверка: ${ABILITY_LABEL[source.ability]}`, [abilityPart(hero, source.ability)]);
+      case "skill": {
+        const ability = SKILLS[source.skill];
+        const proficient = hero.skills.includes(source.skill);
+        const expert = proficient && Boolean(hero.expertise?.includes(source.skill));
+        const parts: RollPart[] = [abilityPart(hero, ability)];
+        if (proficient) parts.push({ kind: "proficiency", value: proficiencyBonus(hero.level) });
+        if (expert) parts.push({ kind: "expertise", value: proficiencyBonus(hero.level) });
+        return d20(skillBonus(hero, source.skill), SKILL_LABEL[source.skill], parts);
+      }
+      case "save": {
+        const parts: RollPart[] = [abilityPart(hero, source.ability)];
+        if (hero.saves.includes(source.ability)) parts.push({ kind: "proficiency", value: proficiencyBonus(hero.level) });
+        return d20(saveBonus(hero, source.ability), `Спасбросок: ${ABILITY_LABEL[source.ability]}`, parts);
+      }
+      case "initiative": return d20(abilityModifier(hero.abilities.dex), "Инициатива", [abilityPart(hero, "dex")]);
       case "attack": {
         const attack = hero.attacks[source.index];
         if (!attack || attack.bonus === null) return null;
-        return d20(attack.bonus, `Атака: ${attack.name}`);
+        return d20(attack.bonus, `Атака: ${attack.name}`, [{ kind: "attack", value: attack.bonus }]);
       }
       case "damage": return damage(hero.attacks[source.index], source.crit);
     }
@@ -1637,6 +1676,9 @@ export class TabletopCoordinator {
       adventures: this.adventures().map(item => adventureListItem(item, this.isCustom(item.id))),
       customHeroes: table.players.flatMap(state => state.custom ? [state.custom] : []),
       ...(role === "gm" && table.extraMonsters.length ? { extraMonsters: table.extraMonsters } : {}),
+      journal: [...table.journal].reverse().map(entry => ({
+        id: entry.id, at: entry.at, by: entry.by, kind: entry.kind, text: entry.text, editable: role === "gm" || entry.byKey === seatKey,
+      })),
     };
   }
 
@@ -1672,6 +1714,10 @@ export class TabletopCoordinator {
   }
 }
 
+function abilityPart(hero: HeroSheet, ability: Ability): RollPart {
+  return { kind: "ability", ability, value: abilityModifier(hero.abilities[ability]) };
+}
+
 // ---- Snapshots -------------------------------------------------------------
 
 /** A table as plain JSON (fog as a "0101…" string, maps as entry lists). */
@@ -1691,6 +1737,7 @@ function snapshotTable(table: TableState): unknown {
     narration: table.narration,
     vision: table.vision,
     extraMonsters: table.extraMonsters,
+    journal: table.journal,
     updatedAt: table.updatedAt,
   };
 }
@@ -1723,6 +1770,8 @@ function restoreTable(raw: unknown): TableState | null {
       narration: (data.narration as TableState["narration"]) ?? null,
       vision: (VISION_RADII as readonly unknown[]).includes(data.vision) ? data.vision as number : DEFAULT_VISION,
       extraMonsters: Array.isArray(data.extraMonsters) ? (data.extraMonsters as MonsterSheet[]).slice(0, MAX_EXTRA_MONSTERS) : [],
+      journal: Array.isArray(data.journal) ? (data.journal as JournalRecord[]).filter(entry => typeof entry?.id === "string" && typeof entry.text === "string"
+        && (JOURNAL_KINDS as readonly unknown[]).includes(entry.kind)).slice(-MAX_JOURNAL_ENTRIES) : [],
       updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
     };
   } catch {

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CLASSES, DRAGON_ANCESTRIES, RACES, buildHero, suggestedAbilities, validateHeroChoices } from "../../../src/shared/hero-builder.js";
 import { enHero, enLine, enRollText } from "./en-terms.js";
+import { BUILT_IN_ADVENTURES } from "../../../src/shared/tabletop-adventures.js";
+import { findSpell, spellNames } from "./spells.js";
 
 const CYRILLIC = /[А-Яа-яЁё]/;
 
@@ -26,7 +28,10 @@ test("every builder text has English: all races, classes and levels", () => {
           ...(cls.id === "fighter" ? { fightingStyle: "archery" } : {}),
           ...(race.id === "dragonborn" ? { ancestry: "silver" } : {}),
         });
-        const hero = enHero(buildHero(choices, "x"));
+        const built = buildHero(choices, "x");
+        for (const name of spellNames(built.spells ?? [])) assert.ok(findSpell(name), `spell card for ${name}`);
+        const hero = enHero(built);
+        for (const name of spellNames(hero.spells ?? [])) assert.ok(findSpell(name), `spell card for ${name}`);
         const text = JSON.stringify({ ...hero, name: "", story: "" });
         assert.doesNotMatch(text, CYRILLIC, `${race.id} ${cls.id} ${level}: ${text.match(/"[^"]*[А-Яа-яЁё][^"]*"/)?.[0]}`);
       }
@@ -44,4 +49,11 @@ test("roll labels and reasons read in English", () => {
   assert.equal(enRollText("цель опутан: преимущество"), "target restrained: advantage");
   assert.equal(enRollText("Опыт +300: Вера"), "Experience +300: Вера");
   assert.equal(enRollText("Паутина: спасбросок Ловкость, при провале — опутан"), "Паутина: Dexterity save, on a failure restrained");
+});
+
+test("the adventures' heroes have a card for every spell", () => {
+  for (const adventure of BUILT_IN_ADVENTURES) {
+    for (const hero of adventure.heroes) for (const name of spellNames(hero.spells ?? [])) assert.ok(findSpell(name), `${hero.id}: ${name}`);
+  }
+  assert.deepEqual(spellNames(["Заговоры: Огненный снаряд, Свет", "1-й круг (подготовлены): Лечение ран"]), ["Огненный снаряд", "Свет", "Лечение ран"]);
 });

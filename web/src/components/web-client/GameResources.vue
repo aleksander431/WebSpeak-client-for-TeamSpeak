@@ -1,7 +1,7 @@
 <template>
   <div class="gr" data-ws-part="voice.game.resources">
     <div v-for="resource in hero.resources ?? []" :key="resource.id" class="gr-row">
-      <span class="gr-name">
+      <span class="gr-name" :data-tip="tips?.resource">
         <strong>{{ resource.name }}</strong>
         <small>{{ resource.recharge === 'short' ? x.care.short : x.care.long }}</small>
       </span>
@@ -23,7 +23,7 @@
       </span>
     </div>
     <div class="gr-row gr-dice">
-      <span class="gr-name">
+      <span class="gr-name" :data-tip="tips?.hitDice">
         <strong>{{ x.care.hitDice }}</strong>
         <small>{{ seat.hitDice ?? hero.level }}/{{ hero.level }} · {{ diePrefix }}{{ hero.hitDie ?? 8 }}</small>
       </span>
@@ -36,7 +36,7 @@
 import type { HeroResource, HeroSheet, SeatView } from "../../../../src/shared/tabletop.js";
 import type { DndText } from "../../game/dnd-text.js";
 
-const props = defineProps<{ x: DndText; hero: HeroSheet; seat: SeatView; editable: boolean; inCombat: boolean; diePrefix: string }>();
+const props = defineProps<{ x: DndText; hero: HeroSheet; seat: SeatView; editable: boolean; inCombat: boolean; diePrefix: string; tips?: { resource: string; hitDice: string } }>();
 const emit = defineEmits<{ use: [resourceId: string, used: number]; hitDie: [] }>();
 
 const spent = (resource: HeroResource) => Math.min(resource.max, props.seat.used?.[resource.id] ?? 0);

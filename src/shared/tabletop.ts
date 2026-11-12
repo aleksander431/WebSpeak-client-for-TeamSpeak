@@ -251,6 +251,13 @@ export type CheckSource = Extract<RollSource, { type: "ability" | "skill" | "sav
 
 export interface RollDie { sides: number; value: number; dropped?: boolean }
 
+/** One term of a roll's flat modifier, so the page can say what was added: "+3 Dexterity +2 proficiency". */
+export interface RollPart {
+  kind: "ability" | "proficiency" | "expertise" | "attack" | "flat";
+  ability?: Ability;
+  value: number;
+}
+
 export interface RollView {
   id: string;
   at: number;
@@ -291,6 +298,8 @@ export interface RollView {
   reasons?: string[];
   /** The master applied this result by hand: to whom and how. */
   appliedTo?: { names: string[]; mode: ApplyMode };
+  /** What the modifier is made of (named rolls only). */
+  parts?: RollPart[];
 }
 
 export type ApplyMode = "damage" | "half" | "heal";
@@ -445,6 +454,22 @@ export interface MapView {
 }
 
 export const VISION_RADII = [0, 3, 6, 12] as const;
+
+/** The party's shared journal: quests, people, places, clues and notes, kept across games at the table. */
+export const JOURNAL_KINDS = ["quest", "person", "place", "clue", "note"] as const;
+export type JournalKind = typeof JOURNAL_KINDS[number];
+export const MAX_JOURNAL_ENTRIES = 150;
+export const MAX_JOURNAL_TEXT = 600;
+
+export interface JournalEntryView {
+  id: string;
+  at: number;
+  by: string;
+  kind: JournalKind;
+  text: string;
+  /** This viewer wrote it (or is the master): may edit and remove it. */
+  editable: boolean;
+}
 export const DEFAULT_VISION = 6;
 
 export interface TableView {
@@ -468,6 +493,8 @@ export interface TableView {
   customHeroes: HeroSheet[];
   /** Game master only: creatures made up during play (quick sheets). */
   extraMonsters?: MonsterSheet[];
+  /** The party's journal, newest first. */
+  journal: JournalEntryView[];
   /** Adventures the game master may choose from. */
   adventures: Array<{ id: string; title: string; summary: string; level: number; length: string; custom: boolean }>;
 }
@@ -532,7 +559,11 @@ export type GameClientMessage =
   | { type: "gameVaultSave"; hero: VaultHero }
   | { type: "gameVaultRemove"; id: string }
   /** Game master: how far heroes see (cells; 0 turns it off). */
-  | { type: "gameVision"; radius: number };
+  | { type: "gameVision"; radius: number }
+  /** The party journal: seated people write, the author or the master edit and remove. */
+  | { type: "gameJournalAdd"; kind: JournalKind; text: string }
+  | { type: "gameJournalEdit"; id: string; kind: JournalKind; text: string }
+  | { type: "gameJournalRemove"; id: string };
 
 export type GameServerMessage =
   | { type: "gameState"; table: TableView | null }
@@ -671,6 +702,15 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
     }
     case "gameVaultRemove": return shortId(raw.id) ? { type: "gameVaultRemove", id: raw.id } : invalid;
     case "gameVision": return (VISION_RADII as readonly unknown[]).includes(raw.radius) ? { type: "gameVision", radius: raw.radius as number } : invalid;
+    case "gameJournalAdd":
+    case "gameJournalEdit": {
+      const text = typeof raw.text === "string" ? raw.text.trim() : "";
+      if (!text || text.length > MAX_JOURNAL_TEXT || !(JOURNAL_KINDS as readonly unknown[]).includes(raw.kind)) return invalid;
+      const kind = raw.kind as JournalKind;
+      if (raw.type === "gameJournalAdd") return { type: "gameJournalAdd", kind, text };
+      return shortId(raw.id) ? { type: "gameJournalEdit", id: raw.id, kind, text } : invalid;
+    }
+    case "gameJournalRemove": return shortId(raw.id) ? { type: "gameJournalRemove", id: raw.id } : invalid;
     case "gameSaveAttack": {
       const source = raw.source;
       if (!isObject(source) || !Array.isArray(raw.targets) || !raw.targets.length || raw.targets.length > 20 || !raw.targets.every(shortId)) return invalid;

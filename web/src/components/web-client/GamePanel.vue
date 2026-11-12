@@ -6,6 +6,10 @@
     aria-modal="true"
     :aria-label="x.dnd"
     @keydown.esc="onEscape"
+    @mouseover="tipShow"
+    @mouseout="tipHide"
+    @focusin="tipShow"
+    @focusout="tipHide"
   >
     <header ref="topBar" class="gm-top" data-ws-part="voice.game.header">
       <div class="gm-crumbs">
@@ -28,6 +32,7 @@
           <button v-if="music.state.blocked" type="button" class="gm-btn gm-btn-gold" @click="music.resume()">{{ x.musicStart }}</button>
         </div>
         <button v-if="table?.phase === 'playing' && role === 'gm'" type="button" class="gm-btn" @click="client.end()">{{ x.end }}</button>
+        <button v-if="table" type="button" :class="['gm-btn', 'gm-journal-btn', { 'gm-help-on': journalOpen }]" :aria-expanded="journalOpen" @click="toggleJournal">📖 {{ learn.journal.button }}<span v-if="table.journal.length" class="gm-count">{{ table.journal.length }}</span></button>
         <button type="button" :class="['gm-btn', 'gm-help-btn', { 'gm-help-on': helpOpen }]" :aria-expanded="helpOpen" @click="toggleHelp('now')">❔ {{ help.button }}</button>
         <button type="button" class="gm-btn" @click="emit('close')">{{ x.close }}</button>
       </div>
@@ -208,13 +213,13 @@
             @toggle="(id, active) => client.condition(mySeat!.key, id, active)"
             @exhaustion="level => client.exhaustion(mySeat!.key, level)"
           />
-          <div v-if="mySeat.xp !== undefined" class="gm-xp">
+          <div v-if="mySeat.xp !== undefined" class="gm-xp" :data-tip="learn.tips.xp">
             <span class="gm-small">{{ x.progress.xp }} <b>{{ mySeat.xp }}</b><template v-if="myHero.level < MAX_LEVEL"> / {{ XP_FOR_LEVEL[myHero.level + 1] }}</template><template v-else> · {{ x.progress.maxLevel }}</template></span>
             <span class="gm-xp-bar"><span :style="{ width: `${xpPercent}%` }"></span></span>
             <button v-if="canLevelUp" type="button" class="gm-btn gm-btn-gold gm-btn-s" @click="levelUpOpen = true">⬆ {{ x.progress.levelUpButton }}</button>
           </div>
           <div class="gm-stat-row">
-            <div class="gm-stat">
+            <div class="gm-stat" :data-tip="learn.tips.hp">
               <div class="gm-hp">
                 <button type="button" class="gm-mini" :aria-label="x.hpMinus" @click="client.setHp(mySeat.key, (mySeat.hp ?? 0) - 1)">−</button>
                 <strong :class="hpClass(mySeat.hp, myHero.maxHp)">{{ mySeat.hp }}<small>/{{ myHero.maxHp }}</small></strong>
@@ -222,12 +227,13 @@
               </div>
               <span class="gm-muted gm-small">{{ x.hp }}</span>
             </div>
-            <div class="gm-stat"><strong>{{ myHero.ac }}</strong><span class="gm-muted gm-small">{{ x.ac }}</span></div>
-            <button type="button" class="gm-stat gm-stat-btn" @click="roll({ type: 'initiative' })"><strong>{{ mod(myHero.abilities.dex) }}</strong><span class="gm-muted gm-small">{{ x.initiative }}</span></button>
-            <div class="gm-stat"><strong>{{ myHero.speed }}</strong><span class="gm-muted gm-small">{{ x.speed }}, {{ x.feet }}</span></div>
+            <div class="gm-stat" :data-tip="learn.tips.ac"><strong>{{ myHero.ac }}</strong><span class="gm-muted gm-small">{{ x.ac }}</span></div>
+            <button type="button" class="gm-stat gm-stat-btn" :data-tip="learn.tips.initiative" @click="roll({ type: 'initiative' })"><strong>{{ mod(myHero.abilities.dex) }}</strong><span class="gm-muted gm-small">{{ x.initiative }}</span></button>
+            <div class="gm-stat" :data-tip="learn.tips.speed"><strong>{{ myHero.speed }}</strong><span class="gm-muted gm-small">{{ x.speed }}, {{ x.feet }}</span></div>
           </div>
+          <p class="gm-prof" :data-tip="learn.tips.proficiency(signed(proficiencyBonus(myHero.level)))"><span class="gm-muted gm-small">{{ profLabel }}</span> <b>{{ signed(proficiencyBonus(myHero.level)) }}</b></p>
           <div class="gm-abilities">
-            <button v-for="ability in ABILITIES" :key="ability" type="button" class="gm-ability" :title="x.abilityName[ability]" @click="roll({ type: 'ability', ability })">
+            <button v-for="ability in ABILITIES" :key="ability" type="button" class="gm-ability" :aria-label="x.abilityName[ability]" :data-tip="`${learn.tips.ability[ability]} ${learn.tips.abilityHow}`" @click="roll({ type: 'ability', ability })">
               <span class="gm-muted gm-small">{{ x.abilityShort[ability] }}</span>
               <strong>{{ mod(myHero.abilities[ability]) }}</strong>
               <span class="gm-muted gm-small">{{ myHero.abilities[ability] }}</span>
@@ -244,6 +250,7 @@
             :editable="true"
             :in-combat="Boolean(combat)"
             :die-prefix="diePrefix"
+            :tips="{ resource: learn.tips.resource, hitDice: learn.tips.hitDice }"
             @use="(id, used) => client.resource(mySeat!.key, id, used)"
             @hit-die="client.hitDie(mySeat!.key)"
           />
@@ -257,10 +264,10 @@
           </p>
           <div v-for="(attack, index) in myHero.attacks" :key="attack.name" class="gm-action">
             <span class="gm-action-text"><strong>{{ attack.name }}</strong><span class="gm-muted gm-small">{{ attack.note }}</span></span>
-            <button v-if="attack.bonus !== null" type="button" class="gm-chip gm-chip-gold" @click="roll({ type: 'attack', index })">{{ signed(attack.bonus) }}</button>
-            <button v-else-if="table.map && attackSaveOf(attack)" type="button" class="gm-chip gm-chip-war" :title="saveRule(attack)" @click="openSave({ type: 'attack', index }, attack)">{{ x.care.saveAttack }}</button>
-            <button type="button" class="gm-chip" @click="roll({ type: 'damage', index })">{{ attack.damage.replace(/d/g, x === TEXT_RU ? 'к' : 'd') }}</button>
-            <button type="button" class="gm-chip" :title="x.crit" @click="roll({ type: 'damage', index, crit: true })">{{ x.crit }}</button>
+            <button v-if="attack.bonus !== null" type="button" class="gm-chip gm-chip-gold" :data-tip="learn.tips.attack(signed(attack.bonus))" @click="roll({ type: 'attack', index })">{{ signed(attack.bonus) }}</button>
+            <button v-else-if="table.map && attackSaveOf(attack)" type="button" class="gm-chip gm-chip-war" :data-tip="`${saveRule(attack)}. ${learn.tips.saveAttack}`" @click="openSave({ type: 'attack', index }, attack)">{{ x.care.saveAttack }}</button>
+            <button type="button" class="gm-chip" :data-tip="learn.tips.damage" @click="roll({ type: 'damage', index })">{{ attack.damage.replace(/d/g, x === TEXT_RU ? 'к' : 'd') }}</button>
+            <button type="button" class="gm-chip" :data-tip="learn.tips.crit" @click="roll({ type: 'damage', index, crit: true })">{{ x.crit }}</button>
           </div>
         </div>
 
@@ -269,12 +276,12 @@
             <button v-for="tab in sheetTabs" :key="tab.id" type="button" role="tab" :aria-selected="sheetTab === tab.id" :class="['gm-tab', { 'gm-tab-on': sheetTab === tab.id }]" @click="sheetTab = tab.id">{{ tab.label }}</button>
           </div>
           <div v-if="sheetTab === 'skills'" class="gm-skill-grid">
-            <button v-for="skill in SKILL_IDS" :key="skill" type="button" :class="['gm-skill', { 'gm-skill-prof': myHero.skills.includes(skill) }]" @click="roll({ type: 'skill', skill })">
+            <button v-for="skill in SKILL_IDS" :key="skill" type="button" :class="['gm-skill', { 'gm-skill-prof': myHero.skills.includes(skill) }]" :data-tip="learn.tips.skill(x.abilityName[SKILLS[skill]], myHero.skills.includes(skill))" @click="roll({ type: 'skill', skill })">
               <span>{{ x.skillName[skill] }}</span><strong>{{ signed(skillBonus(myHero, skill)) }}</strong>
             </button>
           </div>
           <div v-else-if="sheetTab === 'saves'" class="gm-skill-grid">
-            <button v-for="ability in ABILITIES" :key="ability" type="button" :class="['gm-skill', { 'gm-skill-prof': myHero.saves.includes(ability) }]" @click="roll({ type: 'save', ability })">
+            <button v-for="ability in ABILITIES" :key="ability" type="button" :class="['gm-skill', { 'gm-skill-prof': myHero.saves.includes(ability) }]" :data-tip="learn.tips.save(myHero.saves.includes(ability))" @click="roll({ type: 'save', ability })">
               <span>{{ x.abilityName[ability] }}</span><strong>{{ signed(saveBonus(myHero, ability)) }}</strong>
             </button>
           </div>
@@ -286,6 +293,30 @@
             editable
             @change="(items, coins) => client.inventory(mySeat!.key, items, coins)"
           />
+          <div v-else-if="sheetTab === 'spells'" class="gm-spells" data-ws-part="voice.game.spells">
+            <template v-for="group in spellGroups" :key="group.level">
+              <h3 class="gm-spell-group">{{ group.level === 0 ? learn.spells.cantrip : learn.spells.level(group.level) }}<small v-if="group.level >= 0"> · {{ group.level === 0 ? learn.spells.cantripNote : learn.spells.slotNote(group.level) }}</small></h3>
+              <div v-for="item in group.items" :key="item.name" :class="['gm-spell', { 'gm-spell-open': openSpell === item.name }]">
+                <button type="button" class="gm-spell-head" :aria-expanded="openSpell === item.name" @click="openSpell = openSpell === item.name ? null : item.name">
+                  <strong>{{ item.name }}</strong>
+                  <span v-if="item.card?.concentration" class="gm-spell-tag">{{ learn.spells.concentration }}</span>
+                  <span v-if="item.card?.ritual" class="gm-spell-tag">{{ learn.spells.ritual }}</span>
+                  <span class="gm-spell-arrow" aria-hidden="true">{{ openSpell === item.name ? "▴" : "▾" }}</span>
+                </button>
+                <div v-if="openSpell === item.name" class="gm-spell-card">
+                  <template v-if="item.card">
+                    <dl class="gm-spell-facts">
+                      <dt>{{ learn.spells.time }}</dt><dd>{{ item.card.time[russian ? 0 : 1] }}</dd>
+                      <dt>{{ learn.spells.range }}</dt><dd>{{ item.card.range[russian ? 0 : 1] }}</dd>
+                      <dt>{{ learn.spells.duration }}</dt><dd>{{ item.card.duration[russian ? 0 : 1] }}<template v-if="item.card.concentration"> · {{ learn.spells.concentration }}</template></dd>
+                    </dl>
+                    <p>{{ item.card.text[russian ? 0 : 1] }}</p>
+                  </template>
+                  <p v-else class="gm-muted">{{ learn.spells.unknown }}</p>
+                </div>
+              </div>
+            </template>
+          </div>
           <ul v-else class="gm-list">
             <li v-for="line in sheetLines" :key="line">{{ line }}</li>
           </ul>
@@ -552,7 +583,7 @@
             <li v-for="item in reversedRolls" :key="item.id" :class="['gm-log-item', { 'gm-log-secret': item.secret }]">
               <span class="gm-log-who">{{ item.heroName ?? item.by }}</span>
               <span class="gm-log-what">{{ item.secret ? x.secretRoll : said(item.label) }}<template v-if="item.hidden && !item.secret"> · {{ x.hidden.split(' (')[0] }}</template></span>
-              <span v-if="!item.secret && item.dice?.length" class="gm-log-dice">{{ diceText(item) }}</span>
+              <span v-if="!item.secret && item.dice?.length" class="gm-log-dice" :title="diceText(item)">{{ breakdown(item) || diceText(item) }}</span>
               <strong v-if="!item.secret && item.total !== undefined" :class="['gm-log-total', rollClass(item)]">{{ item.total }}</strong>
               <span v-if="item.success !== undefined" :class="item.success ? 'gm-ok' : 'gm-bad'">{{ item.success ? x.success : x.failure }}<template v-if="item.dc !== undefined"> · {{ item.dc }}</template></span>
               <span v-if="item.targetName" class="gm-log-target">→ {{ item.targetName }}<template v-if="item.targetAc !== undefined"> ({{ x.ac }} {{ item.targetAc }})</template></span>
@@ -603,6 +634,7 @@
           </div>
           <strong :class="['gm-display', 'gm-roll-title', rollClass(shownRoll)]">{{ rollHeadline(shownRoll) }}</strong>
           <span class="gm-roll-sum">{{ said(shownRoll.label) }}<template v-if="shownRoll.targetName"> → {{ shownRoll.targetName }}</template> · <b>{{ shownRoll.total }}</b></span>
+          <span v-if="breakdown(shownRoll)" class="gm-roll-math">{{ breakdown(shownRoll) }}</span>
           <ul v-if="shownRoll.saves?.length" class="gm-roll-saves">
             <li v-for="entry in shownRoll.saves" :key="entry.tokenId" :class="entry.success ? 'gm-ok' : 'gm-bad'">{{ entry.name }}: {{ entry.success ? x.care.saved : x.care.failedSave }}<template v-if="entry.damage"> · −{{ entry.damage }}</template></li>
           </ul>
@@ -684,6 +716,20 @@
         <label class="gt-field">{{ x.improv.attackDamage }}<input v-model="quick.attackDamage" class="gt-input" maxlength="40" placeholder="1d6+2" /></label>
       </div>
     </GameTargetsDialog>
+    <GameJournal
+      v-if="journalOpen && table"
+      :t="learn.journal"
+      :entries="table.journal"
+      :can-write="role !== 'spectator'"
+      :close-label="x.close"
+      :russian="russian"
+      :style="{ top: `${topHeight}px` }"
+      @close="journalOpen = false"
+      @add="(kind, text) => client.journalAdd(kind, text)"
+      @edit="(id, kind, text) => client.journalEdit(id, kind, text)"
+      @remove="id => client.journalRemove(id)"
+    />
+    <div v-if="tip" class="gm-tip" role="tooltip" :style="{ left: `${tip.x}px`, top: `${tip.y}px` }" :class="{ 'gm-tip-below': tip.below }">{{ tip.text }}</div>
     <GameHelp
       v-if="helpOpen"
       :x="x"
@@ -742,7 +788,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { ABILITIES, CONDITIONS, MAX_PLAYERS, SKILL_IDS, abilityModifier, attackSaveOf, parseDiceExpression, type Ability, type ApplyMode, type ConditionId, type GameClientMessage, type HeroAttack, type HeroSheet, type TokenView, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
+import { ABILITIES, CONDITIONS, MAX_PLAYERS, SKILLS, SKILL_IDS, abilityModifier, proficiencyBonus, attackSaveOf, parseDiceExpression, type Ability, type ApplyMode, type ConditionId, type GameClientMessage, type HeroAttack, type HeroSheet, type TokenView, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
 
 import GameMap from "./GameMap.vue";
 import HeroBuilder from "./HeroBuilder.vue";
@@ -751,6 +797,9 @@ import GameResources from "./GameResources.vue";
 import GameSaveAttack from "./GameSaveAttack.vue";
 import GameTargetsDialog from "./GameTargetsDialog.vue";
 import GameHelp from "./GameHelp.vue";
+import GameJournal from "./GameJournal.vue";
+import { learnText } from "../../game/learn-text.js";
+import { findSpell, spellNames, type SpellCard } from "../../game/spells.js";
 import { helpText, type HelpId } from "../../game/help-content.js";
 import GameInventory from "./GameInventory.vue";
 import HeroLevelUp from "./HeroLevelUp.vue";
@@ -828,7 +877,92 @@ function toggleHelp(id: HelpId): void {
   if (helpOpen.value && helpStart.value === id) { helpOpen.value = false; return; }
   helpStart.value = id;
   helpOpen.value = true;
+  journalOpen.value = false;
 }
+const journalOpen = ref(false);
+function toggleJournal(): void {
+  journalOpen.value = !journalOpen.value;
+  if (journalOpen.value) helpOpen.value = false;
+}
+const learn = computed(() => learnText(russian.value));
+const profLabel = computed(() => (russian.value ? "Бонус мастерства" : "Proficiency bonus"));
+
+// ---- Hover hints: any element with data-tip inside the panel -------------------
+
+const tip = ref<{ text: string; x: number; y: number; below: boolean } | null>(null);
+let tipTimer: ReturnType<typeof setTimeout> | undefined;
+let tipTarget: Element | null = null;
+function tipShow(event: Event): void {
+  const target = (event.target as Element | null)?.closest?.("[data-tip]") ?? null;
+  if (target === tipTarget) return;
+  tipTarget = target;
+  clearTimeout(tipTimer);
+  if (!target) { tip.value = null; return; }
+  const place = () => {
+    if (tipTarget !== target || !target.isConnected) return;
+    const rect = target.getBoundingClientRect();
+    const below = rect.top < 120;
+    const half = Math.min(150, window.innerWidth / 2 - 8);
+    tip.value = {
+      text: target.getAttribute("data-tip") ?? "",
+      x: Math.max(half + 8, Math.min(window.innerWidth - half - 8, rect.left + rect.width / 2)),
+      y: below ? rect.bottom + 8 : rect.top - 8,
+      below,
+    };
+  };
+  if (event.type === "focusin") place();
+  else tipTimer = setTimeout(place, 350);
+}
+function tipHide(event: Event): void {
+  const next = (event as MouseEvent | FocusEvent).relatedTarget as Element | null;
+  if (next && tipTarget && tipTarget.contains(next)) return;
+  clearTimeout(tipTimer);
+  tipTarget = null;
+  tip.value = null;
+}
+onBeforeUnmount(() => clearTimeout(tipTimer));
+
+// ---- Roll breakdown: "15 = die 11 + 3 Dexterity + 2 proficiency" -----------------
+
+function breakdown(item: RollView): string {
+  if (item.secret || !item.dice?.length || item.total === undefined) return "";
+  const words = learn.value.breakdown;
+  const kept = item.dice.filter(die => !die.dropped);
+  const dropped = item.dice.filter(die => die.dropped);
+  const pieces: string[] = [];
+  if (kept.length === 1 && kept[0]!.sides === 20) {
+    const note = dropped.length && item.mode !== "normal" && item.mode ? ` (${words.kept(item.mode)}, ${dropped.map(die => die.value).join(", ")})` : "";
+    pieces.push(`${words.die} ${kept[0]!.value}${note}`);
+  } else {
+    pieces.push(`${words.dice} ${kept.map(die => die.value).join("+")}`);
+  }
+  const term = (value: number, label: string) => `${value < 0 ? "−" : "+"} ${Math.abs(value)}${label ? ` ${label}` : ""}`;
+  if (item.parts?.length) {
+    for (const part of item.parts) {
+      const label = part.kind === "ability" && part.ability ? x.value.abilityName[part.ability]
+        : part.kind === "proficiency" ? words.proficiency : part.kind === "expertise" ? words.expertise : part.kind === "attack" ? words.attack : words.flat;
+      pieces.push(term(part.value, label));
+    }
+  } else if (item.modifier) {
+    pieces.push(term(item.modifier, ""));
+  }
+  if (pieces.length === 1 && kept.length === 1 && !dropped.length) return "";
+  return `${item.total} = ${pieces.join(" ")}`;
+}
+
+// ---- Spell cards ------------------------------------------------------------------
+
+const openSpell = ref<string | null>(null);
+const spellGroups = computed(() => {
+  const hero = myHero.value;
+  const groups = new Map<number, Array<{ name: string; card?: SpellCard }>>();
+  for (const name of spellNames(hero?.spells ?? [])) {
+    const card = findSpell(name);
+    const level = card?.level ?? 99;
+    groups.set(level, [...(groups.get(level) ?? []), { name: card ? card[russian.value ? "ru" : "en"] : name, ...(card ? { card } : {}) }]);
+  }
+  return [...groups].sort(([a], [b]) => a - b).map(([level, items]) => ({ level: level === 99 ? -1 : level, items }));
+});
 const HELP_SEEN_KEY = "webspeak:dnd-help-seen";
 const helpSeen = ref((() => { try { return localStorage.getItem(HELP_SEEN_KEY) === "1"; } catch { return true; } })());
 function markHelpSeen(): void {
@@ -1095,18 +1229,19 @@ const modes = computed(() => [
 ]);
 const hiddenRoll = ref(false);
 const customExpr = ref("");
-const sheetTab = ref<"skills" | "saves" | "features" | "equipment" | "story">("skills");
+const sheetTab = ref<"skills" | "saves" | "features" | "spells" | "equipment" | "story">("skills");
 const sheetTabs = computed(() => [
   { id: "skills" as const, label: x.value.skills },
   { id: "saves" as const, label: x.value.saves },
   { id: "features" as const, label: x.value.features },
+  ...(myHero.value?.spells?.length ? [{ id: "spells" as const, label: learn.value.spells.tab }] : []),
   { id: "equipment" as const, label: x.value.progress.inventory },
   { id: "story" as const, label: x.value.story },
 ]);
 const sheetLines = computed(() => {
   const hero = myHero.value;
   if (!hero) return [];
-  if (sheetTab.value === "features") return [...hero.features, ...(hero.spells?.length ? [`${x.value.spells}: ${hero.spells.join(", ")}`] : [])];
+  if (sheetTab.value === "features") return hero.features;
   if (sheetTab.value === "equipment") return hero.equipment;
   return [hero.story];
 });
@@ -1389,6 +1524,26 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-story { margin: 0; font-family: "Cormorant Garamond", Georgia, serif; font-size: 18px; line-height: 1.4; color: #f1e6cf; }
 
 .gm-hero-head { display: flex; gap: 12px; align-items: center; }
+.gm-prof { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 0; font-size: 13px; }
+.gm-prof b { color: var(--gm-gold); }
+.gm-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 6px; padding: 0 5px; border-radius: 999px; background: var(--gm-gold-soft); color: var(--gm-gold); font-size: 11px; font-weight: 700; }
+.gm-tip { position: fixed; z-index: 90; max-width: 300px; padding: 8px 11px; border-radius: 10px; border: 1px solid var(--gm-line-2); background: #0f1013; color: #ece8df; font-size: 12.5px; line-height: 1.45; box-shadow: 0 10px 30px rgba(0, 0, 0, .55); transform: translate(-50%, -100%); pointer-events: none; }
+.gm-tip-below { transform: translate(-50%, 0); }
+.gm-roll-math { color: var(--gm-muted); font-size: 14px; font-variant-numeric: tabular-nums; animation: gm-rise .5s .9s ease both; }
+.gm-spells { display: flex; flex-direction: column; gap: 6px; }
+.gm-spell-group { margin: 6px 0 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--gm-gold); }
+.gm-spell-group small { letter-spacing: 0; text-transform: none; color: var(--gm-muted); font-weight: 400; }
+.gm-spell { border-radius: 10px; border: 1px solid var(--gm-line-2); background: var(--gm-raised); }
+.gm-spell-open { border-color: var(--gm-gold); }
+.gm-spell-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 6px 10px; border: 0; background: none; color: var(--gm-text); font: inherit; text-align: left; cursor: pointer; }
+.gm-spell-head strong { flex: 1 1 auto; font-weight: 600; }
+.gm-spell-tag { padding: 1px 7px; border-radius: 999px; background: var(--gm-gold-soft); color: var(--gm-gold); font-size: 10.5px; }
+.gm-spell-arrow { color: var(--gm-muted); }
+.gm-spell-card { padding: 0 10px 10px; font-size: 13px; line-height: 1.5; }
+.gm-spell-card p { margin: 6px 0 0; }
+.gm-spell-facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 0; font-size: 12px; }
+.gm-spell-facts dt { color: var(--gm-muted); }
+.gm-spell-facts dd { margin: 0; }
 .gm-stat-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .gm-stat-row > .gm-stat:first-child { grid-column: 1 / -1; flex-direction: row; justify-content: center; gap: 12px; }
 .gm-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 4px; border-radius: 10px; background: var(--gm-raised); border: 1px solid transparent; color: var(--gm-text); font: inherit; }

@@ -107,6 +107,7 @@ test("the gateway rolls: skill bonuses, advantage, hidden rolls and checks with 
   assert.equal(rolled.roll.total, 22, "15 kept + 7");
   assert.equal(rolled.roll.natural, 15);
   assert.deepEqual(rolled.roll.dice, [{ sides: 20, value: 4, dropped: true }, { sides: 20, value: 15 }]);
+  assert.deepEqual(rolled.roll.parts, [{ kind: "ability", ability: "dex", value: 3 }, { kind: "proficiency", value: 2 }, { kind: "expertise", value: 2 }], "the page can say what was added");
 
   f.send(kria, { type: "gameRoll", source: { type: "free", expr: "1d20" }, mode: "normal", hidden: false });
   assert.equal(f.lastError("c"), "NOT_SEATED", "spectators watch");
@@ -741,4 +742,44 @@ test("improvisation: any roll applied to chosen tokens, the master's hazards, qu
   assert.equal(f.lastError("a"), "NO_TARGETS", "healing does not raise the dead");
   f.send(gm, { type: "gameHp", key: "uid:Sasha", hp: 1 });
   assert.equal(f.state("b").players[0]!.dying, undefined, "the master can (Revivify)");
+});
+
+test("journal: seated people write, authors and the master edit, it outlives games and restarts", () => {
+  const saved = new Map<string, unknown>();
+  const store: TabletopStore = { load: key => saved.get(key) ?? null, save: (key, snapshot) => { if (snapshot === null) saved.delete(key); else saved.set(key, JSON.parse(JSON.stringify(snapshot))); } };
+  const f = fixture([], BARE_ADVENTURES, store);
+  const gm = f.person("a", "Alex");
+  const sasha = f.person("b", "Sasha");
+  const kria = f.person("c", "Kria");
+  for (const who of [gm, sasha, kria]) f.send(who, { type: "gameOpen" });
+  f.send(gm, { type: "gameSeat", role: "gm" });
+  f.send(sasha, { type: "gameSeat", role: "player" });
+
+  f.send(kria, { type: "gameJournalAdd", kind: "note", text: "spectator" });
+  assert.equal(f.lastError("c"), "NOT_SEATED", "spectators only read");
+  f.send(sasha, { type: "gameJournalAdd", kind: "quest", text: "Заставить колокол замолчать" });
+  f.send(gm, { type: "gameJournalAdd", kind: "person", text: "Марта — хозяйка таверны" });
+  const forSasha = f.state("b").journal;
+  assert.deepEqual(forSasha.map(entry => [entry.kind, entry.by, entry.editable]), [["person", "Alex", false], ["quest", "Sasha", true]], "newest first");
+  assert.deepEqual(f.state("c").journal.map(entry => entry.editable), [false, false]);
+  assert.deepEqual(f.state("a").journal.map(entry => entry.editable), [true, true], "the master edits everything");
+
+  const martha = forSasha[0]!.id;
+  f.send(sasha, { type: "gameJournalRemove", id: martha });
+  assert.equal(f.lastError("b"), "NOT_YOURS");
+  f.send(sasha, { type: "gameJournalEdit", id: forSasha[1]!.id, kind: "quest", text: "Заставить колокол замолчать (50 зм)" });
+  assert.equal(f.state("c").journal[1]!.text, "Заставить колокол замолчать (50 зм)");
+  f.send(gm, { type: "gameJournalRemove", id: martha });
+  assert.equal(f.state("b").journal.length, 1);
+  f.send(gm, { type: "gameJournalRemove", id: martha });
+  assert.equal(f.lastError("a"), "UNKNOWN_ENTRY");
+
+  assert.ok("error" in parseGameClientMessage({ type: "gameJournalAdd", kind: "secret", text: "x" })!);
+  assert.ok("error" in parseGameClientMessage({ type: "gameJournalAdd", kind: "note", text: "   " })!);
+  assert.ok("error" in parseGameClientMessage({ type: "gameJournalAdd", kind: "note", text: "x".repeat(601) })!);
+
+  const again = fixture([], BARE_ADVENTURES, store);
+  const sasha2 = again.person("x", "Sasha");
+  again.send(sasha2, { type: "gameOpen" });
+  assert.deepEqual(again.state("x").journal.map(entry => [entry.text, entry.editable]), [["Заставить колокол замолчать (50 зм)", true]]);
 });

@@ -1,6 +1,6 @@
 import { reactive, shallowRef } from "vue";
 import type { Coins, HeroChoices, InventoryItem } from "../../../src/shared/hero-builder.js";
-import type { AdventureSummary, CheckSource, ConditionId, GameClientMessage, GameServerMessage, RollMode, RollSource, RollView, TableRole, TableView, VaultHero, ApplyMode, QuickMonster } from "../../../src/shared/tabletop.js";
+import type { AdventureSummary, CheckSource, ConditionId, GameClientMessage, GameServerMessage, RollMode, RollSource, RollView, TableRole, TableView, VaultHero, ApplyMode, QuickMonster, JournalKind } from "../../../src/shared/tabletop.js";
 
 export interface GameTransport {
   isOpen(): boolean;
@@ -125,6 +125,9 @@ export class GameClient {
   rest(kind: "short" | "long"): void { this.send({ type: "gameRest", kind }); }
   hitDie(key: string): void { this.send({ type: "gameHitDie", key }); }
   vision(radius: number): void { this.send({ type: "gameVision", radius }); }
+  journalAdd(kind: JournalKind, text: string): void { this.send({ type: "gameJournalAdd", kind, text }); }
+  journalEdit(id: string, kind: JournalKind, text: string): void { this.send({ type: "gameJournalEdit", id, kind, text }); }
+  journalRemove(id: string): void { this.send({ type: "gameJournalRemove", id }); }
   applyTo(rollId: string, targets: string[], mode: ApplyMode): void { this.send({ type: "gameApplyTo", rollId, targets, mode }); }
   createMonster(monster: QuickMonster): void { this.send({ type: "gameMonsterCreate", monster }); }
   xp(keys: string[], amount: number): void { this.send({ type: "gameXp", keys, amount: Math.round(amount) }); }
