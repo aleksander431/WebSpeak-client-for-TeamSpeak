@@ -28,6 +28,7 @@ const eventLabels: Record<string, AdminTranslationKey> = {
   ADMIN_SKIN_ENABLED: "skinEnabledEvent", ADMIN_SKIN_DISABLED: "skinDisabledEvent",
   INVITE_CREATED: "inviteCreatedEvent", INVITE_REVOKED: "inviteRevokedEvent", INVITE_CONSUMED: "inviteConsumedEvent",
   ADMIN_ADVENTURE_INSTALLED: "adventureInstalledEvent", ADMIN_ADVENTURE_REMOVED: "adventureRemovedEvent",
+  ADMIN_EDITOR_LINK_CREATED: "editorLinkCreatedEvent", ADMIN_EDITOR_LINK_REMOVED: "editorLinkRemovedEvent", ADMIN_EDITOR_DEVICE: "editorDeviceEvent",
   CHAT_STORAGE_SETTINGS_CHANGED: "chatStorageSettingsEvent", CHAT_STORAGE_CLEARED: "chatStorageClearedEvent",
   DEVICE_APPROVAL_ENABLED: "deviceApprovalEnabledEvent", DEVICE_APPROVAL_DISABLED: "deviceApprovalDisabledEvent",
   DEVICE_ACCESS_REQUESTED: "deviceAccessRequestedEvent", DEVICE_ACCESS_APPROVED: "deviceAccessApprovedEvent",

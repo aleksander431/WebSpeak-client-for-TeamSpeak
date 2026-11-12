@@ -29,6 +29,7 @@ const routes = [
   { path: "/", name: "webclient", component: WebClient },
   { path: "/join", name: "join", component: WebClient },
   { path: "/demo", name: "demo", component: () => import("./views/DemoView.vue") },
+  { path: "/create/:token", name: "editor", component: () => import("./views/AdventureEditorView.vue") },
   { path: "/admin/:pathMatch(.*)*", name: "admin", component: () => import("./views/AdminView.vue") },
 ];
 
@@ -39,7 +40,7 @@ const router = createRouter({
 // Route chunks keep their CSS after navigation. Gate document-level layout so
 // visiting the admin console cannot constrain scrolling on the public pages.
 router.afterEach(to => {
-  document.documentElement.dataset.wsRoute = to.name === "admin" ? "admin" : to.name === "demo" ? "demo" : "webclient";
+  document.documentElement.dataset.wsRoute = to.name === "admin" ? "admin" : to.name === "demo" ? "demo" : to.name === "editor" ? "editor" : "webclient";
 });
 
 void bootstrapPlatform(mountApp);

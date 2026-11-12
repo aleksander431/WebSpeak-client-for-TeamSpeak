@@ -346,6 +346,25 @@
             </div>
           </form>
         </div>
+        <div v-if="scene?.loot?.length" class="gm-card gm-loot-card" data-ws-part="voice.game.loot">
+          <h2>{{ x.loot.title }}</h2>
+          <p class="gm-muted gm-small">{{ x.loot.hint }}</p>
+          <div v-for="(item, index) in scene.loot" :key="index" :class="['gm-loot', { 'gm-loot-given': lootWasGiven(index) }]">
+            <img v-if="item.icon" class="gm-loot-icon" :src="item.icon" alt="" /><span v-else class="gm-loot-icon" aria-hidden="true">🎁</span>
+            <span class="gm-loot-text">
+              <strong>{{ item.name }}<template v-if="item.qty > 1"> ×{{ item.qty }}</template></strong>
+              <small v-if="item.text">{{ item.text }}</small>
+              <small v-if="lootWasGiven(index)" class="gm-loot-done">✓ {{ x.loot.given }}</small>
+            </span>
+            <span class="gm-row gm-loot-give">
+              <select class="gm-input" :value="lootTarget[index] ?? ''" :aria-label="x.loot.to" @change="lootTarget[index] = ($event.target as HTMLSelectElement).value">
+                <option value="">{{ x.loot.everyone }}</option>
+                <option v-for="seat in partySeats" :key="seat.key" :value="seat.key">{{ seat.hero.name }}</option>
+              </select>
+              <button type="button" class="gm-btn" :disabled="!partySeats.length" @click="giveLoot(index)">{{ x.loot.give }}</button>
+            </span>
+          </div>
+        </div>
         <div class="gm-card">
           <div class="gm-card-head gm-party-head">
             <h2>{{ x.party }}</h2>
@@ -860,6 +879,16 @@ const playerChecks = computed(() => role.value === "player"
   ? (table.value?.checks ?? []).filter(check => check.targets.includes(table.value!.you.key) && !check.done.includes(table.value!.you.key)) : []);
 const scene = computed(() => adventure.value?.scenes[table.value?.scene ?? 0]);
 const sceneMap = computed(() => scene.value?.map);
+const lootTarget = reactive<Record<number, string>>({});
+function lootWasGiven(index: number): boolean {
+  const id = scene.value?.id;
+  return Boolean(id && table.value?.lootGiven?.includes(`${id}:${index}`));
+}
+function giveLoot(index: number): void {
+  const chosen = lootTarget[index];
+  const keys = chosen ? [chosen] : partySeats.value.map(seat => seat.key);
+  if (keys.length) props.client.giveLoot(index, keys);
+}
 const hasLeft = computed(() => role.value === "gm" || (role.value === "player" && Boolean(myHero.value && mySeat.value)));
 // ---- Help -------------------------------------------------------------------
 
@@ -1376,6 +1405,14 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-music-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--gm-muted); }
 .gm-music-volume { width: 90px; accent-color: var(--gm-gold); }
 .gm-story-text { margin: 0; font-family: "Cormorant Garamond", Georgia, serif; font-size: 17px; font-style: italic; line-height: 1.45; color: #e9dcc0; white-space: pre-wrap; }
+.gm-loot { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 10px; padding: 10px 0; border-top: 1px solid var(--gm-line); }
+.gm-loot-icon { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 9px; object-fit: cover; background: var(--gm-raised); font-size: 20px; }
+.gm-loot-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.gm-loot-text small { color: var(--gm-muted); font-size: 12px; line-height: 1.35; }
+.gm-loot-done { color: #8fd19e !important; }
+.gm-loot-given .gm-loot-icon { opacity: .6; }
+.gm-loot-give { flex: 1 1 100%; flex-wrap: nowrap; }
+.gm-loot-give select { flex: 1; min-width: 0; }
 .gm-notes { border-radius: 10px; background: var(--gm-raised); padding: 8px 10px; }
 .gm-notes summary { cursor: pointer; color: var(--gm-gold); font-size: 13px; }
 .gm-notes p { margin: 8px 0 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }

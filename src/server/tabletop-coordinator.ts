@@ -173,6 +173,8 @@ interface TableState {
   extraMonsters: MonsterSheet[];
   /** The party's journal, oldest first. */
   journal: JournalRecord[];
+  /** Found items handed out this game, as "sceneId:index". */
+  lootGiven: string[];
   updatedAt: number;
 }
 
@@ -500,7 +502,7 @@ export class TabletopCoordinator {
     }
     if (!table) {
       table = { phase: "lobby", adventureId: null, gm: null, players: [], rolls: [], checks: [], scene: 0, scenes: new Map(), combat: null,
-        music: { trackId: null, startedAt: 0, auto: true }, narration: null, vision: DEFAULT_VISION, extraMonsters: [], journal: [], updatedAt: this.now() };
+        music: { trackId: null, startedAt: 0, auto: true }, narration: null, vision: DEFAULT_VISION, extraMonsters: [], journal: [], lootGiven: [], updatedAt: this.now() };
       this.tables.set(key, table);
     }
     return table;
@@ -601,6 +603,7 @@ export class TabletopCoordinator {
         if (heroes.some(seat => !seat.ready)) return "PLAYERS_NOT_READY";
         table.phase = "playing";
         table.checks = [];
+        table.lootGiven = [];
         for (const seat of heroes) {
           seat.hp = this.heroOf(table, seat.heroId)!.maxHp;
           for (const key of ["dying", "conditions", "exhaustion", "used", "hitDice"] as const) delete seat[key];
@@ -675,6 +678,35 @@ export class TabletopCoordinator {
         if (role === "spectator") return "NOT_SEATED";
         if (table.journal.length >= MAX_JOURNAL_ENTRIES) return "JOURNAL_FULL";
         table.journal.push({ id: this.randomId(), at: this.now(), by: who.nickname, byKey: who.seatKey, kind: message.kind, text: message.text });
+        return null;
+      }
+      case "gameGiveLoot": {
+        if (role !== "gm") return "GM_ONLY";
+        if (table.phase !== "playing") return "GAME_NOT_RUNNING";
+        const scene = this.findAdventure(table.adventureId)?.scenes[table.scene];
+        const loot = scene?.loot?.[message.index];
+        if (!scene || !loot) return "UNKNOWN_LOOT";
+        const seats = table.players.filter(seat => seat.heroId && message.keys.includes(seat.key));
+        if (!seats.length) return "NO_TARGETS";
+        const bags = seats.map(seat => {
+          const hero = this.heroOf(table, seat.heroId);
+          return seat.inventory ?? (hero ? startingInventory(hero.equipment) : []);
+        });
+        if (bags.some(items => !items.some(item => item.name === loot.name) && items.length >= MAX_INVENTORY)) return "BAG_FULL";
+        seats.forEach((seat, at) => {
+          const items = bags[at]!;
+          const same = items.find(item => item.name === loot.name);
+          if (same) same.qty = Math.min(9999, same.qty + loot.qty);
+          else items.push({ name: loot.name, qty: loot.qty, ...(loot.text ? { note: loot.text.slice(0, 160) } : {}), ...(loot.icon ? { icon: loot.icon } : {}) });
+          seat.inventory = items;
+        });
+        const key = `${scene.id}:${message.index}`;
+        if (!table.lootGiven.includes(key)) table.lootGiven.push(key);
+        const gm = table.gm!;
+        this.publish(table, who.tableKey, {
+          id: this.randomId(), at: this.now(), by: gm.nickname, byKey: gm.key, hidden: false,
+          label: `Находка: ${loot.name}${loot.qty > 1 ? ` ×${loot.qty}` : ""} → ${seats.map(seat => this.heroOf(table, seat.heroId)?.name ?? seat.nickname).join(", ")}`,
+        });
         return null;
       }
       case "gameJournalEdit":
@@ -1676,6 +1708,7 @@ export class TabletopCoordinator {
       adventures: this.adventures().map(item => adventureListItem(item, this.isCustom(item.id))),
       customHeroes: table.players.flatMap(state => state.custom ? [state.custom] : []),
       ...(role === "gm" && table.extraMonsters.length ? { extraMonsters: table.extraMonsters } : {}),
+      ...(role === "gm" && table.lootGiven.length ? { lootGiven: [...table.lootGiven] } : {}),
       journal: [...table.journal].reverse().map(entry => ({
         id: entry.id, at: entry.at, by: entry.by, kind: entry.kind, text: entry.text, editable: role === "gm" || entry.byKey === seatKey,
       })),
@@ -1738,6 +1771,7 @@ function snapshotTable(table: TableState): unknown {
     vision: table.vision,
     extraMonsters: table.extraMonsters,
     journal: table.journal,
+    lootGiven: table.lootGiven,
     updatedAt: table.updatedAt,
   };
 }
@@ -1770,6 +1804,7 @@ function restoreTable(raw: unknown): TableState | null {
       narration: (data.narration as TableState["narration"]) ?? null,
       vision: (VISION_RADII as readonly unknown[]).includes(data.vision) ? data.vision as number : DEFAULT_VISION,
       extraMonsters: Array.isArray(data.extraMonsters) ? (data.extraMonsters as MonsterSheet[]).slice(0, MAX_EXTRA_MONSTERS) : [],
+      lootGiven: Array.isArray(data.lootGiven) ? (data.lootGiven as unknown[]).filter((key): key is string => typeof key === "string").slice(0, 400) : [],
       journal: Array.isArray(data.journal) ? (data.journal as JournalRecord[]).filter(entry => typeof entry?.id === "string" && typeof entry.text === "string"
         && (JOURNAL_KINDS as readonly unknown[]).includes(entry.kind)).slice(-MAX_JOURNAL_ENTRIES) : [],
       updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,

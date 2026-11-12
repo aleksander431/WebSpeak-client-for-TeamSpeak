@@ -13,6 +13,7 @@ import {
   type HeroSheet,
   type MonsterSheet,
   type MusicTrack,
+  type SceneLoot,
   type SceneMap,
   type Skill,
 } from "./tabletop.js";
@@ -64,7 +65,7 @@ export function adventureListItem(adventure: AdventureSummary, custom: boolean):
 export function adventureForPlayers(adventure: AdventureSummary): AdventureSummary {
   return {
     ...adventure,
-    scenes: adventure.scenes.map(({ notes: _notes, encounter: _encounter, intro: _intro, reveal: _reveal, ...scene }) => scene),
+    scenes: adventure.scenes.map(({ notes: _notes, encounter: _encounter, intro: _intro, reveal: _reveal, loot: _loot, ...scene }) => scene),
     monsters: adventure.monsters.map(monster => ({
       id: monster.id, name: monster.name, cr: "", maxHp: 0, ac: 0, speed: 0, dex: 10, attacks: [], traits: [],
       ...(monster.portrait ? { portrait: monster.portrait } : {}),
@@ -200,6 +201,19 @@ function parseScene(value: unknown, path: string, context: {
     }
   } else if (raw.encounter !== undefined || raw.reveal !== undefined) {
     throw new AdventurePackageError("encounters and lit areas need a map", path);
+  }
+  if (raw.loot !== undefined) {
+    scene.loot = list(raw.loot, `${path}.loot`, 20).map((item, index) => {
+      const at = `${path}.loot[${index}]`;
+      const entry = object(item, at);
+      const loot: SceneLoot = { name: text(entry.name, `${at}.name`, 80), qty: integer(entry.qty ?? 1, `${at}.qty`, 1, 999) };
+      if (entry.text !== undefined) {
+        const note = text(entry.text, `${at}.text`, 300, true);
+        if (note) loot.text = note;
+      }
+      if (entry.icon !== undefined) loot.icon = context.file(entry.icon, `${at}.icon`, "image");
+      return loot;
+    });
   }
   return scene;
 }

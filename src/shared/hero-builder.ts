@@ -1,3 +1,4 @@
+import { EXTRA_PORTRAITS } from "./adventure-catalog.js";
 import {
   ABILITIES,
   SKILLS,
@@ -57,7 +58,11 @@ export interface InventoryItem {
   name: string;
   qty: number;
   note?: string;
+  /** A picture: a library item or an adventure's file. */
+  icon?: string;
 }
+
+const ITEM_ICON = /^\/(dnd\/[a-z0-9/_-]+\.webp|api\/adventures\/[a-z0-9-]+\/files\/[A-Za-z0-9/_.%-]+)$/;
 
 export interface Coins {
   gp: number;
@@ -326,7 +331,8 @@ export function parseInventoryItem(raw: unknown): InventoryItem {
   if (!name || name.length > 80) throw new HeroChoiceError("HERO_INVENTORY", "item name: 1–80 characters");
   if (!Number.isInteger(item.qty) || (item.qty as number) < 1 || (item.qty as number) > 9999) throw new HeroChoiceError("HERO_INVENTORY", "quantity 1–9999");
   const note = typeof item.note === "string" ? item.note.trim().slice(0, 160) : "";
-  return { name, qty: item.qty as number, ...(note ? { note } : {}) };
+  const icon = typeof item.icon === "string" && item.icon.length <= 200 && ITEM_ICON.test(item.icon) ? item.icon : "";
+  return { name, qty: item.qty as number, ...(note ? { note } : {}), ...(icon ? { icon } : {}) };
 }
 
 export function parseCoins(raw: unknown): Coins {
@@ -692,7 +698,7 @@ export function suggestedAbilities(cls: ClassId): Record<Ability, number> {
 }
 
 /** The portrait gallery heroes may pick from (`/dnd/portraits/<id>.webp`). */
-export const HERO_PORTRAITS: Array<{ id: string; race: RaceId }> = [
+const BASE_PORTRAITS: Array<{ id: string; race: RaceId }> = [
   { id: "human-f-fighter", race: "human" }, { id: "human-m-wizard", race: "human" }, { id: "human-m-monk", race: "human" },
   { id: "human-f-druid", race: "human" }, { id: "human-m-rogue", race: "human" }, { id: "human-f-paladin", race: "human" },
   { id: "elf-f-wizard", race: "high-elf" }, { id: "elf-m-ranger", race: "high-elf" }, { id: "elf-f-cleric", race: "high-elf" },
@@ -704,6 +710,9 @@ export const HERO_PORTRAITS: Array<{ id: string; race: RaceId }> = [
   { id: "halforc-f-barbarian", race: "half-orc" }, { id: "halforc-m-fighter", race: "half-orc" },
   { id: "tiefling-m-warlock", race: "tiefling" }, { id: "tiefling-f-sorcerer", race: "tiefling" },
 ];
+
+/** The builder's portrait gallery: the first 24 plus the adventure editor's library ones. */
+export const HERO_PORTRAITS: Array<{ id: string; race: RaceId }> = [...BASE_PORTRAITS, ...EXTRA_PORTRAITS];
 
 export function heroPortraitUrl(id: string): string | undefined {
   return HERO_PORTRAITS.some(portrait => portrait.id === id) ? `/dnd/portraits/${id}.webp` : undefined;

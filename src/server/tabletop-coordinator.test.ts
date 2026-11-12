@@ -783,3 +783,44 @@ test("journal: seated people write, authors and the master edit, it outlives gam
   again.send(sasha2, { type: "gameOpen" });
   assert.deepEqual(again.state("x").journal.map(entry => [entry.text, entry.editable]), [["Заставить колокол замолчать (50 зм)", true]]);
 });
+
+test("scene loot: the master hands items to heroes once marked, players never see the list", () => {
+  const withLoot = BARE_ADVENTURES.map(adventure => adventure.id !== "solgard-bell" ? adventure : {
+    ...adventure,
+    scenes: adventure.scenes.map((scene, index) => index !== 0 ? scene : {
+      ...scene, loot: [{ name: "Зелье лечения", qty: 2, text: "2к4+2", icon: "/dnd/library/items/potion-healing.webp" }],
+    }),
+  });
+  const f = fixture([], withLoot);
+  const gm = f.person("a", "Alex");
+  const sasha = f.person("b", "Sasha");
+  for (const who of [gm, sasha]) f.send(who, { type: "gameOpen" });
+  f.send(gm, { type: "gameSeat", role: "gm" });
+  f.send(gm, { type: "gameAdventure", adventureId: "solgard-bell" });
+  f.send(sasha, { type: "gameSeat", role: "player" });
+  f.send(sasha, { type: "gameHero", heroId: "ilva" });
+  f.send(sasha, { type: "gameReady", ready: true });
+  f.send(gm, { type: "gameStart" });
+
+  f.send(sasha, { type: "gameGiveLoot", index: 0, keys: ["uid:Sasha"] });
+  assert.equal(f.lastError("b"), "GM_ONLY");
+  f.send(gm, { type: "gameGiveLoot", index: 3, keys: ["uid:Sasha"] });
+  assert.equal(f.lastError("a"), "UNKNOWN_LOOT");
+  f.send(gm, { type: "gameGiveLoot", index: 0, keys: ["uid:Nobody"] });
+  assert.equal(f.lastError("a"), "NO_TARGETS");
+
+  const before = f.state("b").players[0]!.inventory ?? [];
+  f.send(gm, { type: "gameGiveLoot", index: 0, keys: ["uid:Sasha"] });
+  f.send(gm, { type: "gameGiveLoot", index: 0, keys: ["uid:Sasha"] });
+  const bag = f.state("b").players[0]!.inventory!;
+  const potion = bag.find(item => item.name === "Зелье лечения")!;
+  assert.equal(potion.qty, (before.find(item => item.name === "Зелье лечения")?.qty ?? 0) + 4, "given twice, merged by name");
+  assert.equal(potion.icon, "/dnd/library/items/potion-healing.webp");
+  const sceneId = withLoot.find(adventure => adventure.id === "solgard-bell")!.scenes[0]!.id;
+  assert.deepEqual(f.state("a").lootGiven, [`${sceneId}:0`]);
+  assert.equal(f.state("b").lootGiven, undefined, "only the master sees what was given");
+  const adventureFor = (entryId: string) => f.sent.filter(item => item.entryId === entryId && item.message.type === "gameAdventureData").at(-1)!.message;
+  const forPlayer = adventureFor("b");
+  assert.ok(forPlayer.type === "gameAdventureData" && forPlayer.adventure.scenes[0]!.loot === undefined, "players do not learn the loot");
+  assert.ok(parseGameClientMessage({ type: "gameGiveLoot", index: -1, keys: [] }) && "error" in parseGameClientMessage({ type: "gameGiveLoot", index: -1, keys: [] })!);
+});

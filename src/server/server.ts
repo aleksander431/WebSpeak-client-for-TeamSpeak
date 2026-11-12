@@ -25,6 +25,8 @@ import { createTrustedProxies, isForwardedHttps, resolveClientIp } from "./voice
 import { createDeviceToken, DEVICE_COOKIE_MAX_AGE_MS, DEVICE_COOKIE_NAME, isDeviceToken } from "../security/device-access.js";
 import { isSecureRequest, markForwardedHttps } from "../admin/admin-session.js";
 import { registerChatRoutes } from "./chat-routes.js";
+import { registerEditorRoutes } from "./editor-routes.js";
+import type { AdventureEditorStore } from "../admin/adventure-editor.js";
 
 export interface WebServerOptions {
   port: number;
@@ -36,6 +38,7 @@ export interface WebServerOptions {
   adminService: AdminService;
   skinRegistry?: SkinRegistry;
   adventureLibrary?: AdventureLibrary;
+  adventureEditor?: AdventureEditorStore;
   logger: Logger;
   nextVisitorNumber?: () => number;
   visitorCount?: () => number;
@@ -454,6 +457,10 @@ export function createWebServer(options: WebServerOptions): WebServer {
     });
   }
 
+  if (options.adventureEditor) {
+    registerEditorRoutes(app, { store: options.adventureEditor, isSameOrigin, clientIp, logger });
+  }
+
   app.use("/api/admin", createAdminRouter({
     service: options.adminService,
     sessions: adminSessions,
@@ -465,6 +472,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
     terminateSession: (id) => voiceBridge.terminateSession(id),
     skinRegistry: options.skinRegistry,
     adventureLibrary: options.adventureLibrary,
+    adventureEditor: options.adventureEditor,
     version: options.version,
     logFile: options.logFile,
     startedAt,

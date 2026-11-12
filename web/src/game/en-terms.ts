@@ -245,6 +245,7 @@ export function enRollText(text: string): string {
   if ((match = /^Концентрация: спасбросок Телосложения$/.exec(text))) return "Concentration: Constitution save";
   if ((match = /^(.+): спасбросок (\S+), при провале — (.+)$/.exec(text))) return `${enLine(match[1]!)}: ${ability(match[2]!)} save, on a failure ${CONDITION_WORD[match[3]!] ?? match[3]}`;
   if ((match = /^(.+): спасбросок (.+)$/.exec(text))) return `${enLine(match[1]!)}: ${ability(match[2]!)} save`;
+  if ((match = /^Находка: (.+)$/.exec(text))) return `Found: ${match[1]}`;
   if ((match = /^Опыт ([+−])(\d+): (.+)$/.exec(text))) return `Experience ${match[1] === "+" ? "+" : "−"}${match[2]}: ${match[3]}`;
   if ((match = /^Новый уровень: (\d+) \(\+(\d+) к максимуму хитов\)$/.exec(text))) return `New level: ${match[1]} (+${match[2]} maximum hit points)`;
   if ((match = /^(.+): помеха$/.exec(text))) return `${enCondition(match[1]!)}: disadvantage`;

@@ -140,6 +140,7 @@ export class GameClient {
   exhaustion(key: string, level: number): void { this.send({ type: "gameExhaustion", key, level: Math.max(0, Math.min(6, level)) }); }
   resource(key: string, resourceId: string, used: number): void { this.send({ type: "gameResource", key, resourceId, used: Math.max(0, used) }); }
   rest(kind: "short" | "long"): void { this.send({ type: "gameRest", kind }); }
+  giveLoot(index: number, keys: string[]): void { this.send({ type: "gameGiveLoot", index, keys }); }
   hitDie(key: string): void { this.send({ type: "gameHitDie", key }); }
   vision(radius: number): void { this.send({ type: "gameVision", radius }); }
   journalAdd(kind: JournalKind, text: string): void { this.send({ type: "gameJournalAdd", kind, text }); }

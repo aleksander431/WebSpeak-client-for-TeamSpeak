@@ -154,6 +154,11 @@ export function createAdminApi(options: AdminApiOptions) {
         return decode(response, adminResponses.adventures);
       });
     },
+    editorLinks: (signal?: AbortSignal) => request("/editor-links", adminResponses.editorLinks, "GET", undefined, true, signal),
+    createEditorLink: (label: string, signal?: AbortSignal) => request("/editor-links", adminResponses.editorLinks, "POST", { label }, true, signal),
+    deleteEditorLink: (id: string, signal?: AbortSignal) => request(`/editor-links/${encodeURIComponent(id)}`, adminResponses.editorLinks, "DELETE", {}, true, signal),
+    decideEditorDevice: (linkId: string, deviceId: string, action: "approved" | "denied" | "remove", signal?: AbortSignal) =>
+      request(`/editor-links/${encodeURIComponent(linkId)}/devices/${encodeURIComponent(deviceId)}`, adminResponses.editorLinks, "POST", { action }, true, signal),
     backup: (signal?: AbortSignal) => execute(signal, async context => (await transport(context, "/backup", { headers: { accept: "application/octet-stream" } })).blob()),
     dismissLegacyNotice: (signal?: AbortSignal) => request("/legacy-import/dismiss", adminResponses.ok, "POST", {}, true, signal),
   };

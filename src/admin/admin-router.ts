@@ -1,4 +1,5 @@
 import { ADVENTURE_ARCHIVE_LIMIT_BYTES, AdventureLibrary, AdventureLibraryError } from "./adventure-library.js";
+import { AdventureEditorError, type AdventureEditorStore } from "./adventure-editor.js";
 import { Router, raw as expressRaw, type NextFunction, type Request, type Response } from "express";
 import { existsSync, readFileSync } from "node:fs";
 import type { Logger } from "../logger.js";
@@ -40,6 +41,7 @@ export interface AdminRouterOptions {
   logFile?: string;
   skinRegistry?: SkinRegistry;
   adventureLibrary?: AdventureLibrary;
+  adventureEditor?: AdventureEditorStore;
   skinStore?: SkinStore;
   startedAt: number;
   /** Client address, honouring trusted reverse proxies. Defaults to the socket peer. */
@@ -314,6 +316,46 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
     } catch (error: unknown) {
       sendAdminError(response, error);
     }
+  });
+
+  // ---- Adventure editor links ----
+  const editorError = (response: Response, error: unknown) => {
+    if (error instanceof AdventureEditorError) response.status(error.status).json({ ok: false, code: error.code });
+    else sendAdminError(response, error);
+  };
+  router.get("/editor-links", (_request, response) => {
+    response.json({ links: options.adventureEditor?.links() ?? [], available: Boolean(options.adventureEditor) });
+  });
+  router.post("/editor-links", requireSameOrigin, requireCsrf(options.sessions), async (request, response) => {
+    try {
+      const editor = options.adventureEditor;
+      if (!editor) throw new AdventureEditorError("EDITOR_UNAVAILABLE", "", 503);
+      const label = typeof request.body?.label === "string" ? request.body.label : "";
+      const link = await editor.createLink(label);
+      options.service.database.addAudit("ADMIN_EDITOR_LINK_CREATED", { id: link.id, label: link.label });
+      response.status(201).json({ ok: true, links: editor.links() });
+    } catch (error: unknown) { editorError(response, error); }
+  });
+  router.delete("/editor-links/:id", requireSameOrigin, requireCsrf(options.sessions), async (request, response) => {
+    try {
+      const editor = options.adventureEditor;
+      const id = String(request.params.id ?? "");
+      if (!editor || !await editor.removeLink(id)) { response.status(404).json({ ok: false, code: "NOT_FOUND" }); return; }
+      options.service.database.addAudit("ADMIN_EDITOR_LINK_REMOVED", { id });
+      response.json({ ok: true, links: editor.links() });
+    } catch (error: unknown) { editorError(response, error); }
+  });
+  router.post("/editor-links/:id/devices/:deviceId", requireSameOrigin, requireCsrf(options.sessions), async (request, response) => {
+    try {
+      const editor = options.adventureEditor;
+      const action = request.body?.action;
+      if (!editor || !["approved", "denied", "remove"].includes(action)) { response.status(400).json({ ok: false, code: "INVALID_INPUT" }); return; }
+      const linkId = String(request.params.id ?? "");
+      const deviceId = String(request.params.deviceId ?? "");
+      if (!await editor.decide(linkId, deviceId, action)) { response.status(404).json({ ok: false, code: "NOT_FOUND" }); return; }
+      options.service.database.addAudit("ADMIN_EDITOR_DEVICE", { link: linkId, device: deviceId, action });
+      response.json({ ok: true, links: editor.links() });
+    } catch (error: unknown) { editorError(response, error); }
   });
 
   router.get("/sessions", (_request, response) => {

@@ -108,6 +108,19 @@ export class AdventureLibrary {
     let manifest: unknown;
     try { manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(manifestBytes)); }
     catch { throw new AdventureLibraryError("adventure.json is not valid UTF-8 JSON.", "ADVENTURE_MANIFEST_JSON"); }
+    return this.store(manifest, manifestBytes, files);
+  }
+
+  /** Installs an adventure the editor assembled: its manifest and the files it names. */
+  async installFiles(manifest: Record<string, unknown>, files: Map<string, Buffer>): Promise<AdventureSummary> {
+    const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2));
+    if ([...files.values()].reduce((sum, bytes) => sum + bytes.byteLength, manifestBytes.byteLength) > LIMITS.maxExpandedBytes) {
+      throw new AdventureLibraryError("The adventure is too large.", "ADVENTURE_TOO_LARGE");
+    }
+    return this.store(manifest, manifestBytes, files);
+  }
+
+  private async store(manifest: unknown, manifestBytes: Buffer, files: Map<string, Buffer>): Promise<AdventureSummary> {
     const { adventure, files: used } = this.parse(manifest, file => files.has(file));
     if (BUILT_IN_ADVENTURES.some(item => item.id === adventure.id)) throw new AdventureLibraryError("That id belongs to a built-in adventure.", "ADVENTURE_ID_RESERVED");
     if (!this.installed.has(adventure.id) && this.installed.size >= MAX_ADVENTURES) throw new AdventureLibraryError(`At most ${MAX_ADVENTURES} adventures can be installed.`, "ADVENTURE_LIMIT");

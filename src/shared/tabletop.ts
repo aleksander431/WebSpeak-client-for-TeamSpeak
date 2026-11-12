@@ -107,6 +107,16 @@ export interface AdventureScene {
   encounter?: EncounterToken[];
   /** Map areas already lit on the first visit: [x, y, width, height] in cells. */
   reveal?: Array<[number, number, number, number]>;
+  /** Game master only: items found here, given to heroes from the scene card. */
+  loot?: SceneLoot[];
+}
+
+export interface SceneLoot {
+  name: string;
+  qty: number;
+  text?: string;
+  /** Picture URL. */
+  icon?: string;
 }
 
 export interface MusicTrack {
@@ -369,7 +379,7 @@ export interface SeatView {
   hitDice?: number;
   xp?: number;
   /** Only for the game master and the seat's own player. */
-  inventory?: Array<{ name: string; qty: number; note?: string }>;
+  inventory?: Array<{ name: string; qty: number; note?: string; icon?: string }>;
   coins?: { gp: number; sp: number; cp: number };
 }
 
@@ -495,6 +505,8 @@ export interface TableView {
   extraMonsters?: MonsterSheet[];
   /** The party's journal, newest first. */
   journal: JournalEntryView[];
+  /** Game master only: found items already handed out, as "sceneId:index". */
+  lootGiven?: string[];
   /** Adventures the game master may choose from. */
   adventures: Array<{ id: string; title: string; summary: string; level: number; length: string; custom: boolean }>;
 }
@@ -563,7 +575,9 @@ export type GameClientMessage =
   /** The party journal: seated people write, the author or the master edit and remove. */
   | { type: "gameJournalAdd"; kind: JournalKind; text: string }
   | { type: "gameJournalEdit"; id: string; kind: JournalKind; text: string }
-  | { type: "gameJournalRemove"; id: string };
+  | { type: "gameJournalRemove"; id: string }
+  /** Game master: hand a found item of the current scene to chosen heroes. */
+  | { type: "gameGiveLoot"; index: number; keys: string[] };
 
 export type GameServerMessage =
   | { type: "gameState"; table: TableView | null }
@@ -711,6 +725,10 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
       return shortId(raw.id) ? { type: "gameJournalEdit", id: raw.id, kind, text } : invalid;
     }
     case "gameJournalRemove": return shortId(raw.id) ? { type: "gameJournalRemove", id: raw.id } : invalid;
+    case "gameGiveLoot":
+      return Number.isInteger(raw.index) && (raw.index as number) >= 0 && (raw.index as number) < 20 && Array.isArray(raw.keys) && raw.keys.length > 0 && raw.keys.length <= MAX_PLAYERS
+        && raw.keys.every(key => typeof key === "string" && key.length <= 200)
+        ? { type: "gameGiveLoot", index: raw.index as number, keys: [...new Set(raw.keys as string[])] } : invalid;
     case "gameSaveAttack": {
       const source = raw.source;
       if (!isObject(source) || !Array.isArray(raw.targets) || !raw.targets.length || raw.targets.length > 20 || !raw.targets.every(shortId)) return invalid;

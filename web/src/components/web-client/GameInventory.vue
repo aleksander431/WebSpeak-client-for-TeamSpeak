@@ -9,6 +9,7 @@
     </div>
     <ul class="gi-list">
       <li v-for="(item, index) in items" :key="`${index}-${item.name}`" class="gi-item">
+        <img v-if="item.icon" class="gi-icon" :src="item.icon" alt="" loading="lazy" />
         <span class="gi-name">
           <strong>{{ item.name }}</strong>
           <small v-if="item.note">{{ item.note }}</small>
@@ -78,6 +79,7 @@ function add(): void {
 .gi-coin:focus-within { box-shadow: 0 0 0 2px var(--gm-gold, #d9b46c); }
 .gi-coin small { color: var(--gm-muted, #a9a6a0); font-size: 11px; }
 .gi-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.gi-icon { width: 34px; height: 34px; flex: none; border-radius: 8px; object-fit: cover; }
 .gi-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: var(--gm-raised, #23252b); }
 .gi-name { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.3; }
 .gi-name small { color: var(--gm-muted, #a9a6a0); }

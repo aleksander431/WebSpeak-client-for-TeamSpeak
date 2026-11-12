@@ -1,10 +1,12 @@
 import path from "node:path";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createAccelerationRelayServer } from "./server/acceleration-relay.js";
 import { normalizeScreenShareIceServers, type ScreenShareIceServer } from "./server/screen-share.js";
 import { SkinRegistry } from "./admin/skin-registry.js";
 import { AdventureLibrary } from "./admin/adventure-library.js";
+import { AdventureEditorStore } from "./admin/adventure-editor.js";
 import { FileTabletopStore } from "./server/tabletop-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -58,6 +60,14 @@ async function main() {
 
   const adventureLibrary = new AdventureLibrary(path.join(DATA_DIR, "adventures"));
   await adventureLibrary.load((message, details) => logger.warn(details, message));
+  const adventureEditor = new AdventureEditorStore(path.join(DATA_DIR, "editor"), adventureLibrary, async url => {
+    // Library pictures and built-in music the site serves; never outside /dnd/.
+    const relative = url.replace(/^\/+/, "");
+    const file = path.resolve(STATIC_DIR, relative);
+    if (!relative.startsWith("dnd/") || !file.startsWith(path.resolve(STATIC_DIR, "dnd") + path.sep)) throw new Error(`not a library file: ${url}`);
+    return readFile(file);
+  });
+  await adventureEditor.load();
   const tabletopStore = new FileTabletopStore(path.join(DATA_DIR, "tables"), (message, details) => logger.warn(details, message));
   await tabletopStore.open();
   const heroVault = new FileTabletopStore(path.join(DATA_DIR, "heroes"), (message, details) => logger.warn(details, message), Number.POSITIVE_INFINITY);
@@ -89,6 +99,7 @@ async function main() {
     adminService,
     skinRegistry: new SkinRegistry(path.join(DATA_DIR, "skins")),
     adventureLibrary,
+    adventureEditor,
     logger,
     nextVisitorNumber: () => database.nextVisitorNumber(),
     visitorCount: () => database.getVisitorCount(),

@@ -103,6 +103,12 @@ const deviceAccess = object({ required: boolean, pendingCount: number, devices: 
 const savedTsAdminSettings = object({ ok: choice(true), settings: tsAdminSettings });
 const adventure = object({ id: text, title: text, summary: text, scenes: number, heroes: number, tracks: number, installedAt: text, bytes: number });
 const adventures = object({ adventures: array(adventure), limitBytes: optional(number) });
+const editorDevice = object({
+  id: text, name: text, status: choice("pending", "approved", "denied"), requestedAt: text, decidedAt: optional(text), lastSeenAt: optional(text),
+});
+const editorDraft = object({ id: text, title: text, updatedAt: text, publishedId: optional(text), publishedAt: optional(text) });
+const editorLink = object({ id: text, token: text, label: text, createdAt: text, devices: array(editorDevice), drafts: array(editorDraft), bytes: number });
+const editorLinks = object({ links: array(editorLink), available: optional(boolean) });
 const sessionStatus = object({ authenticated: boolean, mustChangePassword: optional(boolean), csrfToken: optional(text) });
 
 export const adminResponses = {
@@ -133,6 +139,7 @@ export const adminResponses = {
   deviceAccess,
   chatStorage,
   adventures,
+  editorLinks,
   defaultSkin: object({ ok: choice(true), defaultSkinId: text }),
   updatedSkin: object({ ok: choice(true), skin, defaultSkinId: text }),
   uploadedSkin: object({ ok: choice(true), skin }),

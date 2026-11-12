@@ -21,7 +21,17 @@ export interface AdminAdventure {
   bytes: number;
 }
 
-/** Uploaded D&D adventure packages for the admin console. */
+export interface AdminEditorLink {
+  id: string;
+  token: string;
+  label: string;
+  createdAt: string;
+  devices: Array<{ id: string; name: string; status: "pending" | "approved" | "denied"; requestedAt: string; decidedAt?: string; lastSeenAt?: string }>;
+  drafts: Array<{ id: string; title: string; updatedAt: string; publishedId?: string; publishedAt?: string }>;
+  bytes: number;
+}
+
+/** Uploaded D&D adventure packages and adventure editor links for the admin console. */
 export function useAdminAdventures(options: Options) {
   const requests = createAdminRequests();
   const items = ref<AdminAdventure[]>([]);
@@ -91,7 +101,76 @@ export function useAdminAdventures(options: Options) {
     finally { request.finish(); }
   }
 
-  return { items, limitBytes, loading, uploading, notice, armed, problem, load, upload, remove };
+  // ---- Adventure editor links ----
+  const links = ref<AdminEditorLink[]>([]);
+  const linkLabel = ref("");
+  const linkArmed = ref("");
+  const copied = ref("");
+  let linkArmTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function loadLinks(): Promise<void> {
+    const request = requests.begin("links");
+    try {
+      const result = await options.api.editorLinks(request.signal);
+      if (request.isCurrent()) links.value = result.links;
+    } catch (error) { if (request.isCurrent()) report(error); }
+    finally { request.finish(); }
+  }
+
+  async function createLink(): Promise<void> {
+    const label = linkLabel.value.trim();
+    if (!label) return;
+    const request = requests.begin("create-link");
+    try {
+      const result = await options.api.createEditorLink(label, request.signal);
+      if (!request.isCurrent()) return;
+      links.value = result.links;
+      linkLabel.value = "";
+    } catch (error) { if (request.isCurrent()) report(error); }
+    finally { request.finish(); }
+  }
+
+  async function removeLink(id: string): Promise<void> {
+    if (linkArmed.value !== id) {
+      linkArmed.value = id;
+      clearTimeout(linkArmTimer);
+      linkArmTimer = setTimeout(() => { linkArmed.value = ""; }, 4000);
+      return;
+    }
+    linkArmed.value = "";
+    const request = requests.begin(`remove-link:${id}`);
+    try {
+      const result = await options.api.deleteEditorLink(id, request.signal);
+      if (request.isCurrent()) links.value = result.links;
+    } catch (error) { if (request.isCurrent()) report(error); }
+    finally { request.finish(); }
+  }
+
+  async function decide(linkId: string, deviceId: string, action: "approved" | "denied" | "remove"): Promise<void> {
+    const request = requests.begin(`device:${deviceId}`);
+    try {
+      const result = await options.api.decideEditorDevice(linkId, deviceId, action, request.signal);
+      if (request.isCurrent()) links.value = result.links;
+    } catch (error) { if (request.isCurrent()) report(error); }
+    finally { request.finish(); }
+  }
+
+  function linkUrl(link: AdminEditorLink): string {
+    return `${window.location.origin}/create/${link.token}`;
+  }
+
+  async function copyLink(link: AdminEditorLink): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(linkUrl(link));
+      copied.value = link.id;
+      setTimeout(() => { if (copied.value === link.id) copied.value = ""; }, 2000);
+    } catch { /* the link is shown and can be selected by hand */ }
+  }
+
+  return {
+    items, limitBytes, loading, uploading, notice, armed, problem, load, upload, remove,
+    links, linkLabel, linkArmed, copied, loadLinks, createLink, removeLink, decide, linkUrl, copyLink,
+  };
 }
 
 export type AdminAdventuresModel = ReturnType<typeof useAdminAdventures>;
