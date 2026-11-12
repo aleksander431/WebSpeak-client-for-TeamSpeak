@@ -148,7 +148,7 @@ async function onFile(event: Event): Promise<void> {
 
 <style scoped>
 .pp { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: rgba(6, 7, 10, .7); }
-.pp-card { display: flex; flex-direction: column; gap: 12px; width: min(980px, 100%); max-height: 100%; padding: 18px; border-radius: 16px; border: 1px solid var(--ed-line-2); background: var(--ed-card); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); }
+.pp-card { display: flex; flex-direction: column; gap: 12px; width: min(980px, 100%); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); min-height: 0; padding: 18px; border-radius: 16px; border: 1px solid var(--ed-line-2); background: var(--ed-card); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); }
 .pp-head { display: flex; align-items: center; gap: 12px; }
 .pp-head h2 { flex: 1; margin: 0; font-family: var(--ed-serif); font-size: 24px; color: var(--ed-title); }
 .pp-close { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--ed-line-2); background: transparent; color: var(--ed-text); font-size: 20px; cursor: pointer; }
@@ -164,7 +164,7 @@ async function onFile(event: Event): Promise<void> {
 .pp-size-btn { min-height: 30px; padding: 0 12px; border-radius: 9px; border: 0; background: transparent; color: var(--ed-muted); font: inherit; font-size: 13px; cursor: pointer; }
 .pp-size-on { background: var(--ed-gold); color: #1a1408; font-weight: 600; }
 .pp-search { min-height: 36px; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--ed-line-2); background: var(--ed-raised); color: var(--ed-text); font: inherit; }
-.pp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; min-height: 0; overflow: auto; padding: 2px; }
+.pp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
 .pp-grid-map, .pp-grid-scene { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 .pp-item { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 12px; border: 1px solid var(--ed-line); background: var(--ed-raised); color: var(--ed-text); font: inherit; cursor: pointer; text-align: left; }
 .pp-item:hover, .pp-item:focus-visible { border-color: var(--ed-gold); outline: none; }
