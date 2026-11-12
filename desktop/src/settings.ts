@@ -33,7 +33,8 @@ export interface DesktopSettings {
   trayHintShown: boolean;
 }
 
-export const OVERLAY_CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
+/** Corners and the middles of the sides (the setting is still called corner for older settings files). */
+export const OVERLAY_CORNERS = ["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"] as const;
 export type OverlayCorner = typeof OVERLAY_CORNERS[number];
 
 export interface OverlaySettings {

@@ -49,14 +49,20 @@ export function parseOverlaySpeaking(value: unknown): number[] | null {
   return [...new Set(value.filter(clientId))].slice(0, MAX_MEMBERS);
 }
 
-/** Where the overlay goes on a screen: its corner, inset by the offsets, kept on the screen. */
+/**
+ * Where the overlay goes on a screen: its corner or the middle of a side, inset by the offsets
+ * from the edges it touches (along a centred axis the offset shifts it right or down), kept on the screen.
+ */
 export function overlayBounds(display: { x: number; y: number; width: number; height: number }, settings: Pick<OverlaySettings, "corner" | "offsetX" | "offsetY">, width: number, height: number) {
   const w = Math.min(width, display.width);
   const h = Math.min(height, display.height);
-  const left = settings.corner.endsWith("left");
-  const top = settings.corner.startsWith("top");
-  const x = left ? display.x + settings.offsetX : display.x + display.width - settings.offsetX - w;
-  const y = top ? display.y + settings.offsetY : display.y + display.height - settings.offsetY - h;
+  const [vertical, horizontal] = settings.corner.split("-");
+  const x = horizontal === "left" ? display.x + settings.offsetX
+    : horizontal === "right" ? display.x + display.width - settings.offsetX - w
+      : display.x + (display.width - w) / 2 + settings.offsetX;
+  const y = vertical === "top" ? display.y + settings.offsetY
+    : vertical === "bottom" ? display.y + display.height - settings.offsetY - h
+      : display.y + (display.height - h) / 2 + settings.offsetY;
   return {
     x: Math.round(Math.max(display.x, Math.min(display.x + display.width - w, x))),
     y: Math.round(Math.max(display.y, Math.min(display.y + display.height - h, y))),

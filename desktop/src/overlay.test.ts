@@ -26,6 +26,12 @@ test("the overlay sits in its corner, inset by the offsets, and stays on the scr
   const display = { x: -1920, y: 0, width: 1920, height: 1080 };
   assert.deepEqual(overlayBounds(display, { corner: "top-left", offsetX: 20, offsetY: 30 }, 300, 100), { x: -1900, y: 30, width: 300, height: 100 });
   assert.deepEqual(overlayBounds(display, { corner: "bottom-right", offsetX: 20, offsetY: 30 }, 300, 100), { x: -320, y: 950, width: 300, height: 100 });
+  // The middles of the sides: centred along that side, the offset shifts along it and insets from the edge.
+  assert.deepEqual(overlayBounds(display, { corner: "top-center", offsetX: 0, offsetY: 30 }, 300, 100), { x: -1110, y: 30, width: 300, height: 100 });
+  assert.deepEqual(overlayBounds(display, { corner: "bottom-center", offsetX: 40, offsetY: 30 }, 300, 100), { x: -1070, y: 950, width: 300, height: 100 });
+  assert.deepEqual(overlayBounds(display, { corner: "middle-left", offsetX: 20, offsetY: 0 }, 300, 100), { x: -1900, y: 490, width: 300, height: 100 });
+  assert.deepEqual(overlayBounds(display, { corner: "middle-right", offsetX: 20, offsetY: -50 }, 300, 100), { x: -320, y: 440, width: 300, height: 100 });
+  assert.equal(sanitizeOverlay({ corner: "middle-left" }).corner, "middle-left");
   assert.deepEqual(overlayBounds(display, { corner: "top-right", offsetX: 5000, offsetY: 5000 }, 300, 100), { x: -1920, y: 980, width: 300, height: 100 });
   assert.deepEqual(overlayBounds(display, { corner: "top-left", offsetX: 0, offsetY: 0 }, 5000, 5000), { x: -1920, y: 0, width: 1920, height: 1080 });
 });

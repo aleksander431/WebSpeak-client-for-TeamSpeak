@@ -50,6 +50,8 @@
     overlay.style.setProperty("--opacity", String(settings.opacity / 100));
     overlay.classList.toggle("right", settings.corner.endsWith("right"));
     document.body.classList.toggle("right", settings.corner.endsWith("right"));
+    overlay.classList.toggle("center", settings.corner.endsWith("center"));
+    document.body.classList.toggle("center", settings.corner.endsWith("center"));
     overlay.classList.toggle("no-channel", !settings.showChannel);
     const members = roster.connected ? roster.members.filter((member) => (settings.showSelf || !member.self)
       && (settings.mode === "channel" || speaking.has(member.id))) : [];
