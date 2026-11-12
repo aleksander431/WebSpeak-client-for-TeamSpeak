@@ -43,7 +43,10 @@
       <button type="button" class="gm-link" :aria-label="x.close" @click="client.clearError()">×</button>
     </p>
 
-    <main v-if="!table" class="gm-loading" aria-busy="true"><span class="gm-spinner" aria-hidden="true"></span></main>
+    <main v-if="!table" class="gm-loading" :aria-busy="!client.state.error">
+      <button v-if="client.state.error" type="button" class="gm-btn gm-btn-gold" @click="client.open()">{{ x.retry }}</button>
+      <span v-else class="gm-spinner" aria-hidden="true"></span>
+    </main>
 
     <!-- ===== Lobby ===== -->
     <main v-else-if="table.phase === 'lobby'" class="gm-body gm-lobby">

@@ -3,7 +3,7 @@ import test from "node:test";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import type { IncomingMessage } from "node:http";
 import pino from "pino";
-import { VoiceBridge, createTrustedProxies, isForwardedHttps, resolveClientIp, resolveWebRtcPublicHost } from "./voice-bridge.js";
+import { VoiceBridge, parseGameFrame, createTrustedProxies, isForwardedHttps, resolveClientIp, resolveWebRtcPublicHost } from "./voice-bridge.js";
 import { JoinTicketStore } from "./join-ticket.js";
 import { createAudioFlowStats } from "./audio-stats.js";
 import { SessionAudioTransport } from "./session-audio.js";
@@ -334,4 +334,12 @@ test("only a trusted proxy can say the browser used HTTPS", () => {
   assert.equal(isForwardedHttps(ipRequest("127.0.0.1", { "x-forwarded-proto": "http" }), trusted), false);
   assert.equal(isForwardedHttps(ipRequest("127.0.0.1"), trusted), false);
   assert.equal(isForwardedHttps(ipRequest("192.0.2.7", { "x-forwarded-proto": "https" }), trusted), false, "a direct client cannot claim HTTPS");
+});
+
+test("game frames reach the table: the socket's JSON text is decoded before parsing", () => {
+  assert.deepEqual(parseGameFrame(JSON.stringify({ type: "gameOpen" })), { type: "gameOpen" });
+  assert.deepEqual(parseGameFrame(JSON.stringify({ type: "gameSeat", role: "player" })), { type: "gameSeat", role: "player" });
+  assert.deepEqual(parseGameFrame(JSON.stringify({ type: "gameSeat", role: "king" })), { error: { code: "INVALID_GAME_MESSAGE" } });
+  assert.equal(parseGameFrame(JSON.stringify({ type: "sendChat", text: "game" })), null, "other frames pass on");
+  assert.equal(parseGameFrame("{\"game"), null, "broken JSON passes on");
 });

@@ -2,6 +2,8 @@ import { reactive, shallowRef } from "vue";
 import type { Coins, HeroChoices, InventoryItem } from "../../../src/shared/hero-builder.js";
 import type { AdventureSummary, CheckSource, ConditionId, GameClientMessage, GameServerMessage, RollMode, RollSource, RollView, TableRole, TableView, VaultHero, ApplyMode, QuickMonster, JournalKind } from "../../../src/shared/tabletop.js";
 
+const ANSWER_TIMEOUT_MS = 8000;
+
 export interface GameTransport {
   isOpen(): boolean;
   send(message: GameClientMessage): void;
@@ -28,6 +30,7 @@ export class GameClient {
   /** Own heroes the gateway keeps for this TeamSpeak identity; null without a unique id (or before the panel opened). */
   readonly vault = shallowRef<VaultHero[] | null>(null);
   private pingCount = 0;
+  private answerTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly unsubscribe: () => void;
 
   constructor(private readonly transport: GameTransport) {
@@ -38,6 +41,7 @@ export class GameClient {
     if (message.type === "gameState") {
       if (!this.state.open) return;
       this.state.table = message.table;
+      clearTimeout(this.answerTimer);
       return;
     }
     if (message.type === "gameRolled") {
@@ -63,10 +67,20 @@ export class GameClient {
     this.state.open = true;
     this.state.error = "";
     if (this.transport.isOpen()) this.transport.send({ type: "gameOpen" });
+    this.expectAnswer();
+  }
+
+  /** A table that never answers should say so instead of spinning forever. */
+  private expectAnswer(): void {
+    clearTimeout(this.answerTimer);
+    this.answerTimer = setTimeout(() => {
+      if (this.state.open && !this.state.table && !this.state.error) this.state.error = "NO_ANSWER";
+    }, ANSWER_TIMEOUT_MS);
   }
 
   close(): void {
     if (this.state.open && this.transport.isOpen()) this.transport.send({ type: "gameClose" });
+    clearTimeout(this.answerTimer);
     this.state.open = false;
     this.state.table = null;
     this.lastRoll.value = null;
@@ -77,7 +91,10 @@ export class GameClient {
 
   /** After a reconnect the gateway forgot the subscription: open again. */
   setConnected(connected: boolean): void {
-    if (connected && this.state.open) this.transport.send({ type: "gameOpen" });
+    if (connected && this.state.open) {
+      this.transport.send({ type: "gameOpen" });
+      if (!this.state.table) this.expectAnswer();
+    }
   }
 
   clearError(): void {

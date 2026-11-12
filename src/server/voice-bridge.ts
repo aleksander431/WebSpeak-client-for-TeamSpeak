@@ -6,7 +6,7 @@ import { ScreenShareCoordinator } from "./screen-share-coordinator.js";
 import { WhiteboardCoordinator, whiteboardBoardKey } from "./whiteboard-coordinator.js";
 import { MemoryWhiteboardStore, type WhiteboardStore } from "./whiteboard-store.js";
 import { parseWhiteboardClientMessage } from "../shared/whiteboard.js";
-import { parseGameClientMessage } from "../shared/tabletop.js";
+import { parseGameClientMessage, type GameClientMessage } from "../shared/tabletop.js";
 import { TabletopCoordinator, tabletopTableKey, type TableParticipant, type TabletopStore } from "./tabletop-coordinator.js";
 import { handleCommand } from "./voice-commands.js";
 import { createAudioFlowStats, snapshotAudioStats, type AudioFlowStats } from "./audio-stats.js";
@@ -42,6 +42,15 @@ import { ChatReactionHub } from "./chat-reactions.js";
 import { ChatPinStore } from "./chat-pins.js";
 import type { ChatPin } from "../shared/chat-pins.js";
 import type { ChatHistoryMessage } from "../shared/chat-storage.js";
+
+/** Game frames arrive as JSON text; the shared parser takes the decoded value. */
+export function parseGameFrame(raw: string): GameClientMessage | { error: { code: string } } | null {
+  // Cheap pre-check so voice and other frames are not decoded twice.
+  if (!raw.includes("\"game")) return null;
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return null; }
+  return parseGameClientMessage(value);
+}
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const MAX_MISSED_HEARTBEATS = 2;
@@ -786,7 +795,7 @@ export class VoiceBridge {
           }, whiteboardMessage);
           return;
         }
-        const gameMessage = parseGameClientMessage(rawMessage);
+        const gameMessage = parseGameFrame(rawMessage);
         if (gameMessage) {
           const rejectGame = (code: string) => {
             if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "gameError", code }));
