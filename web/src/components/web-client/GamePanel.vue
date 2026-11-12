@@ -7,7 +7,7 @@
     :aria-label="x.dnd"
     @keydown.esc="onEscape"
   >
-    <header class="gm-top" data-ws-part="voice.game.header">
+    <header ref="topBar" class="gm-top" data-ws-part="voice.game.header">
       <div class="gm-crumbs">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 21 7v10l-9 5-9-5V7l9-5Z" /><path d="M12 2v20M3 7l9 5 9-5" /></svg>
         <span class="gm-muted">{{ channelName }}</span>
@@ -28,6 +28,7 @@
           <button v-if="music.state.blocked" type="button" class="gm-btn gm-btn-gold" @click="music.resume()">{{ x.musicStart }}</button>
         </div>
         <button v-if="table?.phase === 'playing' && role === 'gm'" type="button" class="gm-btn" @click="client.end()">{{ x.end }}</button>
+        <button type="button" :class="['gm-btn', 'gm-help-btn', { 'gm-help-on': helpOpen }]" :aria-expanded="helpOpen" @click="toggleHelp('now')">❔ {{ help.button }}</button>
         <button type="button" class="gm-btn" @click="emit('close')">{{ x.close }}</button>
       </div>
     </header>
@@ -44,6 +45,13 @@
       <section class="gm-col gm-seats" aria-labelledby="gm-seats-title">
         <h1 id="gm-seats-title" class="gm-display">{{ x.lobbyTitle }}</h1>
         <p class="gm-muted">{{ x.lobbyLead }}</p>
+        <div v-if="!helpSeen" class="gm-card gm-first-time" role="note">
+          <p>📜 {{ help.firstTime }}</p>
+          <div class="gm-row">
+            <button type="button" class="gm-btn gm-btn-gold gm-btn-s" @click="toggleHelp('now'); markHelpSeen()">{{ help.firstTimeOpen }}</button>
+            <button type="button" class="gm-btn gm-btn-s" @click="markHelpSeen">{{ help.dismiss }}</button>
+          </div>
+        </div>
 
         <div class="gm-seat gm-seat-gm">
           <span class="gm-avatar gm-avatar-gold">{{ initial(table.gm?.nickname ?? "?") }}</span>
@@ -175,7 +183,7 @@
       <!-- Player: own hero sheet -->
       <section v-if="role === 'player' && myHero && mySeat" v-show="!wide" class="gm-col gm-sheet gm-scroll" :aria-label="myHero.name">
         <div v-if="mySeat.dying" :class="['gm-card', 'gm-dying', `gm-dying-${mySeat.dying.state}`]" role="status">
-          <h2>{{ x.deathSaves }}</h2>
+          <h2 class="gm-help-row">{{ x.deathSaves }}<button type="button" class="gm-q" :aria-label="help.button" :title="help.button" @click="toggleHelp('combat')">?</button></h2>
           <strong class="gm-display gm-display-s">{{ mySeat.dying.state === 'dead' ? x.deadLabel : mySeat.dying.state === 'stable' ? x.stableLabel : x.dyingLabel }}</strong>
           <div class="gm-pips">
             <span class="gm-ok">✓</span><i v-for="n in 3" :key="`s${n}`" :class="['gm-pip', { 'gm-pip-ok': n <= mySeat.dying.successes }]"></i>
@@ -419,6 +427,7 @@
         <div v-if="combat" class="gm-combat" data-ws-part="voice.game.combat">
           <div class="gm-combat-top">
             <strong class="gm-gold gm-nowrap">{{ combat.phase === 'initiative' ? x.waitingInitiative : `${x.round} ${combat.round}` }}</strong>
+            <button type="button" class="gm-q" :aria-label="help.button" :title="help.button" @click="toggleHelp('turn')">?</button>
             <span v-if="combat.phase === 'running'" class="gm-combat-turn">
               <b v-if="myTurn" class="gm-gold gm-your-turn">{{ x.yourTurn }}</b>
               <template v-else-if="activeCombatant">{{ x.turnOf }}: <b>{{ activeCombatant.name }}</b></template>
@@ -502,7 +511,7 @@
 
       <section class="gm-col gm-side gm-scroll" :aria-label="x.turnLog">
         <div v-for="check in playerChecks" :key="check.id" class="gm-card gm-ask" role="alert">
-          <span class="gm-muted">{{ x.checkAsked }}</span>
+          <span class="gm-muted gm-help-row">{{ x.checkAsked }}<button type="button" class="gm-q" :aria-label="help.button" :title="help.button" @click="toggleHelp('basics')">?</button></span>
           <strong class="gm-display">{{ said(check.label) }}</strong>
           <span class="gm-muted gm-small">{{ x.checkHiddenDc }}<template v-if="check.mode !== 'normal'"> · {{ check.mode === 'advantage' ? x.advantage : x.disadvantage }}</template></span>
           <button type="button" class="gm-btn gm-btn-big gm-btn-gold" @click="client.roll(check.source, mode, false, check.id)">{{ x.rollCheck }}</button>
@@ -675,6 +684,19 @@
         <label class="gt-field">{{ x.improv.attackDamage }}<input v-model="quick.attackDamage" class="gt-input" maxlength="40" placeholder="1d6+2" /></label>
       </div>
     </GameTargetsDialog>
+    <GameHelp
+      v-if="helpOpen"
+      :x="x"
+      :help="help"
+      :table="table"
+      :role="role"
+      :my-seat="mySeat ?? null"
+      :my-hero="myHero ?? null"
+      :start="helpStart"
+      :can-level-up="canLevelUp"
+      :style="{ top: `${topHeight}px` }"
+      @close="helpOpen = false"
+    />
     <HeroLevelUp
       v-if="levelUpOpen && activeSaved"
       :x="x"
@@ -719,7 +741,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ABILITIES, CONDITIONS, MAX_PLAYERS, SKILL_IDS, abilityModifier, attackSaveOf, parseDiceExpression, type Ability, type ApplyMode, type ConditionId, type GameClientMessage, type HeroAttack, type HeroSheet, type TokenView, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
 
 import GameMap from "./GameMap.vue";
@@ -728,6 +750,8 @@ import GameConditions from "./GameConditions.vue";
 import GameResources from "./GameResources.vue";
 import GameSaveAttack from "./GameSaveAttack.vue";
 import GameTargetsDialog from "./GameTargetsDialog.vue";
+import GameHelp from "./GameHelp.vue";
+import { helpText, type HelpId } from "../../game/help-content.js";
 import GameInventory from "./GameInventory.vue";
 import HeroLevelUp from "./HeroLevelUp.vue";
 import { MAX_LEVEL, XP_FOR_LEVEL, buildHero, heroPortraitUrl, type HeroChoices } from "../../../../src/shared/hero-builder.js";
@@ -785,6 +809,33 @@ const playerChecks = computed(() => role.value === "player"
 const scene = computed(() => adventure.value?.scenes[table.value?.scene ?? 0]);
 const sceneMap = computed(() => scene.value?.map);
 const hasLeft = computed(() => role.value === "gm" || (role.value === "player" && Boolean(myHero.value && mySeat.value)));
+// ---- Help -------------------------------------------------------------------
+
+const help = computed(() => helpText(russian.value));
+/** The help drawer opens below the header, so its toggle button stays reachable. */
+const topBar = ref<HTMLElement | null>(null);
+const topHeight = ref(0);
+let topObserver: ResizeObserver | null = null;
+onMounted(() => {
+  if (!topBar.value || typeof ResizeObserver === "undefined") return;
+  topObserver = new ResizeObserver(() => { topHeight.value = topBar.value?.offsetHeight ?? 0; });
+  topObserver.observe(topBar.value);
+});
+onBeforeUnmount(() => topObserver?.disconnect());
+const helpOpen = ref(false);
+const helpStart = ref<HelpId>("now");
+function toggleHelp(id: HelpId): void {
+  if (helpOpen.value && helpStart.value === id) { helpOpen.value = false; return; }
+  helpStart.value = id;
+  helpOpen.value = true;
+}
+const HELP_SEEN_KEY = "webspeak:dnd-help-seen";
+const helpSeen = ref((() => { try { return localStorage.getItem(HELP_SEEN_KEY) === "1"; } catch { return true; } })());
+function markHelpSeen(): void {
+  helpSeen.value = true;
+  try { localStorage.setItem(HELP_SEEN_KEY, "1"); } catch { /* the hint simply shows again next time */ }
+}
+
 // ---- Improvisation: apply any roll, hazards, quick creatures -------------------
 
 const applyFor = ref<RollView | null>(null);
@@ -1294,6 +1345,13 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-hero-own { cursor: default; }
 .gm-party-head { justify-content: space-between; }
 .gm-own-tools { align-items: center; gap: 6px; }
+.gm-help-btn { border-color: var(--gm-gold); color: var(--gm-gold); }
+.gm-help-on { background: var(--gm-gold-soft); }
+.gm-first-time { border-color: var(--gm-gold); background: rgba(217, 180, 108, .08); }
+.gm-first-time p { margin: 0; }
+.gm-help-row { display: flex; align-items: center; gap: 8px; }
+.gm-q { display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none; padding: 0; border-radius: 50%; border: 1px solid var(--gm-gold); background: transparent; color: var(--gm-gold); font: inherit; font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; }
+.gm-q:hover { background: var(--gm-gold-soft); }
 .gm-monster-new { border-style: dashed; background: transparent; }
 .gm-log-applied { flex-basis: 100%; }
 .gm-own-tools .gm-chip { min-height: 30px; font-size: 12px; }
