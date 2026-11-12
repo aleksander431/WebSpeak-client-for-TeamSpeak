@@ -1,5 +1,8 @@
 import type { MonsterSheet } from "./tabletop.js";
 import type { RaceId } from "./hero-builder.js";
+import { CATALOG_NPCS, MORE_ITEMS, MORE_MAPS, MORE_MONSTERS, MORE_PORTRAITS } from "./adventure-catalog-extra.js";
+
+export { CATALOG_NPCS };
 
 /*
  * The adventure editor's library: SRD 5.1 monsters with stat blocks, items,
@@ -11,7 +14,7 @@ import type { RaceId } from "./hero-builder.js";
 
 export const LIBRARY_ROOT = "/dnd/library";
 
-export type LibraryKind = "monster" | "item" | "map" | "scene" | "portrait";
+export type LibraryKind = "monster" | "npc" | "item" | "map" | "scene" | "portrait";
 
 /** Where a library picture is served from. */
 export function libraryUrl(kind: LibraryKind, id: string): string {
@@ -23,7 +26,7 @@ export function libraryUrl(kind: LibraryKind, id: string): string {
 
 type CatalogMonster = Omit<MonsterSheet, "portrait">;
 
-export const CATALOG_MONSTERS: CatalogMonster[] = [
+const FIRST_MONSTERS: CatalogMonster[] = [
   {
     id: "goblin", name: "Гоблин", cr: "1/4", maxHp: 7, ac: 15, speed: 30, dex: 14,
     attacks: [
@@ -315,6 +318,8 @@ export const CATALOG_MONSTERS: CatalogMonster[] = [
   },
 ];
 
+export const CATALOG_MONSTERS: CatalogMonster[] = [...FIRST_MONSTERS, ...MORE_MONSTERS];
+
 // ---- Items ---------------------------------------------------------------------
 
 export type ItemKind = "potion" | "gear" | "weapon" | "armor" | "magic" | "treasure" | "quest";
@@ -328,7 +333,7 @@ export interface CatalogItem {
   text: [string, string];
 }
 
-export const CATALOG_ITEMS: CatalogItem[] = [
+const FIRST_ITEMS: CatalogItem[] = [
   { id: "healing-potion", name: ["Зелье лечения", "Potion of healing"], kind: "potion", gp: 50, text: ["Выпить (действие): восстанавливает 2к4+2 хита.", "Drink it (action) to regain 2d4 + 2 hit points."] },
   { id: "greater-healing-potion", name: ["Зелье большого лечения", "Potion of greater healing"], kind: "potion", gp: 150, text: ["Выпить (действие): восстанавливает 4к4+4 хита.", "Drink it (action) to regain 4d4 + 4 hit points."] },
   { id: "antitoxin", name: ["Противоядие", "Antitoxin"], kind: "potion", gp: 50, text: ["Час преимущества на спасброски от яда.", "Advantage on saves against poison for an hour."] },
@@ -361,6 +366,8 @@ export const CATALOG_ITEMS: CatalogItem[] = [
   { id: "sealed-letter", name: ["Запечатанное письмо", "Sealed letter"], kind: "quest", gp: 0, text: ["Письмо с чёрной печатью ворона.", "A letter sealed with a black raven seal."] },
 ];
 
+export const CATALOG_ITEMS: CatalogItem[] = [...FIRST_ITEMS, ...MORE_ITEMS];
+
 // ---- Battle maps and scene pictures --------------------------------------------
 
 export interface CatalogMap {
@@ -370,7 +377,7 @@ export interface CatalogMap {
   rows: number;
 }
 
-export const CATALOG_MAPS: CatalogMap[] = [
+const FIRST_MAPS: CatalogMap[] = [
   { id: "forest-road", name: ["Лесная дорога", "Forest road"], cols: 24, rows: 16 },
   { id: "forest-clearing", name: ["Поляна с руинами", "Forest clearing"], cols: 24, rows: 16 },
   { id: "river-ford", name: ["Брод через реку", "River ford"], cols: 24, rows: 16 },
@@ -398,6 +405,8 @@ export const CATALOG_MAPS: CatalogMap[] = [
   { id: "fighting-pit", name: ["Бойцовская яма", "Fighting pit"], cols: 16, rows: 12 },
 ];
 
+export const CATALOG_MAPS: CatalogMap[] = [...FIRST_MAPS, ...MORE_MAPS];
+
 export const CATALOG_SCENES: Array<{ id: string; name: [string, string] }> = [
   { id: "city-gate", name: ["Городские ворота", "City gate"] },
   { id: "market", name: ["Рынок", "Market"] },
@@ -417,7 +426,7 @@ export const CATALOG_SCENES: Array<{ id: string; name: [string, string] }> = [
 ];
 
 /** Hero portraits added with the library; the builder's gallery shows them after the first 24. */
-export const EXTRA_PORTRAITS: Array<{ id: string; race: RaceId }> = [
+const FIRST_EXTRA_PORTRAITS: Array<{ id: string; race: RaceId }> = [
   { id: "human-m-fighter2", race: "human" }, { id: "human-f-wizard2", race: "human" }, { id: "human-f-ranger", race: "human" },
   { id: "human-m-cleric", race: "human" }, { id: "human-f-bard", race: "human" }, { id: "human-m-warlock", race: "human" },
   { id: "human-m-paladin2", race: "human" }, { id: "human-f-sorcerer", race: "human" },
@@ -437,3 +446,5 @@ export const EXTRA_PORTRAITS: Array<{ id: string; race: RaceId }> = [
   { id: "tiefling-f-bard", race: "tiefling" }, { id: "tiefling-m-rogue", race: "tiefling" }, { id: "tiefling-f-paladin", race: "tiefling" },
   { id: "tiefling-m-wizard", race: "tiefling" },
 ];
+
+export const EXTRA_PORTRAITS: Array<{ id: string; race: RaceId }> = [...FIRST_EXTRA_PORTRAITS, ...MORE_PORTRAITS];

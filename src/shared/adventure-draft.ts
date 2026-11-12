@@ -2,6 +2,7 @@ import {
   CATALOG_ITEMS,
   CATALOG_MAPS,
   CATALOG_MONSTERS,
+  CATALOG_NPCS,
   libraryUrl,
   type LibraryKind,
 } from "./adventure-catalog.js";
@@ -110,7 +111,9 @@ export function catalogMonster(id: string): MonsterSheet | undefined {
   const builtIn = builtinMonsters().find(monster => monster.id === id);
   if (builtIn) return builtIn;
   const found = CATALOG_MONSTERS.find(monster => monster.id === id);
-  return found ? { ...found, portrait: libraryUrl("monster", found.id) } : undefined;
+  if (found) return { ...found, portrait: libraryUrl("monster", found.id) };
+  const npc = CATALOG_NPCS.find(item => item.id === id);
+  return npc ? { ...npc, portrait: libraryUrl("npc", npc.id) } : undefined;
 }
 
 /** The URL a draft picture shows at in the editor (uploads are served at `/api/editor-files/`). */
@@ -162,7 +165,7 @@ function parsePicture(raw: unknown, path: string): DraftPicture {
     if (!UPLOAD_NAME.test(value.upload)) throw new DraftError("unknown upload", path);
     return { upload: value.upload };
   }
-  const kinds: LibraryKind[] = ["monster", "item", "map", "scene", "portrait"];
+  const kinds: LibraryKind[] = ["monster", "npc", "item", "map", "scene", "portrait"];
   if (!kinds.includes(value.library as LibraryKind)) throw new DraftError("unknown picture", path);
   return { library: value.library as LibraryKind, id: slug(value.id, `${path}.id`) };
 }
@@ -353,9 +356,11 @@ export function draftToPackage(draft: AdventureDraft, adventureId: string): Draf
     if (monster.kind === "catalog") {
       if (builtIn.some(item => item.id === monster.id)) { includeMonsters.push(monster.id); return; }
       const found = CATALOG_MONSTERS.find(item => item.id === monster.id);
-      if (!found) throw new DraftError("unknown monster", `monsters[${index}]`);
-      const file = picture({ library: "monster", id: found.id }, "monsters", `monsters[${index}]`);
-      monsters.push({ ...found, ...(file ? { portrait: file } : {}) });
+      const npc = found ? undefined : CATALOG_NPCS.find(item => item.id === monster.id);
+      const sheet = found ?? npc;
+      if (!sheet) throw new DraftError("unknown monster", `monsters[${index}]`);
+      const file = picture({ library: found ? "monster" : "npc", id: sheet.id }, "monsters", `monsters[${index}]`);
+      monsters.push({ ...sheet, ...(file ? { portrait: file } : {}) });
       return;
     }
     const file = picture(monster.picture, "monsters", `monsters[${index}].picture`);

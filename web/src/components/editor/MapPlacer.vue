@@ -24,7 +24,7 @@
       </template>
     </div>
     <p class="mp-hint">{{ t.mapHint[mode] }}</p>
-    <div class="mp-stage" :style="{ aspectRatio: `${cols} / ${rows}` }">
+    <div class="mp-stage" :style="{ aspectRatio: `${cols} / ${rows}`, width: `min(100%, calc(70vh * ${cols} / ${rows}))` }">
       <img :src="image" alt="" draggable="false" />
       <div
         ref="overlay"
@@ -172,7 +172,7 @@ function portraitOf(id: string): string | undefined {
 .mp-select { min-height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--ed-line-2); background: var(--ed-raised); color: var(--ed-text); font: inherit; }
 .mp-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .mp-hint { margin: 0; color: var(--ed-muted); font-size: 12.5px; }
-.mp-stage { position: relative; width: 100%; max-height: 70vh; border-radius: 12px; overflow: hidden; border: 1px solid var(--ed-line-2); background: #0b0c0f; }
+.mp-stage { position: relative; margin: 0 auto; border-radius: 12px; overflow: hidden; border: 1px solid var(--ed-line-2); background: #0b0c0f; }
 .mp-stage > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; user-select: none; }
 .mp-overlay {
   position: absolute; inset: 0; display: grid; cursor: crosshair; touch-action: none;

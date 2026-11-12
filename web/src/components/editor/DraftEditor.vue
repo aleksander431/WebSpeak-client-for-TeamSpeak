@@ -104,7 +104,7 @@
                 <label class="de-field"><span>{{ t.traits }}</span><textarea class="de-input" rows="3" :value="monster.sheet.traits.join('\n')" @input="monster.sheet.traits = ($event.target as HTMLTextAreaElement).value.split('\n').map(line => line.slice(0, 300)).filter(Boolean).slice(0, 30)"></textarea></label>
                 <div class="de-row de-picture-row">
                   <img v-if="pictureUrl(monster.picture)" :src="pictureUrl(monster.picture)" alt="" class="de-thumb" />
-                  <button type="button" class="de-btn" @click="pick(['monster'], monster.picture, picture => { monster.picture = picture; })">{{ t.choosePicture }}</button>
+                  <button type="button" class="de-btn" @click="pick(['monster', 'npc', 'portrait'], monster.picture, picture => { monster.picture = picture; })">{{ t.choosePicture }}</button>
                   <button v-if="monster.picture" type="button" class="de-link" @click="monster.picture = undefined">{{ t.noPicture }}</button>
                 </div>
               </div>
@@ -112,7 +112,20 @@
             <button type="button" class="de-btn" @click="addCustomMonster">＋ {{ t.customMonster }}</button>
           </div>
           <h3>{{ t.catalog }} · {{ catalogMonsters.length }}</h3>
-          <input v-model="monsterQuery" class="de-input" type="search" :placeholder="t.search" :aria-label="t.search" />
+          <div class="de-row de-filter">
+            <div class="de-chips" role="radiogroup" :aria-label="t.catalog">
+              <button
+                v-for="item in (['all', 'monster', 'npc'] as const)"
+                :key="item"
+                type="button"
+                role="radio"
+                :aria-checked="catalogFilter === item"
+                :class="['de-chip', { 'de-chip-on': catalogFilter === item }]"
+                @click="catalogFilter = item"
+              >{{ t.catalogFilter[item] }}</button>
+            </div>
+            <input v-model="monsterQuery" class="de-input de-grow" type="search" :placeholder="t.search" :aria-label="t.search" />
+          </div>
           <div class="de-cards de-cards-small">
             <button
               v-for="monster in shownCatalog"
@@ -278,7 +291,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import HeroBuilder from "../web-client/HeroBuilder.vue";
 import MapPlacer from "./MapPlacer.vue";
 import PicturePicker from "./PicturePicker.vue";
-import { CATALOG_ITEMS, CATALOG_MONSTERS, libraryUrl, type LibraryKind } from "../../../../src/shared/adventure-catalog.js";
+import { CATALOG_ITEMS, CATALOG_MONSTERS, CATALOG_NPCS, libraryUrl, type LibraryKind } from "../../../../src/shared/adventure-catalog.js";
 import {
   BUILTIN_TRACKS, DraftError, builtinHeroes, builtinMonsters, catalogMonster, draftAdventureId, draftToPackage, pictureUrl, suggestedGrid,
   type AdventureDraft, type DraftLoot, type DraftMonster, type DraftPicture, type DraftScene, type DraftTrack,
@@ -415,13 +428,19 @@ function removeHero(id: string): void {
 
 const catalogMonsters = computed(() => {
   const seen = new Set<string>();
-  return [...builtinMonsters(), ...CATALOG_MONSTERS.map(monster => ({ ...monster, portrait: libraryUrl("monster", monster.id) }))]
-    .filter(monster => !seen.has(monster.id) && seen.add(monster.id));
+  return [
+    ...builtinMonsters().map(monster => ({ ...monster, npc: false })),
+    ...CATALOG_MONSTERS.map(monster => ({ ...monster, portrait: libraryUrl("monster", monster.id), npc: false })),
+    ...CATALOG_NPCS.map(npc => ({ ...npc, portrait: libraryUrl("npc", npc.id), npc: true })),
+  ].filter(monster => !seen.has(monster.id) && seen.add(monster.id));
 });
 const monsterQuery = ref("");
+const catalogFilter = ref<"all" | "monster" | "npc">("all");
 const shownCatalog = computed(() => {
   const needle = monsterQuery.value.trim().toLowerCase();
-  return needle ? catalogMonsters.value.filter(monster => monster.name.toLowerCase().includes(needle)) : catalogMonsters.value;
+  return catalogMonsters.value.filter(monster =>
+    (catalogFilter.value === "all" || (catalogFilter.value === "npc") === monster.npc)
+    && (!needle || monster.name.toLowerCase().includes(needle)));
 });
 const openMonster = ref("");
 function hasMonster(id: string): boolean {
@@ -607,6 +626,10 @@ textarea.de-input { resize: vertical; line-height: 1.45; }
 .de-short { width: 84px; }
 .de-mid { width: 130px; }
 .de-grow { flex: 1 1 160px; min-width: 0; }
+.de-filter { align-items: center; }
+.de-chips { display: inline-flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--ed-raised); }
+.de-chip { min-height: 32px; padding: 0 12px; border-radius: 9px; border: 0; background: transparent; color: var(--ed-muted); font: inherit; font-size: 13px; cursor: pointer; }
+.de-chip-on { background: var(--ed-gold); color: #1a1408; font-weight: 600; }
 .de-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 .de-wrap { align-items: center; }
 .de-picture-row { align-items: center; }

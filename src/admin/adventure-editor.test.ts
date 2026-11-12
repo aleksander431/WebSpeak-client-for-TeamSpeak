@@ -118,3 +118,43 @@ test("drafts explain what is missing before publishing", async () => {
   assert.throws(() => parseDraft({ ...draft, scenes: [{ id: "s", title: "x", art: { upload: "../../etc/passwd" } }] }), /unknown upload/);
   assert.throws(() => parseDraft({ ...draft, heroes: [{ kind: "built", id: "h", choices: { name: "" } }] }));
 });
+
+test("the library catalog: unique ids, valid dice, every picture shipped, NPCs publish like monsters", async () => {
+  const { CATALOG_ITEMS, CATALOG_MAPS, CATALOG_MONSTERS, CATALOG_NPCS, CATALOG_SCENES, libraryUrl } = await import("../shared/adventure-catalog.js");
+  const { HERO_PORTRAITS, RACES } = await import("../shared/hero-builder.js");
+  const { parseDiceExpression } = await import("../shared/tabletop.js");
+  const { builtinMonsters } = await import("../shared/adventure-draft.js");
+  const { existsSync } = await import("node:fs");
+  const unique = (ids: string[], what: string) => assert.equal(new Set(ids).size, ids.length, `${what} ids repeat`);
+  const creatures = [...builtinMonsters(), ...CATALOG_MONSTERS, ...CATALOG_NPCS];
+  unique(creatures.map(item => item.id), "monster/NPC");
+  unique(CATALOG_ITEMS.map(item => item.id), "item");
+  unique(CATALOG_MAPS.map(item => item.id), "map");
+  unique(CATALOG_SCENES.map(item => item.id), "scene");
+  unique(HERO_PORTRAITS.map(item => item.id), "portrait");
+  for (const creature of [...CATALOG_MONSTERS, ...CATALOG_NPCS]) {
+    assert.match(creature.id, /^[a-z0-9-]+$/);
+    assert.ok(creature.maxHp > 0 && creature.ac > 0, creature.id);
+    for (const attack of creature.attacks) assert.ok(parseDiceExpression(attack.damage), `${creature.id}: ${attack.damage}`);
+  }
+  for (const map of CATALOG_MAPS) assert.ok(map.cols >= 4 && map.cols <= 64 && map.rows >= 4 && map.rows <= 64, map.id);
+  assert.ok(new Set(CATALOG_MAPS.map(map => `${map.cols}×${map.rows}`)).size >= 10, "maps come in many sizes");
+  const raceIds = new Set<string>(RACES.map((race: { id: string }) => race.id));
+  for (const portrait of HERO_PORTRAITS) assert.ok(raceIds.has(portrait.race), portrait.id);
+  const pictures = [
+    ...CATALOG_MONSTERS.map(item => libraryUrl("monster", item.id)), ...CATALOG_NPCS.map(item => libraryUrl("npc", item.id)),
+    ...CATALOG_ITEMS.map(item => libraryUrl("item", item.id)), ...CATALOG_MAPS.map(item => libraryUrl("map", item.id)),
+    ...CATALOG_SCENES.map(item => libraryUrl("scene", item.id)), ...HERO_PORTRAITS.map(item => libraryUrl("portrait", item.id)),
+  ];
+  const missing = pictures.filter(url => !existsSync(path.join("web/public", url)));
+  assert.deepEqual(missing, [], "every library picture is in web/public");
+
+  const draft = emptyDraft("Город");
+  draft.heroes.push({ kind: "builtin", id: "ilva" });
+  draft.monsters.push({ kind: "catalog", id: "innkeeper" }, { kind: "catalog", id: "wyvern" });
+  draft.scenes.push({ id: "s1", title: "Площадь", map: { picture: { library: "map", id: "market-square" }, cols: 22, rows: 16, spawn: [[1, 1]] }, encounter: [{ monsterId: "innkeeper", x: 5, y: 5 }] });
+  const built = draftToPackage(parseDraft(draft), "ed-town");
+  const npc = (built.manifest.monsters as Array<{ id: string; portrait?: string }>).find(item => item.id === "innkeeper")!;
+  assert.ok(npc.portrait, "an NPC carries its picture");
+  assert.deepEqual(built.files.get(npc.portrait!), { static: "/dnd/library/npcs/innkeeper.webp" });
+});

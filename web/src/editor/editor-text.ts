@@ -118,7 +118,9 @@ const ru = {
   uploadFailed: "Не удалось загрузить",
   close: "Закрыть",
   cancel: "Отмена",
-  kinds: { map: "Карты", scene: "Сцены", monster: "Монстры", item: "Предметы", portrait: "Портреты" },
+  kinds: { map: "Карты", scene: "Сцены", monster: "Монстры", npc: "NPC", item: "Предметы", portrait: "Портреты" },
+  catalogFilter: { all: "Все", monster: "Монстры", npc: "NPC и жители" },
+  mapSizes: { all: "Любой размер", small: "Маленькие", medium: "Средние", large: "Большие" },
   errors: {
     EDITOR_NOT_APPROVED: "Администратор ещё не одобрил этот браузер.",
     EDITOR_FILE_TYPE: "Подходят только картинки WebP, PNG, JPEG и музыка Ogg, MP3, M4A, WebM.",
@@ -264,7 +266,9 @@ const en: EditorText = {
   uploadFailed: "Upload failed",
   close: "Close",
   cancel: "Cancel",
-  kinds: { map: "Maps", scene: "Scenes", monster: "Monsters", item: "Items", portrait: "Portraits" },
+  kinds: { map: "Maps", scene: "Scenes", monster: "Monsters", npc: "NPCs", item: "Items", portrait: "Portraits" },
+  catalogFilter: { all: "All", monster: "Monsters", npc: "NPCs and townsfolk" },
+  mapSizes: { all: "Any size", small: "Small", medium: "Medium", large: "Large" },
   errors: {
     EDITOR_NOT_APPROVED: "The administrator has not approved this browser yet.",
     EDITOR_FILE_TYPE: "Only WebP, PNG, JPEG pictures and Ogg, MP3, M4A, WebM music.",

@@ -24,7 +24,20 @@
         </label>
       </nav>
       <p v-if="problem" class="pp-problem" role="alert">{{ problem }}</p>
-      <input v-if="tab !== 'uploads'" v-model="query" class="pp-search" type="search" :placeholder="t.search" :aria-label="t.search" />
+      <div v-if="tab !== 'uploads'" class="pp-filter">
+        <div v-if="tab === 'map'" class="pp-sizes" role="radiogroup" :aria-label="t.mapSize">
+          <button
+            v-for="item in (['all', 'small', 'medium', 'large'] as const)"
+            :key="item"
+            type="button"
+            role="radio"
+            :aria-checked="mapSize === item"
+            :class="['pp-size-btn', { 'pp-size-on': mapSize === item }]"
+            @click="mapSize = item"
+          >{{ t.mapSizes[item] }}</button>
+        </div>
+        <input v-model="query" class="pp-search" type="search" :placeholder="t.search" :aria-label="t.search" />
+      </div>
       <div :class="['pp-grid', `pp-grid-${tab}`]">
         <template v-if="tab === 'uploads'">
           <button v-for="name in uploads" :key="name" type="button" class="pp-item" @click="emit('pick', { upload: name })">
@@ -41,7 +54,7 @@
             @click="emit('pick', { library: item.kind, id: item.id })"
           >
             <img :src="item.url" alt="" loading="lazy" />
-            <span class="pp-name">{{ item.name }}</span>
+            <span class="pp-name">{{ item.name }}<small v-if="item.size" class="pp-size">{{ item.size }}</small></span>
           </button>
         </template>
       </div>
@@ -51,7 +64,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { CATALOG_ITEMS, CATALOG_MAPS, CATALOG_MONSTERS, CATALOG_SCENES, libraryUrl, type LibraryKind } from "../../../../src/shared/adventure-catalog.js";
+import { CATALOG_ITEMS, CATALOG_MAPS, CATALOG_MONSTERS, CATALOG_NPCS, CATALOG_SCENES, libraryUrl, type LibraryKind } from "../../../../src/shared/adventure-catalog.js";
 import { BUILTIN_PICTURES, type DraftPicture } from "../../../../src/shared/adventure-draft.js";
 import { HERO_PORTRAITS } from "../../../../src/shared/hero-builder.js";
 import type { EditorText } from "../../editor/editor-text.js";
@@ -68,26 +81,35 @@ const emit = defineEmits<{ pick: [picture: DraftPicture]; close: [] }>();
 
 const tab = ref<LibraryKind | "uploads">(props.kinds[0] ?? "uploads");
 const query = ref("");
+const mapSize = ref<"all" | "small" | "medium" | "large">("all");
+/** Small rooms up to 200 cells, medium up to 400, large beyond. */
+function sizeClass(size: string | undefined): "small" | "medium" | "large" | "" {
+  const match = /^(\d+)×(\d+)$/.exec(size ?? "");
+  if (!match) return "";
+  const cells = Number(match[1]) * Number(match[2]);
+  return cells <= 200 ? "small" : cells <= 400 ? "medium" : "large";
+}
 const busy = ref(false);
 const problem = ref("");
 const closeButton = ref<HTMLButtonElement | null>(null);
 onMounted(() => closeButton.value?.focus());
 
-interface Entry { id: string; kind: LibraryKind; name: string; url: string }
+interface Entry { id: string; kind: LibraryKind; name: string; url: string; size?: string }
 
 function library(kind: LibraryKind): Entry[] {
   const lang = props.russian ? 0 : 1;
   switch (kind) {
     case "map":
       return [
-        ...CATALOG_MAPS.map(map => ({ id: map.id, kind, name: map.name[lang], url: libraryUrl("map", map.id) })),
-        ...BUILTIN_PICTURES.filter(item => item.kind === "map").map(item => ({ id: item.id, kind, name: item.name[lang], url: item.file })),
+        ...CATALOG_MAPS.map(map => ({ id: map.id, kind, name: map.name[lang], url: libraryUrl("map", map.id), size: `${map.cols}×${map.rows}` })),
+        ...BUILTIN_PICTURES.filter(item => item.kind === "map").map(item => ({ id: item.id, kind, name: item.name[lang], url: item.file, ...(item.cols ? { size: `${item.cols}×${item.rows}` } : {}) })),
       ];
     case "scene":
       return [
         ...CATALOG_SCENES.map(scene => ({ id: scene.id, kind, name: scene.name[lang], url: libraryUrl("scene", scene.id) })),
         ...BUILTIN_PICTURES.filter(item => item.kind === "scene").map(item => ({ id: item.id, kind, name: item.name[lang], url: item.file })),
       ];
+    case "npc": return CATALOG_NPCS.map(npc => ({ id: npc.id, kind, name: npc.name, url: libraryUrl("npc", npc.id) }));
     case "monster": return CATALOG_MONSTERS.map(monster => ({ id: monster.id, kind, name: monster.name, url: libraryUrl("monster", monster.id) }));
     case "item": return CATALOG_ITEMS.map(item => ({ id: item.id, kind, name: item.name[lang], url: libraryUrl("item", item.id) }));
     case "portrait": return HERO_PORTRAITS.map(portrait => ({ id: portrait.id, kind, name: portrait.id, url: libraryUrl("portrait", portrait.id) }));
@@ -98,7 +120,8 @@ const shown = computed(() => {
   if (tab.value === "uploads") return [];
   const needle = query.value.trim().toLowerCase();
   const all = library(tab.value);
-  return needle ? all.filter(item => item.name.toLowerCase().includes(needle) || item.id.includes(needle)) : all;
+  const sized = tab.value === "map" && mapSize.value !== "all" ? all.filter(item => sizeClass(item.size) === mapSize.value) : all;
+  return needle ? sized.filter(item => item.name.toLowerCase().includes(needle) || item.id.includes(needle)) : sized;
 });
 
 function isCurrent(id: string): boolean {
@@ -135,6 +158,11 @@ async function onFile(event: Event): Promise<void> {
 .pp-upload { position: relative; margin-left: auto; display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; border-radius: 10px; background: var(--ed-gold); color: #1a1408; font-weight: 600; font-size: 13px; cursor: pointer; }
 .pp-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .pp-problem { margin: 0; color: var(--ed-bad); }
+.pp-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pp-filter .pp-search { flex: 1 1 200px; }
+.pp-sizes { display: inline-flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--ed-raised); }
+.pp-size-btn { min-height: 30px; padding: 0 12px; border-radius: 9px; border: 0; background: transparent; color: var(--ed-muted); font: inherit; font-size: 13px; cursor: pointer; }
+.pp-size-on { background: var(--ed-gold); color: #1a1408; font-weight: 600; }
 .pp-search { min-height: 36px; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--ed-line-2); background: var(--ed-raised); color: var(--ed-text); font: inherit; }
 .pp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; min-height: 0; overflow: auto; padding: 2px; }
 .pp-grid-map, .pp-grid-scene { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
@@ -143,5 +171,7 @@ async function onFile(event: Event): Promise<void> {
 .pp-item-on { border-color: var(--ed-gold); box-shadow: 0 0 0 2px var(--ed-gold-soft); }
 .pp-item img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: #0e0f12; }
 .pp-grid-map .pp-item img, .pp-grid-scene .pp-item img { aspect-ratio: 3 / 2; }
+.pp-grid-map .pp-item img { object-fit: contain; }
+.pp-size { margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: var(--ed-gold-soft); color: var(--ed-gold); font-size: 11px; font-variant-numeric: tabular-nums; }
 .pp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 </style>
