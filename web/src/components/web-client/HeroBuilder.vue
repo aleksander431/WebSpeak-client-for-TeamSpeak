@@ -22,16 +22,16 @@
           <template v-if="step === 0">
             <div class="hb-grid">
               <button v-for="item in RACES" :key="item.id" type="button" :class="['hb-card', { 'hb-card-on': draft.race === item.id }]" :aria-pressed="draft.race === item.id" @click="pickRace(item.id)">
-                <strong class="hb-card-name">{{ item.name }}</strong>
+                <strong class="hb-card-name">{{ w(item.name) }}</strong>
                 <span class="hb-card-meta">{{ bonusLine(item.bonuses) }} · {{ x.speed }} {{ item.speed }}</span>
-                <span class="hb-card-blurb">{{ item.blurb }}</span>
+                <span class="hb-card-blurb">{{ w(item.blurb) }}</span>
               </button>
             </div>
             <div v-if="draft.race === 'dragonborn'" class="hb-block">
               <h3>{{ t.ancestry }}</h3>
               <div class="hb-chips">
                 <button v-for="item in DRAGON_ANCESTRIES" :key="item.id" type="button" :class="['hb-chip', { 'hb-chip-on': draft.ancestry === item.id }]" :aria-pressed="draft.ancestry === item.id" @click="draft.ancestry = item.id">
-                  {{ item.name }} <span class="hb-dim">· {{ item.damage }}</span>
+                  {{ w(item.name) }} <span class="hb-dim">· {{ w(item.damage) }}</span>
                 </button>
               </div>
             </div>
@@ -41,9 +41,9 @@
           <template v-else-if="step === 1">
             <div class="hb-grid">
               <button v-for="item in CLASSES" :key="item.id" type="button" :class="['hb-card', { 'hb-card-on': draft.cls === item.id }]" :aria-pressed="draft.cls === item.id" @click="pickClass(item.id)">
-                <strong class="hb-card-name">{{ item.name }}</strong>
+                <strong class="hb-card-name">{{ w(item.name) }}</strong>
                 <span class="hb-card-meta">{{ t.hitDie }} {{ diePrefix }}{{ item.hitDie }} · {{ item.primary.slice(0, 2).map(a => x.abilityShort[a]).join(", ") }}</span>
-                <span class="hb-card-blurb">{{ item.blurb }}</span>
+                <span class="hb-card-blurb">{{ w(item.blurb) }}</span>
               </button>
             </div>
             <div v-if="draft.cls === 'fighter'" class="hb-block">
@@ -161,7 +161,7 @@
             <span v-else class="hb-avatar hb-avatar-empty">{{ (draft.name.trim() || "?").slice(0, 1).toUpperCase() }}</span>
             <span class="hb-sheet-title">
               <strong class="hb-sheet-name">{{ draft.name.trim() || t.namePlaceholder }}</strong>
-              <span class="hb-dim">{{ [raceInfo?.name, classInfo?.name, t.level1].filter(Boolean).join(" · ") }}</span>
+              <span class="hb-dim">{{ [raceInfo && w(raceInfo.name), classInfo && w(classInfo.name), t.level1].filter(Boolean).join(" · ") }}</span>
             </span>
           </div>
           <template v-if="preview">
@@ -232,12 +232,17 @@ import {
   type AbilityMethod, type ClassId, type DragonAncestry, type HeroChoices, type RaceId,
 } from "../../../../src/shared/hero-builder.js";
 import { ABILITIES, SKILLS, SKILL_IDS, abilityModifier, formatModifier, skillBonus, type Ability, type HeroSheet, type Skill } from "../../../../src/shared/tabletop.js";
-import type { DndText } from "../../game/dnd-text.js";
+import { dndText, type DndText } from "../../game/dnd-text.js";
+import { enHero, enLine } from "../../game/en-terms.js";
 
 const props = defineProps<{ x: DndText; initial?: HeroChoices | null; canPlay: boolean; diePrefix: string }>();
 const emit = defineEmits<{ cancel: []; save: [choices: HeroChoices, play: boolean] }>();
 
 const t = computed(() => props.x.builder);
+/** Rules words in the page's language (the builder's data is written in Russian). */
+const russian = computed(() => props.x === dndText("ru"));
+const w = (text: string) => (russian.value ? text : enLine(text));
+const local = (hero: HeroSheet) => (russian.value ? hero : enHero(hero));
 const LAST_STEP = 4;
 const HALF_ELF_ABILITIES = ABILITIES.filter(ability => ability !== "cha");
 const editing = Boolean(props.initial);
@@ -332,7 +337,7 @@ const choices = computed<HeroChoices | null>(() => {
 const preview = computed<HeroSheet | null>(() => {
   if (!choices.value) return null;
   try {
-    return buildHero({ ...choices.value, ancestry: choices.value.ancestry ?? (draft.race === "dragonborn" ? "red" : undefined), fightingStyle: choices.value.fightingStyle ?? (draft.cls === "fighter" ? "defense" : undefined) }, "preview", heroPortraitUrl);
+    return local(buildHero({ ...choices.value, ancestry: choices.value.ancestry ?? (draft.race === "dragonborn" ? "red" : undefined), fightingStyle: choices.value.fightingStyle ?? (draft.cls === "fighter" ? "defense" : undefined) }, "preview", heroPortraitUrl));
   } catch {
     return null;
   }

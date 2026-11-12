@@ -124,6 +124,7 @@ export class GameClient {
   resource(key: string, resourceId: string, used: number): void { this.send({ type: "gameResource", key, resourceId, used: Math.max(0, used) }); }
   rest(kind: "short" | "long"): void { this.send({ type: "gameRest", kind }); }
   hitDie(key: string): void { this.send({ type: "gameHitDie", key }); }
+  vision(radius: number): void { this.send({ type: "gameVision", radius }); }
   xp(keys: string[], amount: number): void { this.send({ type: "gameXp", keys, amount: Math.round(amount) }); }
   levelUp(choices: HeroChoices): void { this.send({ type: "gameLevelUp", choices }); }
   inventory(key: string, inventory: InventoryItem[], coins: Coins): void { this.send({ type: "gameInventory", key, inventory, coins }); }

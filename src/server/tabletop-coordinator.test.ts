@@ -162,6 +162,7 @@ test("maps: hero tokens at the entrance, fog hides monsters from players, scenes
     f.send(who, { type: "gameReady", ready: true });
   }
   f.send(gm, { type: "gameStart" });
+  f.send(gm, { type: "gameVision", radius: 0 });
   assert.equal(f.state("b").map, null, "the tavern is a story scene");
   f.send(gm, { type: "gameTokenAdd", monsterId: "skeleton", x: 1, y: 1 });
   assert.equal(f.lastError("a"), "NO_MAP");
@@ -653,4 +654,27 @@ test("experience, level-ups of own heroes, belongings and the hero vault", () =>
 
   coordinator.handleMessage(sasha, { type: "gameVaultRemove", id: "h1" });
   assert.equal(vaultData.has("uid:Sasha"), false);
+});
+
+test("vision: the fog opens around heroes as they move, as far as the master sets", () => {
+  const f = fixture();
+  const { gm, sasha } = hallTable(f);
+  let map = f.state("b").map!;
+  assert.equal(map.vision, 6);
+  const at = (x: number, y: number) => f.state("b").map!.fog[y * map.cols + x];
+  assert.equal(at(11, 9), "1", "six cells north of the entrance");
+  assert.equal(at(11, 7), "0");
+  const ilva = map.tokens.find(token => token.heroId === "ilva")!;
+  f.send(sasha, { type: "gameTokenMove", id: ilva.id, x: 11, y: 10 });
+  assert.equal(at(11, 4), "1", "she sees further as she walks in");
+  f.send(sasha, { type: "gameVision", radius: 12 });
+  assert.equal(f.lastError("b"), "GM_ONLY");
+  f.send(gm, { type: "gameVision", radius: 0 });
+  f.send(gm, { type: "gameFogAll", reveal: false });
+  map = f.state("b").map!;
+  assert.equal(map.vision, 0);
+  assert.equal(map.fog.includes("1"), false, "with vision off the master's fog stays");
+  f.send(gm, { type: "gameVision", radius: 3 });
+  assert.equal(at(11, 7), "1");
+  assert.equal(at(11, 6), "0");
 });

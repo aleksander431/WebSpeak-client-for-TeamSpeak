@@ -4,6 +4,8 @@ import {
   ROLL_LOG_SIZE,
   SKILLS,
   CONDITIONS,
+  DEFAULT_VISION,
+  VISION_RADII,
   abilityModifier,
   attackSaveOf,
   formatModifier,
@@ -158,6 +160,8 @@ interface TableState {
   /** What plays now and since when; `auto` follows the scene and combat. */
   music: { trackId: string | null; startedAt: number; auto: boolean };
   narration: { id: string; title: string; text: string; art?: string } | null;
+  /** Cells revealed around every hero after each change (0: by hand only). */
+  vision: number;
   updatedAt: number;
 }
 
@@ -197,6 +201,17 @@ export interface TabletopCoordinatorOptions {
 const MAX_VAULT_HEROES = 30;
 
 const SNAPSHOT_VERSION = 1;
+
+/** Opens the fog in a disc of `radius` cells around a cell. */
+function revealAround(fog: Uint8Array, map: SceneMap, cx: number, cy: number, radius: number): void {
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const x = cx + dx;
+      const y = cy + dy;
+      if (x >= 0 && y >= 0 && x < map.cols && y < map.rows && dx * dx + dy * dy <= radius * radius + 1) fog[y * map.cols + x] = 1;
+    }
+  }
+}
 
 /** Table key for a TeamSpeak channel: target key plus channel id. */
 export function tabletopTableKey(targetKey: string, channelId: bigint | number | string): string {
@@ -466,7 +481,7 @@ export class TabletopCoordinator {
     }
     if (!table) {
       table = { phase: "lobby", adventureId: null, gm: null, players: [], rolls: [], checks: [], scene: 0, scenes: new Map(), combat: null,
-        music: { trackId: null, startedAt: 0, auto: true }, narration: null, updatedAt: this.now() };
+        music: { trackId: null, startedAt: 0, auto: true }, narration: null, vision: DEFAULT_VISION, updatedAt: this.now() };
       this.tables.set(key, table);
     }
     return table;
@@ -629,6 +644,10 @@ export class TabletopCoordinator {
         return this.applyCare(table, who, role, message);
       case "gameSaveAttack":
         return this.saveAttack(table, who, role, ownSeat, message);
+      case "gameVision":
+        if (role !== "gm") return "GM_ONLY";
+        table.vision = message.radius;
+        return null;
       case "gameXp":
       case "gameLevelUp":
       case "gameInventory":
@@ -1265,14 +1284,10 @@ export class TabletopCoordinator {
       const spot = this.freeSpot(map, scene);
       if (!spot) continue;
       scene.tokens.push({ id: this.randomId(), kind: "hero", x: spot[0], y: spot[1], name: hero.name, seatKey: seat.key, heroId: hero.id, hidden: false });
-      for (let dy = -SPAWN_REVEAL_RADIUS; dy <= SPAWN_REVEAL_RADIUS; dy++) {
-        for (let dx = -SPAWN_REVEAL_RADIUS; dx <= SPAWN_REVEAL_RADIUS; dx++) {
-          const x = spot[0] + dx;
-          const y = spot[1] + dy;
-          if (x >= 0 && y >= 0 && x < map.cols && y < map.rows && dx * dx + dy * dy <= SPAWN_REVEAL_RADIUS * SPAWN_REVEAL_RADIUS + 1) scene.fog[y * map.cols + x] = 1;
-        }
-      }
+      revealAround(scene.fog, map, spot[0], spot[1], SPAWN_REVEAL_RADIUS);
     }
+    // Heroes light what they can see wherever they stand (no walls on a picture: a circle).
+    if (table.vision > 0) for (const token of scene.tokens) if (token.kind === "hero") revealAround(scene.fog, map, token.x, token.y, table.vision);
   }
 
   private freeSpot(map: SceneMap, scene: SceneState): [number, number] | null {
@@ -1309,7 +1324,7 @@ export class TabletopCoordinator {
     }
     let fog = "";
     for (const cell of scene.fog) fog += cell ? "1" : "0";
-    return { cols: map.cols, rows: map.rows, fog, tokens };
+    return { cols: map.cols, rows: map.rows, fog, tokens, vision: table.vision };
   }
 
   private roll(table: TableState, who: Subscription, role: TableRole, seat: SeatState | null,
@@ -1585,6 +1600,7 @@ function snapshotTable(table: TableState): unknown {
     combat: table.combat,
     music: table.music,
     narration: table.narration,
+    vision: table.vision,
     updatedAt: table.updatedAt,
   };
 }
@@ -1615,6 +1631,7 @@ function restoreTable(raw: unknown): TableState | null {
       combat: (data.combat as CombatState | null) ?? null,
       music: music && typeof music.auto === "boolean" ? music : { trackId: null, startedAt: 0, auto: true },
       narration: (data.narration as TableState["narration"]) ?? null,
+      vision: (VISION_RADII as readonly unknown[]).includes(data.vision) ? data.vision as number : DEFAULT_VISION,
       updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
     };
   } catch {

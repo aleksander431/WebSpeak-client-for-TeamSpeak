@@ -51,9 +51,11 @@
 import { computed, onMounted, ref } from "vue";
 import { LEVEL_FEATURES, buildHero, finalAbilities, heroPortraitUrl, type HeroChoices } from "../../../../src/shared/hero-builder.js";
 import { ABILITIES, proficiencyBonus, type Ability, type Skill } from "../../../../src/shared/tabletop.js";
-import type { DndText } from "../../game/dnd-text.js";
+import { dndText, type DndText } from "../../game/dnd-text.js";
+import { enLine } from "../../game/en-terms.js";
 
 const props = defineProps<{ x: DndText; choices: HeroChoices }>();
+const w = (text: string) => (props.x === dndText("ru") ? text : enLine(text));
 const emit = defineEmits<{ cancel: []; confirm: [choices: HeroChoices] }>();
 
 const level = (props.choices.level ?? 1) + 1;
@@ -77,15 +79,15 @@ const ready = computed(() => (!needsAsi || asi.value.length === 2) && (!needsExp
 const after = computed(() => buildHero({ ...next.value, ...(needsAsi && asi.value.length < 2 ? { asi: [] } : {}) }, "after", heroPortraitUrl));
 const title = computed(() => `${props.choices.name}: ${level} ${props.x.levelShort}`);
 const gained = computed(() => {
-  const lines = [...(LEVEL_FEATURES[props.choices.cls][level] ?? [])];
+  const lines = (LEVEL_FEATURES[props.choices.cls][level] ?? []).map(w);
   const was = new Map((before.value.resources ?? []).map(item => [item.id, item.max]));
   for (const resource of after.value.resources ?? []) {
     const old = was.get(resource.id) ?? 0;
-    if (resource.max > old) lines.push(`${resource.name}: ${old} → ${resource.max}`);
+    if (resource.max > old) lines.push(`${w(resource.name)}: ${old} → ${resource.max}`);
   }
   for (const [index, attack] of after.value.attacks.entries()) {
     const old = before.value.attacks[index];
-    if (old && old.damage !== attack.damage) lines.push(`${attack.name}: ${old.damage} → ${attack.damage}`);
+    if (old && old.damage !== attack.damage) lines.push(`${w(attack.name)}: ${old.damage} → ${attack.damage}`);
   }
   return lines;
 });

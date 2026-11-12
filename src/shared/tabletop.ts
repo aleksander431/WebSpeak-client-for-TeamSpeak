@@ -411,7 +411,12 @@ export interface MapView {
   /** One character per cell, row by row: "1" revealed, "0" under fog. */
   fog: string;
   tokens: TokenView[];
+  /** Cells the fog opens around every hero as it moves; 0 when the master opens it by hand only. */
+  vision: number;
 }
+
+export const VISION_RADII = [0, 3, 6, 12] as const;
+export const DEFAULT_VISION = 6;
 
 export interface TableView {
   phase: "lobby" | "playing";
@@ -490,7 +495,9 @@ export type GameClientMessage =
   | { type: "gameInventory"; key: string; inventory: unknown[]; coins: unknown }
   /** The player's hero library kept for their TeamSpeak identity. */
   | { type: "gameVaultSave"; hero: VaultHero }
-  | { type: "gameVaultRemove"; id: string };
+  | { type: "gameVaultRemove"; id: string }
+  /** Game master: how far heroes see (cells; 0 turns it off). */
+  | { type: "gameVision"; radius: number };
 
 export type GameServerMessage =
   | { type: "gameState"; table: TableView | null }
@@ -628,6 +635,7 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
       return { type: "gameVaultSave", hero: { id: hero.id, choices: hero.choices, updatedAt: hero.updatedAt } };
     }
     case "gameVaultRemove": return shortId(raw.id) ? { type: "gameVaultRemove", id: raw.id } : invalid;
+    case "gameVision": return (VISION_RADII as readonly unknown[]).includes(raw.radius) ? { type: "gameVision", radius: raw.radius as number } : invalid;
     case "gameSaveAttack": {
       const source = raw.source;
       if (!isObject(source) || !Array.isArray(raw.targets) || !raw.targets.length || raw.targets.length > 20 || !raw.targets.every(shortId)) return invalid;

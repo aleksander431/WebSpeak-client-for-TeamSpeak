@@ -376,7 +376,7 @@
         <div v-if="table.checks.length" class="gm-card">
           <h2>{{ x.pendingChecks }}</h2>
           <div v-for="check in table.checks" :key="check.id" class="gm-check-line">
-            <span><strong>{{ check.label }}</strong> · {{ x.checkDc.split(' ')[0] }} {{ check.dc }}<br /><span class="gm-muted gm-small">{{ x.waiting }}: {{ waitingNames(check.targets, check.done) }}</span></span>
+            <span><strong>{{ said(check.label) }}</strong> · {{ x.checkDc.split(' ')[0] }} {{ check.dc }}<br /><span class="gm-muted gm-small">{{ x.waiting }}: {{ waitingNames(check.targets, check.done) }}</span></span>
             <button type="button" class="gm-btn" @click="client.cancelCheck(check.id)">{{ x.cancel }}</button>
           </div>
         </div>
@@ -498,7 +498,7 @@
       <section class="gm-col gm-side gm-scroll" :aria-label="x.turnLog">
         <div v-for="check in playerChecks" :key="check.id" class="gm-card gm-ask" role="alert">
           <span class="gm-muted">{{ x.checkAsked }}</span>
-          <strong class="gm-display">{{ check.label }}</strong>
+          <strong class="gm-display">{{ said(check.label) }}</strong>
           <span class="gm-muted gm-small">{{ x.checkHiddenDc }}<template v-if="check.mode !== 'normal'"> · {{ check.mode === 'advantage' ? x.advantage : x.disadvantage }}</template></span>
           <button type="button" class="gm-btn gm-btn-big gm-btn-gold" @click="client.roll(check.source, mode, false, check.id)">{{ x.rollCheck }}</button>
         </div>
@@ -537,7 +537,7 @@
           <ol class="gm-log-list">
             <li v-for="item in reversedRolls" :key="item.id" :class="['gm-log-item', { 'gm-log-secret': item.secret }]">
               <span class="gm-log-who">{{ item.heroName ?? item.by }}</span>
-              <span class="gm-log-what">{{ item.secret ? x.secretRoll : item.label }}<template v-if="item.hidden && !item.secret"> · {{ x.hidden.split(' (')[0] }}</template></span>
+              <span class="gm-log-what">{{ item.secret ? x.secretRoll : said(item.label) }}<template v-if="item.hidden && !item.secret"> · {{ x.hidden.split(' (')[0] }}</template></span>
               <span v-if="!item.secret && item.dice?.length" class="gm-log-dice">{{ diceText(item) }}</span>
               <strong v-if="!item.secret && item.total !== undefined" :class="['gm-log-total', rollClass(item)]">{{ item.total }}</strong>
               <span v-if="item.success !== undefined" :class="item.success ? 'gm-ok' : 'gm-bad'">{{ item.success ? x.success : x.failure }}<template v-if="item.dc !== undefined"> · {{ item.dc }}</template></span>
@@ -553,7 +553,7 @@
                   <span v-if="entry.damage" class="gm-bad">−{{ entry.damage }}</span>
                 </li>
               </ul>
-              <span v-if="item.reasons?.length" class="gm-log-reasons">{{ item.reasons.join(" · ") }}</span>
+              <span v-if="item.reasons?.length" class="gm-log-reasons">{{ item.reasons.map(said).join(" · ") }}</span>
               <span v-if="role === 'gm' && item.damage" class="gm-apply">
                 <template v-if="item.applied"><span class="gm-muted gm-small">✓ {{ x.applied }}</span></template>
                 <template v-else>
@@ -584,11 +584,11 @@
             </span>
           </div>
           <strong :class="['gm-display', 'gm-roll-title', rollClass(shownRoll)]">{{ rollHeadline(shownRoll) }}</strong>
-          <span class="gm-roll-sum">{{ shownRoll.label }}<template v-if="shownRoll.targetName"> → {{ shownRoll.targetName }}</template> · <b>{{ shownRoll.total }}</b></span>
+          <span class="gm-roll-sum">{{ said(shownRoll.label) }}<template v-if="shownRoll.targetName"> → {{ shownRoll.targetName }}</template> · <b>{{ shownRoll.total }}</b></span>
           <ul v-if="shownRoll.saves?.length" class="gm-roll-saves">
             <li v-for="entry in shownRoll.saves" :key="entry.tokenId" :class="entry.success ? 'gm-ok' : 'gm-bad'">{{ entry.name }}: {{ entry.success ? x.care.saved : x.care.failedSave }}<template v-if="entry.damage"> · −{{ entry.damage }}</template></li>
           </ul>
-          <span v-if="shownRoll.reasons?.length" class="gm-roll-reasons">{{ shownRoll.reasons.join(" · ") }}</span>
+          <span v-if="shownRoll.reasons?.length" class="gm-roll-reasons">{{ shownRoll.reasons.map(said).join(" · ") }}</span>
         </template>
       </div>
     </div>
@@ -637,7 +637,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { ABILITIES, MAX_PLAYERS, SKILL_IDS, abilityModifier, attackSaveOf, type GameClientMessage, type HeroAttack, type TokenView, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
+import { ABILITIES, MAX_PLAYERS, SKILL_IDS, abilityModifier, attackSaveOf, type GameClientMessage, type HeroAttack, type HeroSheet, type TokenView, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
 
 import GameMap from "./GameMap.vue";
 import HeroBuilder from "./HeroBuilder.vue";
@@ -648,6 +648,7 @@ import GameInventory from "./GameInventory.vue";
 import HeroLevelUp from "./HeroLevelUp.vue";
 import { MAX_LEVEL, XP_FOR_LEVEL, buildHero, heroPortraitUrl, type HeroChoices } from "../../../../src/shared/hero-builder.js";
 import { useHeroLibrary, type SavedHero } from "../../game/hero-library.js";
+import { enHero, enRollText } from "../../game/en-terms.js";
 import { GameMusicPlayer } from "../../game/music-player.js";
 import type { GameClient } from "../../game/game-client.js";
 import { dndText } from "../../game/dnd-text.js";
@@ -664,10 +665,15 @@ const roleLabel = computed(() => role.value === "gm" ? x.value.gm : role.value =
 /** The chosen adventure, as the gateway sent it to this viewer. */
 const baseAdventure = computed(() => {
   const data = props.client.adventureData.value;
-  return data && data.id === table.value?.adventureId ? data : undefined;
+  if (!data || data.id !== table.value?.adventureId) return undefined;
+  return russian.value ? data : { ...data, heroes: data.heroes.map(enHero) };
 });
+const russian = computed(() => x.value === TEXT_RU);
+/** The builder's words in the page's language (sheets are built in Russian). */
+const local = (hero: HeroSheet): HeroSheet => (russian.value ? hero : enHero(hero));
+const said = (text: string): string => (russian.value ? text : enRollText(text));
 /** Players' own heroes at this table (the gateway built them). */
-const customHeroes = computed(() => table.value?.customHeroes ?? []);
+const customHeroes = computed(() => (table.value?.customHeroes ?? []).map(local));
 /** The adventure with the table's own heroes added, for sheets, tokens and the party. */
 const adventure = computed(() => {
   const data = baseAdventure.value;
@@ -725,7 +731,7 @@ const confirmRemove = ref<string | null>(null);
 const playedSaved = ref<string | null>(null);
 const myCustom = computed(() => customHeroes.value.find(hero => hero.id === mySeat.value?.heroId) ?? null);
 const ownHeroes = computed(() => library.heroes.value.map(saved => {
-  const sheet = buildHero(saved.choices, saved.id, heroPortraitUrl);
+  const sheet = local(buildHero(saved.choices, saved.id, heroPortraitUrl));
   const custom = myCustom.value;
   const active = Boolean(custom && (playedSaved.value ? playedSaved.value === saved.id
     : custom.name === sheet.name && custom.race === sheet.race && custom.cls === sheet.cls));

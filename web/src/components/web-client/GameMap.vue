@@ -68,6 +68,12 @@
             <i :style="{ width: `${4 + size * 4}px`, height: `${4 + size * 4}px` }"></i>
           </button>
         </div>
+        <label class="gmap-vision" :title="x.visionHint">
+          <span>👁</span>
+          <select :value="map.vision" :aria-label="x.vision" @change="client.vision(Number(($event.target as HTMLSelectElement).value))">
+            <option v-for="radius in VISION_RADII" :key="radius" :value="radius">{{ radius ? `${radius * 5} ${x.feet}` : x.visionOff }}</option>
+          </select>
+        </label>
         <button type="button" class="gmap-btn" @click="client.fogAll(true)">{{ x.revealAll }}</button>
         <button type="button" class="gmap-btn" @click="client.fogAll(false)">{{ x.hideAll }}</button>
       </template>
@@ -131,7 +137,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { attackSaveOf, formatModifier, type AdventureSummary, type ConditionId, type HeroAttack, type MapView, type SceneMap, type SeatView, type TableRole, type TokenView } from "../../../../src/shared/tabletop.js";
+import { VISION_RADII, attackSaveOf, formatModifier, type AdventureSummary, type ConditionId, type HeroAttack, type MapView, type SceneMap, type SeatView, type TableRole, type TokenView } from "../../../../src/shared/tabletop.js";
 import GameConditions from "./GameConditions.vue";
 import { CONDITION_ICON } from "../../game/conditions.js";
 import type { GameClient } from "../../game/game-client.js";
@@ -714,6 +720,9 @@ watch(() => props.client.lastPing.value, ping => {
 .gmap-chip { min-height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid #3a3c44; background: transparent; color: #e8e6e1; font: inherit; font-size: 12px; cursor: pointer; }
 .gmap-chip:hover { border-color: #d9b46c; }
 .gmap-chip-gold { color: #d9b46c; font-weight: 600; }
+.gmap-vision { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px 0 10px; border-radius: 10px; background: rgba(20, 21, 25, .9); border: 1px solid #3a3c44; color: #e8e6e1; }
+.gmap-vision select { min-height: 32px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.gmap-vision select option { background: #1a1b20; }
 .gmap-chip-war { border-color: #b84a3e !important; color: #f3c9c9; }
 .gmap-row { display: flex; flex-wrap: wrap; gap: 6px; }
 @media (prefers-reduced-motion: reduce) {
