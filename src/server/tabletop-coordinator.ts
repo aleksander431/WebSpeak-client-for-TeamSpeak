@@ -1,3 +1,4 @@
+import { libraryTrack } from "../shared/music-library.js";
 import {
   MAX_MAP_TOKENS,
   MAX_PLAYERS,
@@ -822,7 +823,7 @@ export class TabletopCoordinator {
     const adventure = this.findAdventure(table.adventureId);
     switch (message.type) {
       case "gameMusic":
-        if (message.trackId !== null && !adventure?.music?.some(track => track.id === message.trackId)) return "UNKNOWN_TRACK";
+        if (message.trackId !== null && !adventure?.music?.some(track => track.id === message.trackId) && !libraryTrack(message.trackId)) return "UNKNOWN_TRACK";
         table.music = { trackId: message.trackId, startedAt: this.now(), auto: false };
         return null;
       case "gameMusicAuto":
@@ -989,7 +990,9 @@ export class TabletopCoordinator {
   }
 
   private musicFor(table: TableState): MusicView | null {
-    const track = this.findAdventure(table.adventureId)?.music?.find(item => item.id === table.music.trackId);
+    const own = this.findAdventure(table.adventureId)?.music?.find(item => item.id === table.music.trackId);
+    const shared = own ? undefined : libraryTrack(table.music.trackId);
+    const track = own ?? (shared ? { id: table.music.trackId!, title: shared.title[0], file: shared.file } : undefined);
     if (!track) return null;
     return { trackId: track.id, title: track.title, url: track.file, elapsedMs: Math.max(0, this.now() - table.music.startedAt), auto: table.music.auto };
   }

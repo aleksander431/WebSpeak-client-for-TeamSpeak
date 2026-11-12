@@ -7,6 +7,7 @@ import {
   type LibraryKind,
 } from "./adventure-catalog.js";
 import { ADVENTURE_ID_PATTERN } from "./adventure-package.js";
+import { MUSIC_LIBRARY, type MusicGroup } from "./music-library.js";
 import { buildHero, heroPortraitUrl, validateHeroChoices, type HeroChoices } from "./hero-builder.js";
 import type { Ability, HeroAttack, HeroSheet, MonsterSheet } from "./tabletop.js";
 import { BUILT_IN_ADVENTURES } from "./tabletop-adventures.js";
@@ -78,15 +79,9 @@ export interface AdventureDraft {
   combatMusic?: string;
 }
 
-/** Built-in music an author may reuse: the shipped adventure's tracks. */
-export const BUILTIN_TRACKS: Array<{ id: string; title: [string, string]; file: string }> = [
-  { id: "tavern", title: ["Таверна", "Tavern"], file: "/dnd/solgard-bell/music-tavern.ogg" },
-  { id: "road", title: ["Дорога", "Road"], file: "/dnd/solgard-bell/music-road.ogg" },
-  { id: "catacombs", title: ["Подземелье", "Dungeon"], file: "/dnd/solgard-bell/music-catacombs.ogg" },
-  { id: "ritual", title: ["Ритуал", "Ritual"], file: "/dnd/solgard-bell/music-ritual.ogg" },
-  { id: "battle", title: ["Бой", "Battle"], file: "/dnd/solgard-bell/music-battle.ogg" },
-  { id: "finale", title: ["Финал", "Finale"], file: "/dnd/solgard-bell/music-finale.ogg" },
-];
+/** Built-in music an author may reuse: the whole music library (`music-library.ts`). */
+export const BUILTIN_TRACKS: Array<{ id: string; title: [string, string]; file: string; group: MusicGroup }> =
+  MUSIC_LIBRARY.map(track => ({ id: track.id, title: track.title, file: track.file, group: track.group }));
 
 /** Built-in pictures beside the library: the shipped adventures' art and maps. */
 export const BUILTIN_PICTURES: Array<{ id: string; kind: "scene" | "map"; name: [string, string]; file: string; cols?: number; rows?: number }> = [

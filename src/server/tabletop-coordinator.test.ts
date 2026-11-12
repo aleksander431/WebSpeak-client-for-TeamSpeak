@@ -824,3 +824,32 @@ test("scene loot: the master hands items to heroes once marked, players never se
   assert.ok(forPlayer.type === "gameAdventureData" && forPlayer.adventure.scenes[0]!.loot === undefined, "players do not learn the loot");
   assert.ok(parseGameClientMessage({ type: "gameGiveLoot", index: -1, keys: [] }) && "error" in parseGameClientMessage({ type: "gameGiveLoot", index: -1, keys: [] })!);
 });
+
+test("music library: the master plays any library track at any table, players get its URL", async () => {
+  const { MUSIC_LIBRARY } = await import("../shared/music-library.js");
+  const { existsSync } = await import("node:fs");
+  const missing = MUSIC_LIBRARY.filter(track => !existsSync(`web/public${track.file}`)).map(track => track.file);
+  assert.deepEqual(missing, [], "every library track ships");
+  assert.equal(new Set(MUSIC_LIBRARY.map(track => track.id)).size, MUSIC_LIBRARY.length);
+
+  const f = fixture();
+  const gm = f.person("a", "Alex");
+  const sasha = f.person("b", "Sasha");
+  for (const who of [gm, sasha]) f.send(who, { type: "gameOpen" });
+  f.send(gm, { type: "gameSeat", role: "gm" });
+  f.send(gm, { type: "gameAdventure", adventureId: "solgard-bell" });
+  f.send(sasha, { type: "gameSeat", role: "player" });
+  f.send(sasha, { type: "gameHero", heroId: "ilva" });
+  f.send(sasha, { type: "gameReady", ready: true });
+  f.send(gm, { type: "gameStart" });
+
+  f.send(gm, { type: "gameMusic", trackId: "lib-chase" });
+  const view = f.state("b").music!;
+  assert.deepEqual([view.trackId, view.title, view.url, view.auto], ["lib-chase", "Погоня", "/dnd/music/chase.ogg", false]);
+  f.send(gm, { type: "gameMusic", trackId: "lib-nothing" });
+  assert.equal(f.lastError("a"), "UNKNOWN_TRACK");
+  f.send(sasha, { type: "gameMusic", trackId: "lib-forest" });
+  assert.equal(f.lastError("b"), "GM_ONLY");
+  f.send(gm, { type: "gameMusicAuto" });
+  assert.equal(f.state("a").music, null, "back to following the scenes: these bare scenes have no music");
+});

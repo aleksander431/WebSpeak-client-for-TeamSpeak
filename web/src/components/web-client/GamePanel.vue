@@ -22,12 +22,17 @@
       <div class="gm-top-actions">
         <div v-if="table?.phase === 'playing' && (table.music || role === 'gm')" class="gm-music" data-ws-part="voice.game.music">
           <button type="button" class="gm-mini" :aria-label="music.state.muted ? x.musicUnmute : x.musicMute" :title="music.state.muted ? x.musicUnmute : x.musicMute" :aria-pressed="music.state.muted" @click="music.setMuted(!music.state.muted)">{{ music.state.muted || !table.music ? "🔇" : "🎵" }}</button>
-          <select v-if="role === 'gm' && adventure?.music?.length" class="gm-input gm-music-select" :value="table.musicAuto ? '@auto' : table.music?.trackId ?? '@none'" :aria-label="x.music" @change="onMusicPick">
-            <option value="@auto">{{ x.musicAuto }}<template v-if="table.musicAuto && table.music"> · {{ table.music.title }}</template></option>
-            <option v-for="track in adventure.music" :key="track.id" :value="track.id">{{ track.title }}</option>
+          <select v-if="role === 'gm'" class="gm-input gm-music-select" :value="table.musicAuto ? '@auto' : table.music?.trackId ?? '@none'" :aria-label="x.music" @change="onMusicPick">
+            <option value="@auto">{{ x.musicAuto }}<template v-if="table.musicAuto && table.music"> · {{ musicTitle(table.music) }}</template></option>
             <option value="@none">{{ x.musicOff }}</option>
+            <optgroup v-if="adventure?.music?.length" :label="x.musicAdventure">
+              <option v-for="track in adventure.music" :key="track.id" :value="track.id">{{ track.title }}</option>
+            </optgroup>
+            <optgroup v-for="group in musicGroups" :key="group.id" :label="group.label">
+              <option v-for="track in group.tracks" :key="track.id" :value="track.value">{{ track.title }}</option>
+            </optgroup>
           </select>
-          <span v-else-if="table.music" class="gm-music-title">{{ table.music.title }}</span>
+          <span v-else-if="table.music" class="gm-music-title">{{ musicTitle(table.music) }}</span>
           <input type="range" min="0" max="100" class="gm-music-volume" :value="Math.round(music.state.volume * 100)" :aria-label="x.musicVolume" :title="x.musicVolume" @input="music.setVolume(Number(($event.target as HTMLInputElement).value) / 100)" />
           <button v-if="music.state.blocked" type="button" class="gm-btn gm-btn-gold" @click="music.resume()">{{ x.musicStart }}</button>
         </div>
@@ -829,6 +834,7 @@ import { MAX_LEVEL, XP_FOR_LEVEL, buildHero, heroPortraitUrl, type HeroChoices }
 import { useHeroLibrary, type SavedHero } from "../../game/hero-library.js";
 import { enHero, enRollText } from "../../game/en-terms.js";
 import { GameMusicPlayer } from "../../game/music-player.js";
+import { LIBRARY_TRACK_PREFIX, MUSIC_GROUPS, MUSIC_LIBRARY, libraryTrack, type MusicGroup } from "../../../../src/shared/music-library.js";
 import type { GameClient } from "../../game/game-client.js";
 import { dndText } from "../../game/dnd-text.js";
 
@@ -1230,6 +1236,17 @@ const dice = (expression: string) => expression.replace(/d/g, x.value === TEXT_R
 // ---- Story: music and narration ----------------------------------------------
 
 const music = new GameMusicPlayer();
+const musicGroups = computed(() => (Object.keys(MUSIC_GROUPS) as MusicGroup[]).map(group => ({
+  id: group,
+  label: MUSIC_GROUPS[group][russian.value ? 0 : 1],
+  tracks: MUSIC_LIBRARY.filter(track => track.group === group)
+    .map(track => ({ id: track.id, value: `${LIBRARY_TRACK_PREFIX}${track.id}`, title: track.title[russian.value ? 0 : 1] })),
+})));
+/** Library tracks are named on the gateway in Russian; an English page shows their English title. */
+function musicTitle(view: { trackId: string; title: string }): string {
+  const shared = libraryTrack(view.trackId);
+  return shared ? shared.title[russian.value ? 0 : 1] : view.title;
+}
 watch(() => table.value?.music ?? null, view => music.sync(view), { immediate: true });
 onBeforeUnmount(() => music.dispose());
 function onMusicPick(event: Event): void {

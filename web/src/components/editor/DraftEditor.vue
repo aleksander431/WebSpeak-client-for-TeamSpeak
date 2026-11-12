@@ -227,16 +227,26 @@
             <audio :src="trackUrl(track)" controls preload="none"></audio>
             <button type="button" class="de-link de-bad" @click="removeTrack(index)">{{ t.remove }}</button>
           </div>
-          <h3>{{ t.builtinTracks }}</h3>
-          <div class="de-row de-wrap">
-            <button
-              v-for="track in BUILTIN_TRACKS"
-              :key="track.id"
-              type="button"
-              class="de-btn"
-              :disabled="draft.music.some(item => 'builtin' in item && item.builtin === track.id) || draft.music.length >= 20"
-              @click="draft.music.push({ id: freeTrackId(track.id), title: track.title[russian ? 0 : 1], builtin: track.id })"
-            >＋ {{ track.title[russian ? 0 : 1] }}</button>
+          <h3>{{ t.builtinTracks }} · {{ BUILTIN_TRACKS.length }}</h3>
+          <div v-for="group in trackGroups" :key="group.id" class="de-track-group">
+            <span class="de-label">{{ group.label }}</span>
+            <div class="de-row de-wrap">
+              <span v-for="track in group.tracks" :key="track.id" :class="['de-track-chip', { 'de-track-on': hasBuiltinTrack(track.id) }]">
+                <button
+                  type="button"
+                  class="de-track-play"
+                  :aria-label="`${previewing === track.id ? t.stop : t.listen}: ${track.title[russian ? 0 : 1]}`"
+                  :aria-pressed="previewing === track.id"
+                  @click="preview(track.id, track.file)"
+                >{{ previewing === track.id ? "■" : "▶" }}</button>
+                <button
+                  type="button"
+                  class="de-track-add"
+                  :disabled="hasBuiltinTrack(track.id) || draft.music.length >= 20"
+                  @click="draft.music.push({ id: freeTrackId(track.id), title: track.title[russian ? 0 : 1], builtin: track.id })"
+                >{{ hasBuiltinTrack(track.id) ? "✓" : "＋" }} {{ track.title[russian ? 0 : 1] }}</button>
+              </span>
+            </div>
           </div>
           <label class="de-btn de-upload">
             <input type="file" accept="audio/ogg,audio/mpeg,audio/mp4,audio/webm,.ogg,.opus,.mp3,.m4a,.webm" :disabled="uploadingTrack" @change="onTrack" />
@@ -298,6 +308,7 @@ import {
 } from "../../../../src/shared/adventure-draft.js";
 import { buildHero, type HeroChoices } from "../../../../src/shared/hero-builder.js";
 import { dndText } from "../../game/dnd-text.js";
+import { MUSIC_GROUPS, type MusicGroup } from "../../../../src/shared/music-library.js";
 import type { EditorApi, EditorDraftSummary } from "../../editor/editor-api.js";
 import { explainProblem, fill, type EditorText } from "../../editor/editor-text.js";
 import { prepareUpload } from "../../editor/upload-image.js";
@@ -526,6 +537,26 @@ function addCatalogLoot(target: DraftScene, picture: DraftPicture): void {
 
 // ---- Music ------------------------------------------------------------------------
 
+const trackGroups = computed(() => (Object.keys(MUSIC_GROUPS) as MusicGroup[]).map(group => ({
+  id: group, label: MUSIC_GROUPS[group][props.russian ? 0 : 1], tracks: BUILTIN_TRACKS.filter(track => track.group === group),
+})));
+function hasBuiltinTrack(id: string): boolean {
+  return draft.music.some(item => "builtin" in item && item.builtin === id);
+}
+/** One preview at a time; a second click on the same track stops it. */
+const previewing = ref("");
+let previewAudio: HTMLAudioElement | null = null;
+function preview(id: string, file: string): void {
+  previewAudio?.pause();
+  if (previewing.value === id) { previewing.value = ""; previewAudio = null; return; }
+  previewAudio = new Audio(file);
+  previewAudio.volume = 0.6;
+  previewAudio.onended = () => { previewing.value = ""; };
+  void previewAudio.play().catch(() => { previewing.value = ""; });
+  previewing.value = id;
+}
+onBeforeUnmount(() => previewAudio?.pause());
+watch(section, () => { previewAudio?.pause(); previewing.value = ""; });
 const uploadingTrack = ref(false);
 const trackProblem = ref("");
 function trackUrl(track: DraftTrack): string {
@@ -675,6 +706,14 @@ textarea.de-input { resize: vertical; line-height: 1.45; }
 .de-scene-form { display: flex; flex-direction: column; gap: 14px; margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--ed-line); }
 .de-loot { align-items: center; }
 .de-track { align-items: center; }
+.de-track-group { display: flex; flex-direction: column; gap: 6px; }
+.de-track-chip { display: inline-flex; align-items: stretch; border-radius: 10px; border: 1px solid var(--ed-line-2); background: var(--ed-raised); overflow: hidden; }
+.de-track-on { border-color: var(--ed-gold); background: var(--ed-gold-soft); }
+.de-track-play, .de-track-add { min-height: 36px; border: 0; background: transparent; color: var(--ed-text); font: inherit; font-size: 14px; cursor: pointer; }
+.de-track-play { width: 36px; border-right: 1px solid var(--ed-line-2); color: var(--ed-gold); }
+.de-track-play[aria-pressed="true"] { background: var(--ed-gold); color: #1a1408; }
+.de-track-add { padding: 0 12px; }
+.de-track-add:disabled { cursor: default; opacity: .75; }
 .de-track audio { height: 34px; }
 .de-stats { margin: 0; font-weight: 600; }
 .de-check { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border-radius: 12px; }
