@@ -393,7 +393,11 @@
             @click="placing = placing === monster.id ? null : monster.id"
           >
             <img v-if="monster.portrait" class="gm-avatar gm-portrait" :src="monster.portrait" alt="" /><span v-else class="gm-avatar">{{ initial(monster.name) }}</span>
-            <span class="gm-party-text"><strong>{{ monster.name }}</strong><span class="gm-muted gm-small">{{ x.cr }} {{ monster.cr }} · {{ x.hp }} {{ monster.maxHp }} · {{ x.ac }} {{ monster.ac }}</span></span>
+            <span class="gm-party-text"><strong>{{ monster.name }}</strong><span class="gm-muted gm-small"><template v-if="monster.id.startsWith('x-')">{{ x.improv.made }}</template><template v-else>{{ x.cr }} {{ monster.cr }}</template> · {{ x.hp }} {{ monster.maxHp }} · {{ x.ac }} {{ monster.ac }}</span></span>
+          </button>
+          <button type="button" class="gm-monster gm-monster-new" @click="quickOpen = true">
+            <span class="gm-avatar gm-avatar-plus" aria-hidden="true">+</span>
+            <span class="gm-party-text"><strong>{{ x.improv.quick }}</strong><span class="gm-muted gm-small">{{ x.improv.quickSub }}</span></span>
           </button>
         </div>
       </section>
@@ -408,6 +412,7 @@
           </select>
           <strong v-else class="gm-display gm-display-s">{{ scene?.title }}</strong>
           <button v-if="role === 'gm'" type="button" class="gm-mini" :aria-label="x.nextScene" :title="x.nextScene" :disabled="!adventure || table.scene >= adventure.scenes.length - 1" @click="client.scene(table.scene + 1)">›</button>
+          <button v-if="role === 'gm' && sceneMap" type="button" class="gm-btn gm-nowrap" :title="x.improv.hazardSub" @click="hazardOpen = true">⚠ {{ x.improv.hazard }}</button>
           <button v-if="role === 'gm' && sceneMap && !combat" type="button" class="gm-btn gm-btn-war" @click="client.combatStart()">⚔ {{ x.startCombat }}</button>
           <button v-if="hasLeft" type="button" class="gm-btn gm-wide-toggle" :aria-pressed="wide" @click="wide = !wide">{{ wide ? (role === 'gm' ? x.showTools : x.showSheet) : x.widen }}</button>
         </header>
@@ -554,8 +559,12 @@
                 </li>
               </ul>
               <span v-if="item.reasons?.length" class="gm-log-reasons">{{ item.reasons.map(said).join(" · ") }}</span>
-              <span v-if="role === 'gm' && item.damage" class="gm-apply">
-                <template v-if="item.applied"><span class="gm-muted gm-small">✓ {{ x.applied }}</span></template>
+              <span v-if="item.appliedTo" class="gm-muted gm-small gm-log-applied">✓ {{ appliedText(item.appliedTo.mode) }}: {{ item.appliedTo.names.join(", ") }}</span>
+              <span v-if="role === 'gm' && sceneMap && !item.secret && item.total !== undefined && !(item.damage && item.targetId && !item.applied) && !item.saves" class="gm-apply">
+                <button type="button" class="gm-act" @click="applyFor = item">⤷ {{ x.improv.apply }}</button>
+              </span>
+              <span v-if="role === 'gm' && item.damage && item.targetId" class="gm-apply">
+                <template v-if="item.applied"><span v-if="!item.appliedTo" class="gm-muted gm-small">✓ {{ x.applied }}</span></template>
                 <template v-else>
                   <button type="button" class="gm-chip gm-chip-war" @click="client.apply(item.id, false)">{{ x.applyDamage }} {{ item.total }}</button>
                   <button type="button" class="gm-chip" @click="client.apply(item.id, true)">{{ x.applyHalf }} {{ Math.floor((item.total ?? 0) / 2) }}</button>
@@ -592,6 +601,80 @@
         </template>
       </div>
     </div>
+    <GameTargetsDialog
+      v-if="applyFor && table?.map"
+      data-ws-part="voice.game.apply"
+      :x="x"
+      :title="x.improv.applyTitle.replace('{total}', String(applyFor.total))"
+      :subtitle="`${said(applyFor.label)} · ${x.improv.applySub}`"
+      :confirm-label="x.improv.applyGo"
+      :tokens="table.map.tokens"
+      :preselected="selectedTokenId ? [selectedTokenId] : applyFor.targetId ? [applyFor.targetId] : []"
+      :portrait-of="tokenPortrait"
+      :danger="applyMode !== 'heal'"
+      @cancel="applyFor = null"
+      @confirm="targets => { client.applyTo(applyFor!.id, targets, applyMode); applyFor = null; }"
+    >
+      <div class="gt-seg" role="radiogroup" :aria-label="x.improv.apply">
+        <label><input v-model="applyMode" type="radio" value="damage" />{{ x.improv.modeDamage }} {{ applyFor.total }}</label>
+        <label><input v-model="applyMode" type="radio" value="half" />{{ x.improv.modeHalf }} {{ Math.floor((applyFor.total ?? 0) / 2) }}</label>
+        <label><input v-model="applyMode" type="radio" value="heal" />{{ x.improv.modeHeal }} {{ applyFor.total }}</label>
+      </div>
+    </GameTargetsDialog>
+    <GameTargetsDialog
+      v-if="hazardOpen && table?.map"
+      data-ws-part="voice.game.hazard"
+      :x="x"
+      :title="x.improv.hazardTitle"
+      :subtitle="x.improv.hazardSub"
+      :confirm-label="x.improv.hazardGo"
+      :tokens="table.map.tokens"
+      :preselected="selectedTokenId ? [selectedTokenId] : []"
+      :portrait-of="tokenPortrait"
+      :valid="hazardValid"
+      danger
+      @cancel="hazardOpen = false"
+      @confirm="sendHazard"
+    >
+      <div class="gt-fields">
+        <label class="gt-field gt-wide">{{ x.improv.hazardName }}<input v-model="hazard.name" class="gt-input" maxlength="60" :placeholder="x.improv.hazardNamePlaceholder" /></label>
+        <label class="gt-field">{{ x.improv.hazardDamage }}<input v-model="hazard.damage" class="gt-input" maxlength="40" :placeholder="x.improv.hazardDamagePlaceholder" /></label>
+        <label class="gt-field">{{ x.improv.ability }}
+          <select v-model="hazard.ability" class="gt-input"><option v-for="ability in ABILITIES" :key="ability" :value="ability">{{ x.abilityName[ability] }}</option></select>
+        </label>
+        <label class="gt-field">{{ x.improv.dc }}<input v-model.number="hazard.dc" class="gt-input" type="number" min="1" max="30" /></label>
+        <label class="gt-field">{{ x.improv.conditionOnFail }}
+          <select v-model="hazard.condition" class="gt-input">
+            <option value="">{{ x.improv.none }}</option>
+            <option v-for="id in CONDITIONS" :key="id" :value="id">{{ x.conditionName[id] }}</option>
+          </select>
+        </label>
+        <label class="gt-check gt-wide"><input v-model="hazard.half" type="checkbox" />{{ x.improv.half }}</label>
+      </div>
+    </GameTargetsDialog>
+    <GameTargetsDialog
+      v-if="quickOpen"
+      data-ws-part="voice.game.quick-monster"
+      :x="x"
+      :title="x.improv.quickTitle"
+      :subtitle="x.improv.quickSub"
+      :confirm-label="x.improv.create"
+      :with-targets="false"
+      :valid="quickValid"
+      @cancel="quickOpen = false"
+      @confirm="sendQuick"
+    >
+      <div class="gt-fields">
+        <label class="gt-field gt-wide">{{ x.improv.name }}<input v-model="quick.name" class="gt-input" maxlength="40" :placeholder="x.improv.namePlaceholder" /></label>
+        <label class="gt-field">{{ x.improv.hp }}<input v-model.number="quick.maxHp" class="gt-input" type="number" min="1" max="999" /></label>
+        <label class="gt-field">{{ x.improv.ac }}<input v-model.number="quick.ac" class="gt-input" type="number" min="1" max="30" /></label>
+        <label class="gt-field">{{ x.improv.dex }}<input v-model.number="quick.dex" class="gt-input" type="number" min="1" max="30" /></label>
+        <label class="gt-field">{{ x.improv.speed }}<input v-model.number="quick.speed" class="gt-input" type="number" min="0" max="120" step="5" /></label>
+        <label class="gt-field gt-wide">{{ x.improv.attackName }}<input v-model="quick.attackName" class="gt-input" maxlength="40" :placeholder="x.improv.attackNamePlaceholder" /></label>
+        <label class="gt-field">{{ x.improv.attackBonus }}<input v-model.number="quick.attackBonus" class="gt-input" type="number" min="-5" max="20" /></label>
+        <label class="gt-field">{{ x.improv.attackDamage }}<input v-model="quick.attackDamage" class="gt-input" maxlength="40" placeholder="1d6+2" /></label>
+      </div>
+    </GameTargetsDialog>
     <HeroLevelUp
       v-if="levelUpOpen && activeSaved"
       :x="x"
@@ -636,14 +719,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { ABILITIES, MAX_PLAYERS, SKILL_IDS, abilityModifier, attackSaveOf, type GameClientMessage, type HeroAttack, type HeroSheet, type TokenView, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { ABILITIES, CONDITIONS, MAX_PLAYERS, SKILL_IDS, abilityModifier, attackSaveOf, parseDiceExpression, type Ability, type ApplyMode, type ConditionId, type GameClientMessage, type HeroAttack, type HeroSheet, type TokenView, formatModifier, saveBonus, skillBonus, type CheckSource, type CombatantView, type RollMode, type RollSource, type RollView, type SeatView } from "../../../../src/shared/tabletop.js";
 
 import GameMap from "./GameMap.vue";
 import HeroBuilder from "./HeroBuilder.vue";
 import GameConditions from "./GameConditions.vue";
 import GameResources from "./GameResources.vue";
 import GameSaveAttack from "./GameSaveAttack.vue";
+import GameTargetsDialog from "./GameTargetsDialog.vue";
 import GameInventory from "./GameInventory.vue";
 import HeroLevelUp from "./HeroLevelUp.vue";
 import { MAX_LEVEL, XP_FOR_LEVEL, buildHero, heroPortraitUrl, type HeroChoices } from "../../../../src/shared/hero-builder.js";
@@ -677,8 +761,9 @@ const customHeroes = computed(() => (table.value?.customHeroes ?? []).map(local)
 /** The adventure with the table's own heroes added, for sheets, tokens and the party. */
 const adventure = computed(() => {
   const data = baseAdventure.value;
-  if (!data || !customHeroes.value.length) return data;
-  return { ...data, heroes: [...data.heroes, ...customHeroes.value] };
+  const extra = table.value?.extraMonsters ?? [];
+  if (!data || (!customHeroes.value.length && !extra.length)) return data;
+  return { ...data, heroes: [...data.heroes, ...customHeroes.value], monsters: [...data.monsters, ...extra] };
 });
 const findHero = (_adventureId: string | null | undefined, heroId: string | null | undefined) => heroId
   ? customHeroes.value.find(hero => hero.id === heroId) ?? baseAdventure.value?.heroes.find(hero => hero.id === heroId) : undefined;
@@ -700,6 +785,49 @@ const playerChecks = computed(() => role.value === "player"
 const scene = computed(() => adventure.value?.scenes[table.value?.scene ?? 0]);
 const sceneMap = computed(() => scene.value?.map);
 const hasLeft = computed(() => role.value === "gm" || (role.value === "player" && Boolean(myHero.value && mySeat.value)));
+// ---- Improvisation: apply any roll, hazards, quick creatures -------------------
+
+const applyFor = ref<RollView | null>(null);
+const applyMode = ref<ApplyMode>("damage");
+watch(applyFor, item => { if (item) applyMode.value = "damage"; });
+function appliedText(mode: ApplyMode): string {
+  return mode === "heal" ? x.value.improv.appliedHeal : mode === "half" ? x.value.improv.appliedHalf : x.value.improv.appliedDamage;
+}
+
+const hazardOpen = ref(false);
+const hazard = reactive({ name: "", damage: "", ability: "dex" as Ability, dc: 12, half: true, condition: "" as ConditionId | "" });
+const hazardValid = computed(() => Boolean(hazard.name.trim()) && Number.isInteger(hazard.dc) && hazard.dc >= 1 && hazard.dc <= 30
+  && (!hazard.damage.trim() || Boolean(parseDiceExpression(hazard.damage.trim()))));
+function sendHazard(targets: string[]): void {
+  props.client.saveAttack({
+    type: "hazard", name: hazard.name.trim(), damage: hazard.damage.trim(), ability: hazard.ability, dc: hazard.dc, half: hazard.half,
+    ...(hazard.condition ? { condition: hazard.condition } : {}),
+  }, targets);
+  hazardOpen.value = false;
+}
+
+const quickOpen = ref(false);
+const quick = reactive({ name: "", maxHp: 11, ac: 12, dex: 12, speed: 30, attackName: "", attackBonus: 3, attackDamage: "1d6+1" });
+const quickValid = computed(() => Boolean(quick.name.trim()) && quick.maxHp >= 1 && quick.ac >= 1 && quick.dex >= 1
+  && (!quick.attackName.trim() || Boolean(parseDiceExpression(quick.attackDamage.trim()))));
+/** The made-up creature the master is waiting for, to start placing it. */
+let awaitingQuick = 0;
+function sendQuick(): void {
+  props.client.createMonster({
+    name: quick.name.trim(), maxHp: quick.maxHp, ac: quick.ac, dex: quick.dex, speed: quick.speed,
+    ...(quick.attackName.trim() ? { attack: { name: quick.attackName.trim(), bonus: quick.attackBonus, damage: quick.attackDamage.trim() } } : {}),
+  });
+  awaitingQuick = (table.value?.extraMonsters?.length ?? 0) + 1;
+  quickOpen.value = false;
+  quick.name = "";
+}
+watch(() => table.value?.extraMonsters, list => {
+  if (awaitingQuick && list && list.length >= awaitingQuick) {
+    placing.value = list.at(-1)!.id;
+    awaitingQuick = 0;
+  }
+});
+
 // ---- Saving-throw attacks ---------------------------------------------------
 
 const saveDialog = ref<{ source: Extract<GameClientMessage, { type: "gameSaveAttack" }>["source"]; attack: HeroAttack } | null>(null);
@@ -1166,6 +1294,8 @@ h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: u
 .gm-hero-own { cursor: default; }
 .gm-party-head { justify-content: space-between; }
 .gm-own-tools { align-items: center; gap: 6px; }
+.gm-monster-new { border-style: dashed; background: transparent; }
+.gm-log-applied { flex-basis: 100%; }
 .gm-own-tools .gm-chip { min-height: 30px; font-size: 12px; }
 .gm-grow { flex: 1 1 auto; }
 .gm-xp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }

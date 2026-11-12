@@ -43,4 +43,5 @@ test("roll labels and reasons read in English", () => {
   assert.equal(enRollText("отравлен: помеха"), "poisoned: disadvantage");
   assert.equal(enRollText("цель опутан: преимущество"), "target restrained: advantage");
   assert.equal(enRollText("Опыт +300: Вера"), "Experience +300: Вера");
+  assert.equal(enRollText("Паутина: спасбросок Ловкость, при провале — опутан"), "Паутина: Dexterity save, on a failure restrained");
 });

@@ -5,6 +5,7 @@ import {
   SKILLS,
   CONDITIONS,
   DEFAULT_VISION,
+  MAX_EXTRA_MONSTERS,
   VISION_RADII,
   abilityModifier,
   attackSaveOf,
@@ -17,6 +18,7 @@ import {
   type Ability,
   type CheckSource,
   type ConditionId,
+  type HazardSource,
   type CheckView,
   type DiceExpression,
   type GameClientMessage,
@@ -162,6 +164,8 @@ interface TableState {
   narration: { id: string; title: string; text: string; art?: string } | null;
   /** Cells revealed around every hero after each change (0: by hand only). */
   vision: number;
+  /** Creatures the master made up during play. */
+  extraMonsters: MonsterSheet[];
   updatedAt: number;
 }
 
@@ -340,6 +344,12 @@ export class TabletopCoordinator {
     return heroId ? this.findAdventure(adventureId)?.heroes.find(hero => hero.id === heroId) : undefined;
   }
 
+  /** A monster of the table: the adventure's or one the master made up during play. */
+  private monsterOf(table: TableState, monsterId: string | null | undefined): MonsterSheet | undefined {
+    if (!monsterId) return undefined;
+    return table.extraMonsters.find(monster => monster.id === monsterId) ?? this.findMonster(table.adventureId, monsterId);
+  }
+
   private findMonster(adventureId: string | null | undefined, monsterId: string | null | undefined): MonsterSheet | undefined {
     return monsterId ? this.findAdventure(adventureId)?.monsters.find(monster => monster.id === monsterId) : undefined;
   }
@@ -481,7 +491,7 @@ export class TabletopCoordinator {
     }
     if (!table) {
       table = { phase: "lobby", adventureId: null, gm: null, players: [], rolls: [], checks: [], scene: 0, scenes: new Map(), combat: null,
-        music: { trackId: null, startedAt: 0, auto: true }, narration: null, vision: DEFAULT_VISION, updatedAt: this.now() };
+        music: { trackId: null, startedAt: 0, auto: true }, narration: null, vision: DEFAULT_VISION, extraMonsters: [], updatedAt: this.now() };
       this.tables.set(key, table);
     }
     return table;
@@ -604,6 +614,8 @@ export class TabletopCoordinator {
         const seat = table.players.find(candidate => candidate.key === message.key);
         if (!seat?.heroId) return "UNKNOWN_SEAT";
         if (role !== "gm" && seat.key !== who.seatKey) return "NOT_YOUR_HERO";
+        // Only the master brings the dead back.
+        if (role !== "gm" && seat.dying?.state === "dead") return "HERO_DEAD";
         this.setHeroHp(seat, message.hp, this.heroOf(table, seat.heroId)!.maxHp);
         return null;
       }
@@ -648,6 +660,27 @@ export class TabletopCoordinator {
         if (role !== "gm") return "GM_ONLY";
         table.vision = message.radius;
         return null;
+      case "gameApplyTo":
+        return this.applyTo(table, who, role, message);
+      case "gameMonsterCreate": {
+        if (role !== "gm") return "GM_ONLY";
+        if (table.phase !== "playing") return "GAME_NOT_RUNNING";
+        const quick = message.monster;
+        const monster: MonsterSheet = {
+          id: `x-${this.randomId()}`, name: quick.name, cr: "—", maxHp: quick.maxHp, ac: quick.ac, speed: quick.speed, dex: quick.dex,
+          attacks: quick.attack ? [{ name: quick.attack.name, bonus: quick.attack.bonus, damage: quick.attack.damage, note: "" }] : [],
+          traits: [],
+        };
+        if (table.extraMonsters.length >= MAX_EXTRA_MONSTERS) {
+          // Forget the oldest one nobody stands on any more.
+          const used = new Set([...table.scenes.values()].flatMap(scene => scene.tokens.map(token => token.monsterId)));
+          const spare = table.extraMonsters.findIndex(item => !used.has(item.id));
+          if (spare < 0) return "TOO_MANY_MONSTERS";
+          table.extraMonsters.splice(spare, 1);
+        }
+        table.extraMonsters.push(monster);
+        return null;
+      }
       case "gameXp":
       case "gameLevelUp":
       case "gameInventory":
@@ -691,7 +724,7 @@ export class TabletopCoordinator {
     if (role !== "gm") return "GM_ONLY";
     switch (message.type) {
       case "gameTokenAdd": {
-        const monster = this.findMonster(table.adventureId, message.monsterId);
+        const monster = this.monsterOf(table, message.monsterId);
         if (!monster) return "UNKNOWN_MONSTER";
         if (!inside(message.x, message.y)) return "OUT_OF_BOUNDS";
         if (occupied(message.x, message.y)) return "CELL_TAKEN";
@@ -834,7 +867,7 @@ export class TabletopCoordinator {
         const initiative = combat.phase === "running" ? this.rollDie(20) + abilityModifier(hero.abilities.dex) : null;
         kept.push({ id: this.randomId(), tokenId: token.id, kind: "hero", name: hero.name, seatKey: token.seatKey, heroId: hero.id, initiative, dex: hero.abilities.dex });
       } else {
-        const monster = this.findMonster(table.adventureId, token.monsterId);
+        const monster = this.monsterOf(table, token.monsterId);
         if (!monster) continue;
         kept.push({
           id: this.randomId(), tokenId: token.id, kind: "monster", name: token.name, monsterId: monster.id,
@@ -951,7 +984,7 @@ export class TabletopCoordinator {
   private damageToken(table: TableState, tableKey: string, token: TokenRecord, amount: number): boolean {
     if (token.kind === "monster") {
       token.hp = Math.max(0, (token.hp ?? 0) - amount);
-      if (amount > 0 && token.conditions?.includes("concentration")) this.concentration(table, tableKey, token.name, monsterSaveBonus(this.findMonster(table.adventureId, token.monsterId)!, "con"), amount, () => {
+      if (amount > 0 && token.conditions?.includes("concentration")) this.concentration(table, tableKey, token.name, monsterSaveBonus(this.monsterOf(table, token.monsterId)!, "con"), amount, () => {
         token.conditions = token.conditions!.filter(item => item !== "concentration");
       }, null);
       return true;
@@ -987,6 +1020,50 @@ export class TabletopCoordinator {
       heroName: name, label: "Концентрация: спасбросок Телосложения", hidden: !seat, expr: `1d20${bonus ? formatModifier(bonus) : ""}`,
       dice: result.dice, modifier: bonus, total: result.total, mode, dc, success, ...(result.natural ? { natural: result.natural } : {}),
     });
+  }
+
+  private addCondition(table: TableState, token: TokenRecord, condition: ConditionId): void {
+    const add = (list: ConditionId[] | undefined) => CONDITIONS.filter(item => item === condition || list?.includes(item));
+    if (token.kind === "monster") token.conditions = add(token.conditions);
+    else {
+      const seat = table.players.find(candidate => candidate.key === token.seatKey);
+      if (seat) seat.conditions = add(seat.conditions);
+    }
+  }
+
+  /** The master applies a roll's total by hand: damage, half or healing, to any tokens on the map. */
+  private applyTo(table: TableState, who: Subscription, role: TableRole, message: Extract<GameClientMessage, { type: "gameApplyTo" }>): string | null {
+    if (role !== "gm") return "GM_ONLY";
+    if (table.phase !== "playing") return "GAME_NOT_RUNNING";
+    const record = table.rolls.find(item => item.id === message.rollId);
+    if (!record || record.total === undefined) return "UNKNOWN_ROLL";
+    const map = this.currentMap(table);
+    if (!map) return "NO_MAP";
+    const scene = this.sceneState(table, map);
+    const targets = message.targets.map(id => scene.tokens.find(token => token.id === id));
+    if (targets.some(token => !token)) return "UNKNOWN_TOKEN";
+    const amount = Math.max(0, message.mode === "half" ? Math.floor(record.total / 2) : record.total);
+    const names: string[] = [];
+    for (const token of targets as TokenRecord[]) {
+      if (message.mode === "heal") {
+        if (token.kind === "monster") {
+          token.hp = Math.min(token.maxHp ?? 0, (token.hp ?? 0) + amount);
+        } else {
+          const seat = table.players.find(candidate => candidate.key === token.seatKey);
+          const hero = this.heroOf(table, seat?.heroId);
+          // Healing does not raise the dead: the master sets their hit points on purpose.
+          if (!seat || !hero || seat.dying?.state === "dead") continue;
+          this.setHeroHp(seat, (seat.hp ?? 0) + amount, hero.maxHp);
+        }
+      } else {
+        this.damageToken(table, who.tableKey, token, amount);
+      }
+      names.push(token.name);
+    }
+    if (!names.length) return "NO_TARGETS";
+    record.applied = true;
+    record.appliedTo = { names: [...(record.appliedTo?.mode === message.mode ? record.appliedTo.names : []), ...names], mode: message.mode };
+    return null;
   }
 
   // ---- Conditions, resources and rests ------------------------------------------
@@ -1158,7 +1235,13 @@ export class TabletopCoordinator {
     const scene = this.sceneState(table, map);
     let attack: HeroSheet["attacks"][number] | undefined;
     let actor: string;
-    if (message.source.type === "attack") {
+    let hazard: HazardSource | null = null;
+    if (message.source.type === "hazard") {
+      if (role !== "gm") return "GM_ONLY";
+      hazard = message.source;
+      attack = { name: hazard.name, bonus: null, damage: hazard.damage || "0", note: "", save: { ability: hazard.ability, dc: hazard.dc, half: hazard.half } };
+      actor = hazard.name;
+    } else if (message.source.type === "attack") {
       if (role !== "player") return "PLAYERS_ONLY";
       const hero = this.heroOf(table, seat.heroId);
       if (!hero) return "NEEDS_HERO";
@@ -1166,14 +1249,15 @@ export class TabletopCoordinator {
       actor = hero.name;
     } else {
       if (role !== "gm") return "GM_ONLY";
-      const sourceId = message.source.tokenId;
+      const source = message.source;
+      const sourceId = source.tokenId;
       const token = scene.tokens.find(candidate => candidate.id === sourceId && candidate.kind === "monster");
-      attack = token ? this.findMonster(table.adventureId, token.monsterId)?.attacks[message.source.index] : undefined;
+      attack = token ? this.monsterOf(table, token.monsterId)?.attacks[source.index] : undefined;
       if (!token) return "UNKNOWN_TOKEN";
       actor = token.name;
     }
     const save = attack && attack.bonus === null ? attackSaveOf(attack) : undefined;
-    const expression = attack ? parseDiceExpression(attack.damage) : null;
+    const expression = hazard && !hazard.damage ? { terms: [], modifier: 0 } : attack ? parseDiceExpression(attack.damage) : null;
     if (!attack || !save || !expression) return "NOT_A_SAVE_ATTACK";
     const visible = (token: TokenRecord) => token.kind === "hero" || (!token.hidden && scene.fog[token.y * map.cols + token.x] === 1);
     const targets = message.targets.map(id => scene.tokens.find(token => token.id === id));
@@ -1193,7 +1277,7 @@ export class TabletopCoordinator {
         conditions = target.conditions ?? [];
         exhaustion = target.exhaustion ?? 0;
       } else {
-        const monster = this.findMonster(table.adventureId, token.monsterId);
+        const monster = this.monsterOf(table, token.monsterId);
         if (!monster) continue;
         bonus = monsterSaveBonus(monster, save.ability);
         conditions = token.conditions ?? [];
@@ -1205,17 +1289,21 @@ export class TabletopCoordinator {
       const success = !autoFail && roll.total >= save.dc;
       const taken = Math.max(0, success ? (save.half ? Math.floor(damage.total / 2) : 0) : damage.total);
       hits.push([token, taken]);
+      if (!success && hazard?.condition) this.addCondition(table, token, hazard.condition);
       results.push({
         tokenId: token.id, name: token.name, total: roll.total, ...(roll.natural ? { natural: roll.natural } : {}), success, damage: taken,
         ...(token.kind === "monster" && !visible(token) ? { hiddenFromPlayers: true } : {}),
       });
     }
     const text = expression.terms.map(term => `${term.count}d${term.sides}`).join("+") + (expression.modifier ? formatModifier(expression.modifier) : "");
+    const label = hazard?.condition
+      ? `${attack.name}: спасбросок ${ABILITY_LABEL[save.ability]}, при провале — ${CONDITION_LABEL[hazard.condition]}`
+      : `${attack.name}: спасбросок ${ABILITY_LABEL[save.ability]}`;
     this.publish(table, who.tableKey, {
-      id: this.randomId(), at: this.now(), by: seat.nickname, byKey: seat.key, heroName: actor,
-      label: `${attack.name}: спасбросок ${ABILITY_LABEL[save.ability]}`, hidden: false,
-      expr: text, dice: damage.dice, modifier: expression.modifier, total: damage.total, mode: "normal",
-      dc: save.dc, saves: results, saveAbility: save.ability, damage: true, applied: true,
+      id: this.randomId(), at: this.now(), by: seat.nickname, byKey: seat.key, ...(hazard ? {} : { heroName: actor }),
+      label, hidden: false,
+      ...(expression.terms.length || expression.modifier ? { expr: text, dice: damage.dice, modifier: expression.modifier, total: damage.total, damage: true } : { dice: [] }),
+      mode: "normal", dc: save.dc, saves: results, saveAbility: save.ability, applied: true,
     });
     // Applied after the roll is in the log, so concentration saves follow it.
     for (const [token, taken] of hits) this.damageToken(table, who.tableKey, token, taken);
@@ -1259,7 +1347,7 @@ export class TabletopCoordinator {
       }
     }
     for (const placed of content?.encounter ?? []) {
-      const monster = this.findMonster(table.adventureId, placed.monsterId);
+      const monster = this.monsterOf(table, placed.monsterId);
       if (!monster || placed.x >= map.cols || placed.y >= map.rows || scene.tokens.length >= MAX_MAP_TOKENS) continue;
       if (scene.tokens.some(token => token.x === placed.x && token.y === placed.y)) continue;
       const number = (scene.counters.get(monster.id) ?? 0) + 1;
@@ -1346,7 +1434,7 @@ export class TabletopCoordinator {
     if (source.type === "monsterAttack" || source.type === "monsterDamage") {
       if (role !== "gm") return "GM_ONLY";
       const token = scene?.tokens.find(candidate => candidate.id === source.tokenId && candidate.kind === "monster");
-      const sheet = token ? this.findMonster(table.adventureId, token.monsterId) : undefined;
+      const sheet = token ? this.monsterOf(table, token.monsterId) : undefined;
       if (!token || !sheet) return "UNKNOWN_TOKEN";
       monster = { sheet, name: token.name };
     }
@@ -1400,7 +1488,7 @@ export class TabletopCoordinator {
       record.targetId = target.id;
       record.targetName = target.name;
       if (source.type === "attack" || source.type === "monsterAttack") {
-        const ac = target.kind === "hero" ? this.heroOf(table, target.heroId)?.ac : this.findMonster(table.adventureId, target.monsterId)?.ac;
+        const ac = target.kind === "hero" ? this.heroOf(table, target.heroId)?.ac : this.monsterOf(table, target.monsterId)?.ac;
         if (ac !== undefined) {
           record.targetAc = ac;
           record.hit = result.natural === 20 ? true : result.natural === 1 ? false : result.total >= ac;
@@ -1548,6 +1636,7 @@ export class TabletopCoordinator {
       narration: table.narration ? { ...table.narration } : null,
       adventures: this.adventures().map(item => adventureListItem(item, this.isCustom(item.id))),
       customHeroes: table.players.flatMap(state => state.custom ? [state.custom] : []),
+      ...(role === "gm" && table.extraMonsters.length ? { extraMonsters: table.extraMonsters } : {}),
     };
   }
 
@@ -1601,6 +1690,7 @@ function snapshotTable(table: TableState): unknown {
     music: table.music,
     narration: table.narration,
     vision: table.vision,
+    extraMonsters: table.extraMonsters,
     updatedAt: table.updatedAt,
   };
 }
@@ -1632,6 +1722,7 @@ function restoreTable(raw: unknown): TableState | null {
       music: music && typeof music.auto === "boolean" ? music : { trackId: null, startedAt: 0, auto: true },
       narration: (data.narration as TableState["narration"]) ?? null,
       vision: (VISION_RADII as readonly unknown[]).includes(data.vision) ? data.vision as number : DEFAULT_VISION,
+      extraMonsters: Array.isArray(data.extraMonsters) ? (data.extraMonsters as MonsterSheet[]).slice(0, MAX_EXTRA_MONSTERS) : [],
       updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
     };
   } catch {

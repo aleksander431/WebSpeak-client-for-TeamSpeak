@@ -289,7 +289,36 @@ export interface RollView {
   healed?: number;
   /** Why the gateway gave advantage or disadvantage (conditions, exhaustion). */
   reasons?: string[];
+  /** The master applied this result by hand: to whom and how. */
+  appliedTo?: { names: string[]; mode: ApplyMode };
 }
+
+export type ApplyMode = "damage" | "half" | "heal";
+
+/** The master's own hazard: a trap, a falling chandelier, a cloud of spores. */
+export interface HazardSource {
+  type: "hazard";
+  name: string;
+  /** Empty: no damage, only the save (and its condition). */
+  damage: string;
+  ability: Ability;
+  dc: number;
+  half: boolean;
+  /** Put on everyone who fails. */
+  condition?: ConditionId;
+}
+
+/** A creature made up on the spot. */
+export interface QuickMonster {
+  name: string;
+  maxHp: number;
+  ac: number;
+  dex: number;
+  speed: number;
+  attack?: { name: string; bonus: number; damage: string };
+}
+
+export const MAX_EXTRA_MONSTERS = 30;
 
 export interface SaveResultView {
   tokenId: string;
@@ -437,6 +466,8 @@ export interface TableView {
   narration: NarrationView | null;
   /** Players' own heroes at this table (built by the gateway). */
   customHeroes: HeroSheet[];
+  /** Game master only: creatures made up during play (quick sheets). */
+  extraMonsters?: MonsterSheet[];
   /** Adventures the game master may choose from. */
   adventures: Array<{ id: string; title: string; summary: string; level: number; length: string; custom: boolean }>;
 }
@@ -487,7 +518,11 @@ export type GameClientMessage =
   /** Spend a hit die: roll it plus Constitution and heal. */
   | { type: "gameHitDie"; key: string }
   /** A saving-throw attack against several tokens: every save is rolled and the damage applied at once. */
-  | { type: "gameSaveAttack"; source: { type: "attack"; index: number } | { type: "monsterAttack"; tokenId: string; index: number }; targets: string[] }
+  | { type: "gameSaveAttack"; source: { type: "attack"; index: number } | { type: "monsterAttack"; tokenId: string; index: number } | HazardSource; targets: string[] }
+  /** Game master: any roll's total as damage, half damage or healing to chosen tokens. */
+  | { type: "gameApplyTo"; rollId: string; targets: string[]; mode: ApplyMode }
+  /** Game master: a creature made up on the spot; it joins the monsters to place. */
+  | { type: "gameMonsterCreate"; monster: QuickMonster }
   /** Game master: experience for heroes (negative takes it back). */
   | { type: "gameXp"; keys: string[]; amount: number }
   /** A player's own hero one level up: the new choices, checked against the old ones. */
@@ -644,7 +679,39 @@ export function parseGameClientMessage(raw: unknown): GameClientMessage | { erro
       if (source.type === "monsterAttack" && shortId(source.tokenId) && index16(source.index)) {
         return { type: "gameSaveAttack", source: { type: "monsterAttack", tokenId: source.tokenId, index: source.index }, targets };
       }
+      if (source.type === "hazard") {
+        const name = typeof source.name === "string" ? source.name.trim() : "";
+        const damage = typeof source.damage === "string" ? source.damage.trim() : "";
+        if (!name || name.length > 60 || damage.length > 40 || (damage && !parseDiceExpression(damage))) return invalid;
+        if (!(ABILITIES as readonly unknown[]).includes(source.ability) || !Number.isInteger(source.dc) || (source.dc as number) < 1 || (source.dc as number) > 30) return invalid;
+        if (source.condition !== undefined && !isCondition(source.condition)) return invalid;
+        return {
+          type: "gameSaveAttack", targets,
+          source: { type: "hazard", name, damage, ability: source.ability as Ability, dc: source.dc as number, half: source.half === true, ...(source.condition ? { condition: source.condition as ConditionId } : {}) },
+        };
+      }
       return invalid;
+    }
+    case "gameApplyTo":
+      if (!shortId(raw.rollId) || !Array.isArray(raw.targets) || !raw.targets.length || raw.targets.length > 20 || !raw.targets.every(shortId)) return invalid;
+      return raw.mode === "damage" || raw.mode === "half" || raw.mode === "heal"
+        ? { type: "gameApplyTo", rollId: raw.rollId, targets: [...new Set(raw.targets as string[])], mode: raw.mode } : invalid;
+    case "gameMonsterCreate": {
+      const monster = raw.monster;
+      if (!isObject(monster)) return invalid;
+      const name = typeof monster.name === "string" ? monster.name.trim() : "";
+      const int = (value: unknown, min: number, max: number) => Number.isInteger(value) && (value as number) >= min && (value as number) <= max;
+      if (!name || name.length > 40 || !int(monster.maxHp, 1, 999) || !int(monster.ac, 1, 30) || !int(monster.dex, 1, 30) || !int(monster.speed, 0, 120)) return invalid;
+      const result: QuickMonster = { name, maxHp: monster.maxHp as number, ac: monster.ac as number, dex: monster.dex as number, speed: monster.speed as number };
+      if (monster.attack !== undefined) {
+        const attack = monster.attack;
+        if (!isObject(attack)) return invalid;
+        const attackName = typeof attack.name === "string" ? attack.name.trim() : "";
+        const damage = typeof attack.damage === "string" ? attack.damage.trim() : "";
+        if (!attackName || attackName.length > 40 || !int(attack.bonus, -5, 20) || !parseDiceExpression(damage)) return invalid;
+        result.attack = { name: attackName, bonus: attack.bonus as number, damage };
+      }
+      return { type: "gameMonsterCreate", monster: result };
     }
     default: return invalid;
   }

@@ -678,3 +678,67 @@ test("vision: the fog opens around heroes as they move, as far as the master set
   assert.equal(at(11, 7), "1");
   assert.equal(at(11, 6), "0");
 });
+
+test("improvisation: any roll applied to chosen tokens, the master's hazards, quick creatures, only the master raises the dead", () => {
+  // 3d6 free roll = 4+5+6 = 15; hazard saves: Ilva 2, Osmund 18; quick wolf initiative not needed.
+  const f = fixture([4, 5, 6, 2, 18, 3, 3]);
+  const { gm, sasha, kria } = hallTable(f);
+  f.send(gm, { type: "gameTokenAdd", monsterId: "skeleton", x: 11, y: 13 });
+  let view = f.state("a");
+  const skeleton = view.map!.tokens.find(token => token.kind === "monster")!;
+  const ilva = view.map!.tokens.find(token => token.heroId === "ilva")!;
+  const osmund = view.map!.tokens.find(token => token.heroId === "osmund")!;
+
+  // The chandelier falls: a free roll, applied by hand.
+  f.send(gm, { type: "gameRoll", source: { type: "free", expr: "3d6" }, mode: "normal", hidden: false });
+  const chandelier = f.state("a").rolls.at(-1)!;
+  assert.equal(chandelier.total, 15);
+  f.send(sasha, { type: "gameApplyTo", rollId: chandelier.id, targets: [skeleton.id], mode: "damage" });
+  assert.equal(f.lastError("b"), "GM_ONLY");
+  f.send(gm, { type: "gameApplyTo", rollId: chandelier.id, targets: [skeleton.id, osmund.id], mode: "half" });
+  view = f.state("a");
+  assert.equal(view.map!.tokens.find(token => token.id === skeleton.id)!.hp, 13 - 7);
+  assert.equal(view.players[1]!.hp, 10 - 7);
+  assert.deepEqual(view.rolls.find(item => item.id === chandelier.id)!.appliedTo, { names: ["Скелет 1", "Брат Осмунд"], mode: "half" });
+  // A potion poured into a friend: healing, never past the maximum.
+  f.send(gm, { type: "gameApplyTo", rollId: chandelier.id, targets: [osmund.id, skeleton.id], mode: "heal" });
+  view = f.state("a");
+  assert.equal(view.players[1]!.hp, 10);
+  assert.equal(view.map!.tokens.find(token => token.id === skeleton.id)!.hp, 13);
+
+  // A web: Dexterity DC 12 or restrained, no damage.
+  f.send(gm, { type: "gameSaveAttack", source: { type: "hazard", name: "Паутина", damage: "", ability: "dex", dc: 12, half: false, condition: "restrained" }, targets: [ilva.id, osmund.id] });
+  view = f.state("a");
+  const web = view.rolls.at(-1)!;
+  assert.match(web.label, /^Паутина: спасбросок Ловкость, при провале — опутан$/);
+  assert.deepEqual(web.saves!.map(item => [item.success, item.damage]), [[false, 0], [true, 0]]);
+  assert.equal(web.total, undefined, "no damage roll");
+  assert.deepEqual(view.players[0]!.conditions, ["restrained"], "Ilva failed: 2 + 3 < 12");
+  assert.equal(view.players[1]!.conditions, undefined);
+  f.send(kria, { type: "gameSaveAttack", source: { type: "hazard", name: "Ловушка", damage: "2d6", ability: "dex", dc: 12, half: true }, targets: [ilva.id] });
+  assert.equal(f.lastError("c"), "GM_ONLY");
+
+  // A quick creature joins the monsters the master can place.
+  f.send(gm, { type: "gameMonsterCreate", monster: { name: "Волк", maxHp: 11, ac: 13, dex: 15, speed: 40, attack: { name: "Укус", bonus: 4, damage: "2d4+2" } } });
+  view = f.state("a");
+  const wolf = view.extraMonsters![0]!;
+  assert.equal(wolf.name, "Волк");
+  assert.equal(f.state("b").extraMonsters, undefined, "players do not get the sheet");
+  f.send(gm, { type: "gameTokenAdd", monsterId: wolf.id, x: 12, y: 13 });
+  const wolfToken = f.state("a").map!.tokens.find(token => token.monsterId === wolf.id)!;
+  assert.equal(wolfToken.name, "Волк 1");
+  assert.equal(wolfToken.hp, 11);
+
+  // Death: the player cannot heal their own dead hero, the master can.
+  for (let i = 0; i < 3; i++) f.send(gm, { type: "gameHp", key: "uid:Sasha", hp: 0 });
+  f.send(gm, { type: "gameApplyTo", rollId: chandelier.id, targets: [ilva.id], mode: "damage" });
+  f.send(gm, { type: "gameApplyTo", rollId: chandelier.id, targets: [ilva.id], mode: "damage" });
+  f.send(gm, { type: "gameApplyTo", rollId: chandelier.id, targets: [ilva.id], mode: "damage" });
+  assert.equal(f.state("b").players[0]!.dying!.state, "dead");
+  f.send(sasha, { type: "gameHp", key: "uid:Sasha", hp: 5 });
+  assert.equal(f.lastError("b"), "HERO_DEAD");
+  f.send(gm, { type: "gameApplyTo", rollId: chandelier.id, targets: [ilva.id], mode: "heal" });
+  assert.equal(f.lastError("a"), "NO_TARGETS", "healing does not raise the dead");
+  f.send(gm, { type: "gameHp", key: "uid:Sasha", hp: 1 });
+  assert.equal(f.state("b").players[0]!.dying, undefined, "the master can (Revivify)");
+});
