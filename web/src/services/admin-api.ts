@@ -154,6 +154,14 @@ export function createAdminApi(options: AdminApiOptions) {
         return decode(response, adminResponses.adventures);
       });
     },
+    dndBackupStatus: (signal?: AbortSignal) => request("/dnd-backup/status", adminResponses.dndBackupStatus, "GET", undefined, true, signal),
+    cancelDndRestore: (signal?: AbortSignal) => request("/dnd-backup/pending", adminResponses.dndRestore, "DELETE", {}, true, signal),
+    uploadDndRestore(file: File, signal?: AbortSignal) {
+      return execute(signal, async context => {
+        const response = await transport(context, "/dnd-backup", { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: file });
+        return decode(response, adminResponses.dndRestore);
+      });
+    },
     editorLinks: (signal?: AbortSignal) => request("/editor-links", adminResponses.editorLinks, "GET", undefined, true, signal),
     createEditorLink: (label: string, signal?: AbortSignal) => request("/editor-links", adminResponses.editorLinks, "POST", { label }, true, signal),
     deleteEditorLink: (id: string, signal?: AbortSignal) => request(`/editor-links/${encodeURIComponent(id)}`, adminResponses.editorLinks, "DELETE", {}, true, signal),

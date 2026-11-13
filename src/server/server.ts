@@ -39,6 +39,8 @@ export interface WebServerOptions {
   skinRegistry?: SkinRegistry;
   adventureLibrary?: AdventureLibrary;
   adventureEditor?: AdventureEditorStore;
+  /** Where the D&D folders live, for their own backup on the adventures page. */
+  dndBackup?: { dataDir: string; flush(): Promise<void> };
   logger: Logger;
   nextVisitorNumber?: () => number;
   visitorCount?: () => number;
@@ -473,6 +475,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
     skinRegistry: options.skinRegistry,
     adventureLibrary: options.adventureLibrary,
     adventureEditor: options.adventureEditor,
+    ...(options.dndBackup ? { dndBackup: options.dndBackup } : {}),
     version: options.version,
     logFile: options.logFile,
     startedAt,

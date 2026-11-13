@@ -36,6 +36,19 @@ const zh = {
   editorLinkCreatedEvent: "已创建冒险编辑器链接",
   editorLinkRemovedEvent: "已删除冒险编辑器链接",
   editorDeviceEvent: "已处理冒险编辑器浏览器",
+  dndBackupTitle: "D&D 数据备份",
+  dndBackupLead: "数据库备份不包含游戏桌、玩家的英雄库、上传的冒险以及编辑器的草稿和文件。在这里把它们下载为一个 ZIP，迁移服务器时再从中恢复。",
+  dndBackupSize: "{{files}} 个文件 · {{size}}",
+  dndBackupDownload: "下载 D&D 数据（.zip）",
+  dndBackupRestore: "从备份恢复…",
+  dndBackupRestoring: "正在上传…",
+  dndBackupRestoreLimit: "恢复文件最大 {{size}}。",
+  dndBackupStaged: "备份已检查并准备好：重启服务器后生效（docker compose restart）。当前的数据会保存在 dnd-before-restore 文件夹中。",
+  dndBackupPending: "已准备好来自 {{date}} 的备份，将在下次启动时应用。",
+  dndBackupCancel: "取消恢复",
+  dndBackupInvalid: "这不是 WebSpeak 的 D&D 备份",
+  dndBackupExportedEvent: "已下载 D&D 数据备份",
+  dndBackupStagedEvent: "已准备 D&D 数据恢复",
 };
 
 type Keys = keyof typeof zh;
@@ -78,6 +91,19 @@ const en = {
   editorLinkCreatedEvent: "Adventure editor link created",
   editorLinkRemovedEvent: "Adventure editor link removed",
   editorDeviceEvent: "Adventure editor browser decided",
+  dndBackupTitle: "D&D data backup",
+  dndBackupLead: "The database backup does not include game tables, the players' hero vault, uploaded adventures or the editor's drafts and files. Download them here as one ZIP and restore from it when you move the server.",
+  dndBackupSize: "{{files}} files · {{size}}",
+  dndBackupDownload: "Download D&D data (.zip)",
+  dndBackupRestore: "Restore from a backup…",
+  dndBackupRestoring: "Uploading…",
+  dndBackupRestoreLimit: "A restore file may be up to {{size}}.",
+  dndBackupStaged: "The backup is checked and ready: it takes effect after a server restart (docker compose restart). The current data is kept in the dnd-before-restore folder.",
+  dndBackupPending: "A backup from {{date}} is ready and will be applied at the next start.",
+  dndBackupCancel: "Cancel the restore",
+  dndBackupInvalid: "This is not a WebSpeak D&D backup",
+  dndBackupExportedEvent: "D&D data backup downloaded",
+  dndBackupStagedEvent: "D&D data restore staged",
 } as const satisfies Record<Keys, string>;
 
 const de = {
@@ -118,6 +144,19 @@ const de = {
   editorLinkCreatedEvent: "Editor-Link erstellt",
   editorLinkRemovedEvent: "Editor-Link entfernt",
   editorDeviceEvent: "Editor-Browser entschieden",
+  dndBackupTitle: "D&D-Datensicherung",
+  dndBackupLead: "Die Datenbanksicherung enthält keine Spieltische, keinen Heldentresor der Spieler, keine hochgeladenen Abenteuer und keine Entwürfe oder Dateien des Editors. Lade sie hier als ein ZIP herunter und stelle sie beim Serverumzug daraus wieder her.",
+  dndBackupSize: "{{files}} Dateien · {{size}}",
+  dndBackupDownload: "D&D-Daten herunterladen (.zip)",
+  dndBackupRestore: "Aus Sicherung wiederherstellen…",
+  dndBackupRestoring: "Wird hochgeladen…",
+  dndBackupRestoreLimit: "Eine Sicherung darf bis zu {{size}} groß sein.",
+  dndBackupStaged: "Die Sicherung ist geprüft und bereit: Sie gilt nach einem Serverneustart (docker compose restart). Die aktuellen Daten bleiben im Ordner dnd-before-restore.",
+  dndBackupPending: "Eine Sicherung vom {{date}} ist bereit und wird beim nächsten Start angewendet.",
+  dndBackupCancel: "Wiederherstellung abbrechen",
+  dndBackupInvalid: "Das ist keine WebSpeak-D&D-Sicherung",
+  dndBackupExportedEvent: "D&D-Datensicherung heruntergeladen",
+  dndBackupStagedEvent: "D&D-Wiederherstellung vorbereitet",
 } as const satisfies Record<Keys, string>;
 
 const ru = {
@@ -158,6 +197,19 @@ const ru = {
   editorLinkCreatedEvent: "Создана ссылка на конструктор приключений",
   editorLinkRemovedEvent: "Удалена ссылка на конструктор приключений",
   editorDeviceEvent: "Решение по браузеру конструктора",
+  dndBackupTitle: "Резервная копия D&D",
+  dndBackupLead: "Резервная копия базы данных не включает игровые столы, хранилище героев игроков, загруженные приключения, черновики и файлы редактора. Скачайте их здесь одним ZIP и восстановите из него при переезде сервера.",
+  dndBackupSize: "Файлов: {{files}} · {{size}}",
+  dndBackupDownload: "Скачать данные D&D (.zip)",
+  dndBackupRestore: "Восстановить из копии…",
+  dndBackupRestoring: "Загрузка…",
+  dndBackupRestoreLimit: "Файл для восстановления — до {{size}}.",
+  dndBackupStaged: "Копия проверена и подготовлена: она применится после перезапуска сервера (docker compose restart). Текущие данные сохранятся в папке dnd-before-restore.",
+  dndBackupPending: "Подготовлена копия от {{date}} — она применится при следующем запуске.",
+  dndBackupCancel: "Отменить восстановление",
+  dndBackupInvalid: "Это не резервная копия D&D из WebSpeak",
+  dndBackupExportedEvent: "Скачана резервная копия D&D",
+  dndBackupStagedEvent: "Подготовлено восстановление D&D",
 } as const satisfies Record<Keys, string>;
 
 const ja = {
@@ -198,6 +250,19 @@ const ja = {
   editorLinkCreatedEvent: "エディターのリンクを作成",
   editorLinkRemovedEvent: "エディターのリンクを削除",
   editorDeviceEvent: "エディターのブラウザーを処理",
+  dndBackupTitle: "D&D データのバックアップ",
+  dndBackupLead: "データベースのバックアップには、ゲームテーブル、プレイヤーのヒーロー保管庫、アップロードした冒険、エディターの下書きとファイルは含まれません。ここで 1 つの ZIP としてダウンロードし、サーバー移行時に復元してください。",
+  dndBackupSize: "{{files}} ファイル · {{size}}",
+  dndBackupDownload: "D&D データをダウンロード (.zip)",
+  dndBackupRestore: "バックアップから復元…",
+  dndBackupRestoring: "アップロード中…",
+  dndBackupRestoreLimit: "復元ファイルは最大 {{size}} です。",
+  dndBackupStaged: "バックアップを確認して準備しました。サーバーの再起動後に反映されます (docker compose restart)。現在のデータは dnd-before-restore フォルダーに残ります。",
+  dndBackupPending: "{{date}} のバックアップが準備済みで、次回の起動時に適用されます。",
+  dndBackupCancel: "復元を取り消す",
+  dndBackupInvalid: "これは WebSpeak の D&D バックアップではありません",
+  dndBackupExportedEvent: "D&D データのバックアップをダウンロードしました",
+  dndBackupStagedEvent: "D&D データの復元を準備しました",
 } as const satisfies Record<Keys, string>;
 
 export const adventuresAdminCopy = { zh, en, de, ru, ja };

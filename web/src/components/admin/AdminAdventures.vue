@@ -71,6 +71,54 @@
       ></article
     >
 
+    <article
+      v-if="backup.available"
+      class="operation-card dnd-backup"
+      ><h3>{{ tr("dndBackupTitle") }}</h3
+      ><p class="field-help">{{ tr("dndBackupLead") }}</p
+      ><div class="dnd-backup-actions"
+        ><a
+          class="primary-button"
+          href="/api/admin/dnd-backup"
+          download
+          >{{ tr("dndBackupDownload") }}</a
+        ><label class="secondary-button adventures-upload-button"
+          ><input
+            type="file"
+            accept=".zip,application/zip"
+            :disabled="restoring"
+            @change="onRestoreFile"
+          /><span
+            v-if="restoring"
+            class="spinner small"
+          ></span
+          >{{ restoring ? tr("dndBackupRestoring") : tr("dndBackupRestore") }}</label
+        ><small>{{ tr("dndBackupSize", { files: backup.files, size: formatBytes(backup.bytes) }) }}</small></div
+      ><p class="field-help">{{ tr("dndBackupRestoreLimit", { size: formatBytes(backup.limitBytes) }) }} {{ tr("adventuresProxyNote") }}</p
+      ><p
+        v-if="backupNotice"
+        class="adventures-notice"
+        role="status"
+        >{{ backupNotice }}</p
+      ><div
+        v-else-if="backup.pending"
+        class="dnd-backup-pending"
+        role="status"
+        ><span>{{ tr("dndBackupPending", { date: backup.pending.createdAt ? new Date(backup.pending.createdAt).toLocaleString() : "—" }) }}</span
+        ><button
+          class="secondary-button small"
+          type="button"
+          @click="cancelRestore"
+          >{{ tr("dndBackupCancel") }}</button
+        ></div
+      ><p
+        v-if="backupProblem"
+        class="adventures-problem"
+        role="alert"
+        >{{ backupProblem }}</p
+      ></article
+    >
+
     <article class="operation-card editor-links"
       ><h3>{{ tr("editorTitle") }}</h3
       ><p class="field-help">{{ tr("editorLead") }}</p
@@ -182,6 +230,7 @@ const props = defineProps<{
 const {
   items, limitBytes, loading, uploading, notice, armed, problem, load, upload, remove,
   links, linkLabel, linkArmed, copied, loadLinks, createLink, removeLink, decide, linkUrl, copyLink,
+  backup, restoring, backupNotice, backupProblem, loadBackup, restoreBackup, cancelRestore,
 } = props.model;
 const { tr } = props.i18n;
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -193,7 +242,14 @@ function onFile(event: Event): void {
   if (file) void upload(file);
 }
 
-onMounted(() => { void load(); void loadLinks(); });
+function onRestoreFile(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (file) void restoreBackup(file);
+}
+
+onMounted(() => { void load(); void loadLinks(); void loadBackup(); });
 // New applications should show up without a manual refresh.
 const linkTimer = setInterval(() => { void loadLinks(); }, 15000);
 onBeforeUnmount(() => clearInterval(linkTimer));
@@ -211,6 +267,13 @@ onBeforeUnmount(() => clearInterval(linkTimer));
 .adventures-item > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .adventures-item p { margin: 0; }
 .adventures-id { opacity: .7; font-family: ui-monospace, monospace; }
+.dnd-backup { display: flex; flex-direction: column; gap: 10px; }
+.dnd-backup h3 { margin: 0; }
+.dnd-backup .adventures-notice { font-size: 14px; }
+.dnd-backup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.dnd-backup-actions a { text-decoration: none; }
+.dnd-backup-actions small { opacity: .75; }
+.dnd-backup-pending { display: flex; font-size: 14px; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: var(--warning-soft, rgba(230, 160, 40, 0.18)); }
 .editor-links { display: flex; flex-direction: column; gap: 12px; }
 .editor-links h3 { margin: 0; }
 .editor-create { display: flex; gap: 8px; flex-wrap: wrap; }

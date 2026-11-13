@@ -39,6 +39,7 @@
         <button v-if="table?.phase === 'playing' && role === 'gm'" type="button" class="gm-btn" @click="client.end()">{{ x.end }}</button>
         <button v-if="table" type="button" :class="['gm-btn', 'gm-journal-btn', { 'gm-help-on': journalOpen }]" :aria-expanded="journalOpen" @click="toggleJournal">📖 {{ learn.journal.button }}<span v-if="table.journal.length" class="gm-count">{{ table.journal.length }}</span></button>
         <button type="button" :class="['gm-btn', 'gm-help-btn', { 'gm-help-on': helpOpen }]" :aria-expanded="helpOpen" @click="toggleHelp('now')">❔ {{ help.button }}</button>
+        <slot name="actions" />
         <button type="button" class="gm-btn" @click="emit('close')">{{ x.close }}</button>
       </div>
     </header>

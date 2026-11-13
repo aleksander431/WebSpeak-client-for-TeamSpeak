@@ -188,7 +188,7 @@ const crcTable = (() => {
   return table;
 })();
 
-function crc32(bytes: Buffer): number {
+export function crc32(bytes: Buffer): number {
   let value = 0xffffffff;
   for (const byte of bytes) value = crcTable[(value ^ byte) & 0xff]! ^ (value >>> 8);
   return (value ^ 0xffffffff) >>> 0;

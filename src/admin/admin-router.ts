@@ -1,5 +1,6 @@
 import { ADVENTURE_ARCHIVE_LIMIT_BYTES, AdventureLibrary, AdventureLibraryError } from "./adventure-library.js";
 import { AdventureEditorError, type AdventureEditorStore } from "./adventure-editor.js";
+import { DND_RESTORE_LIMIT_BYTES, DndBackupError, cancelDndRestore, dndBackupSize, pendingDndRestore, stageDndRestore, writeDndBackup } from "./dnd-backup.js";
 import { Router, raw as expressRaw, type NextFunction, type Request, type Response } from "express";
 import { existsSync, readFileSync } from "node:fs";
 import type { Logger } from "../logger.js";
@@ -42,6 +43,7 @@ export interface AdminRouterOptions {
   skinRegistry?: SkinRegistry;
   adventureLibrary?: AdventureLibrary;
   adventureEditor?: AdventureEditorStore;
+  dndBackup?: { dataDir: string; flush(): Promise<void> };
   skinStore?: SkinStore;
   startedAt: number;
   /** Client address, honouring trusted reverse proxies. Defaults to the socket peer. */
@@ -316,6 +318,61 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
     } catch (error: unknown) {
       sendAdminError(response, error);
     }
+  });
+
+  // ---- D&D data backup (tables, hero vault, adventures, editor) ----
+  router.get("/dnd-backup/status", async (_request, response) => {
+    const backup = options.dndBackup;
+    if (!backup) {
+      response.json({ available: false, pending: null, files: 0, bytes: 0, limitBytes: DND_RESTORE_LIMIT_BYTES });
+      return;
+    }
+    try {
+      const [size, pending] = await Promise.all([dndBackupSize(backup.dataDir), pendingDndRestore(backup.dataDir)]);
+      response.json({ available: true, pending, ...size, limitBytes: DND_RESTORE_LIMIT_BYTES });
+    } catch (error: unknown) {
+      sendAdminError(response, error);
+    }
+  });
+  router.get("/dnd-backup", async (_request, response) => {
+    const backup = options.dndBackup;
+    if (!backup) {
+      response.status(404).json({ ok: false, code: "DND_BACKUP_UNAVAILABLE" });
+      return;
+    }
+    try {
+      await backup.flush();
+      response.setHeader("Content-Type", "application/zip");
+      response.setHeader("Content-Disposition", `attachment; filename="webspeak-dnd-${new Date().toISOString().slice(0, 10)}.zip"`);
+      response.setHeader("Cache-Control", "no-store");
+      await writeDndBackup(backup.dataDir, response);
+      response.end();
+      options.service.database.addAudit("ADMIN_DND_BACKUP_EXPORTED");
+    } catch (error: unknown) {
+      if (!response.headersSent) {
+        if (error instanceof DndBackupError) response.status(413).json({ ok: false, code: error.code });
+        else sendAdminError(response, error);
+      } else response.destroy();
+    }
+  });
+  router.put("/dnd-backup", requireSameOriginBinary, requireCsrf(options.sessions), expressRaw({ type: "application/octet-stream", limit: DND_RESTORE_LIMIT_BYTES }), async (request, response) => {
+    const backup = options.dndBackup;
+    if (!backup || !Buffer.isBuffer(request.body)) {
+      response.status(404).json({ ok: false, code: "DND_BACKUP_UNAVAILABLE" });
+      return;
+    }
+    try {
+      const staged = await stageDndRestore(backup.dataDir, request.body);
+      options.service.database.addAudit("ADMIN_DND_RESTORE_STAGED", { files: staged.files, createdAt: staged.createdAt });
+      response.json({ ok: true, pending: { createdAt: staged.createdAt }, files: staged.files, bytes: staged.bytes });
+    } catch (error: unknown) {
+      if (error instanceof DndBackupError) response.status(400).json({ ok: false, code: error.code, message: error.message });
+      else sendAdminError(response, error);
+    }
+  });
+  router.delete("/dnd-backup/pending", requireSameOrigin, requireCsrf(options.sessions), async (_request, response) => {
+    if (options.dndBackup) await cancelDndRestore(options.dndBackup.dataDir).catch(() => undefined);
+    response.json({ ok: true, pending: null });
   });
 
   // ---- Adventure editor links ----

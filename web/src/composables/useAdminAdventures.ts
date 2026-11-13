@@ -101,6 +101,51 @@ export function useAdminAdventures(options: Options) {
     finally { request.finish(); }
   }
 
+  // ---- D&D data backup ----
+  const backup = reactive({ available: false, files: 0, bytes: 0, limitBytes: 1024 * 1024 * 1024, pending: null as { createdAt: string } | null });
+  const restoring = ref(false);
+  const backupNotice = ref("");
+  const backupProblem = ref("");
+
+  async function loadBackup(): Promise<void> {
+    const request = requests.begin("backup");
+    try {
+      const result = await options.api.dndBackupStatus(request.signal);
+      if (request.isCurrent()) Object.assign(backup, result);
+    } catch (error) { if (request.isCurrent()) report(error); }
+    finally { request.finish(); }
+  }
+
+  async function restoreBackup(file: File): Promise<void> {
+    if (restoring.value) return;
+    const request = requests.begin("restore");
+    restoring.value = true;
+    backupNotice.value = "";
+    backupProblem.value = "";
+    try {
+      const result = await options.api.uploadDndRestore(file, request.signal);
+      if (!request.isCurrent()) return;
+      backup.pending = result.pending;
+      backupNotice.value = options.tr("dndBackupStaged");
+    } catch (error) {
+      if (!request.isCurrent() || isAdminRequestCancelled(error)) return;
+      const code = (error as { code?: string }).code ?? "";
+      if (code.startsWith("DND_BACKUP")) backupProblem.value = `${options.tr("dndBackupInvalid")}${error instanceof Error && error.message && error.message !== code ? `: ${error.message}` : ""}`;
+      else report(error);
+    } finally { if (request.isCurrent()) restoring.value = false; request.finish(); }
+  }
+
+  async function cancelRestore(): Promise<void> {
+    const request = requests.begin("cancel-restore");
+    try {
+      const result = await options.api.cancelDndRestore(request.signal);
+      if (!request.isCurrent()) return;
+      backup.pending = result.pending;
+      backupNotice.value = "";
+    } catch (error) { if (request.isCurrent()) report(error); }
+    finally { request.finish(); }
+  }
+
   // ---- Adventure editor links ----
   const links = ref<AdminEditorLink[]>([]);
   const linkLabel = ref("");
@@ -169,6 +214,7 @@ export function useAdminAdventures(options: Options) {
 
   return {
     items, limitBytes, loading, uploading, notice, armed, problem, load, upload, remove,
+    backup, restoring, backupNotice, backupProblem, loadBackup, restoreBackup, cancelRestore,
     links, linkLabel, linkArmed, copied, loadLinks, createLink, removeLink, decide, linkUrl, copyLink,
   };
 }

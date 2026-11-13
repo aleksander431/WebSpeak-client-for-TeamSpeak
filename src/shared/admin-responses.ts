@@ -109,6 +109,9 @@ const editorDevice = object({
 const editorDraft = object({ id: text, title: text, updatedAt: text, publishedId: optional(text), publishedAt: optional(text) });
 const editorLink = object({ id: text, token: text, label: text, createdAt: text, devices: array(editorDevice), drafts: array(editorDraft), bytes: number });
 const editorLinks = object({ links: array(editorLink), available: optional(boolean) });
+const dndPending = nullable(object({ createdAt: text }));
+const dndBackupStatus = object({ available: boolean, pending: dndPending, files: number, bytes: number, limitBytes: number });
+const dndRestore = object({ ok: choice(true), pending: dndPending, files: optional(number), bytes: optional(number) });
 const sessionStatus = object({ authenticated: boolean, mustChangePassword: optional(boolean), csrfToken: optional(text) });
 
 export const adminResponses = {
@@ -140,6 +143,8 @@ export const adminResponses = {
   chatStorage,
   adventures,
   editorLinks,
+  dndBackupStatus,
+  dndRestore,
   defaultSkin: object({ ok: choice(true), defaultSkinId: text }),
   updatedSkin: object({ ok: choice(true), skin, defaultSkinId: text }),
   uploadedSkin: object({ ok: choice(true), skin }),

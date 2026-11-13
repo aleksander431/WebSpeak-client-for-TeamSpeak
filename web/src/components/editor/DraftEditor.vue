@@ -4,6 +4,7 @@
       <button type="button" class="de-link" @click="emit('back')">{{ t.back }}</button>
       <h1 class="de-title">{{ draft.title || t.newDraft }}</h1>
       <span :class="['de-save', `de-save-${saveState}`]" role="status">{{ saveState === "saving" ? t.saving : saveState === "failed" ? t.saveFailed : saveState === "saved" ? t.saved : "" }}</span>
+      <button type="button" class="de-btn de-playtest" :disabled="Boolean(problem)" :title="problem ? problem.text : t.playtestHint" @click="playtestOpen = true">{{ t.playtest }}</button>
     </header>
 
     <div class="de-body">
@@ -271,9 +272,13 @@
             <strong>{{ t.check }}:</strong> {{ problem ? problem.text : t.ready }}
             <button v-if="problem?.section" type="button" class="de-link" @click="section = problem.section">→ {{ t.sections[problem.section] }}</button>
           </div>
-          <button type="button" class="de-btn de-btn-gold de-publish" :disabled="Boolean(problem) || publishing" @click="publish">
-            {{ publishing ? t.publishing : summary.publishedId ? t.republish : t.publish }}
-          </button>
+          <p class="de-lead">{{ t.playtestLead }}</p>
+          <div class="de-publish-row">
+            <button type="button" class="de-btn de-publish" :disabled="Boolean(problem)" @click="playtestOpen = true">{{ t.playtest }}</button>
+            <button type="button" class="de-btn de-btn-gold de-publish" :disabled="Boolean(problem) || publishing" @click="publish">
+              {{ publishing ? t.publishing : summary.publishedId ? t.republish : t.publish }}
+            </button>
+          </div>
           <p v-if="publishMessage" :class="publishOk ? 'de-ok' : 'de-problem'" role="status">{{ publishMessage }}</p>
         </section>
       </main>
@@ -290,6 +295,14 @@
       @pick="picture => { picker!.done(picture); picker = null; }"
       @close="picker = null"
     />
+    <AdventurePlaytest
+      v-if="playtestOpen"
+      :t="t"
+      :russian="russian"
+      :draft-id="id"
+      :draft="() => JSON.parse(JSON.stringify(draft))"
+      @close="playtestOpen = false"
+    />
     <div v-if="heroEditor" class="de-builder">
       <HeroBuilder :x="dnd" :initial="heroEditor.choices" :can-play="false" :die-prefix="russian ? 'к' : 'd'" @cancel="heroEditor = null" @save="saveHero" />
     </div>
@@ -297,7 +310,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onBeforeUnmount, reactive, ref, watch } from "vue";
 import HeroBuilder from "../web-client/HeroBuilder.vue";
 import MapPlacer from "./MapPlacer.vue";
 import PicturePicker from "./PicturePicker.vue";
@@ -312,6 +325,9 @@ import { MUSIC_GROUPS, type MusicGroup } from "../../../../src/shared/music-libr
 import type { EditorApi, EditorDraftSummary } from "../../editor/editor-api.js";
 import { explainProblem, fill, type EditorText } from "../../editor/editor-text.js";
 import { prepareUpload } from "../../editor/upload-image.js";
+
+// The table and its rules load only when the author tries the adventure.
+const AdventurePlaytest = defineAsyncComponent(() => import("./AdventurePlaytest.vue"));
 
 type Section = "basics" | "heroes" | "monsters" | "scenes" | "music" | "publish";
 const SECTIONS: Section[] = ["basics", "heroes", "monsters", "scenes", "music", "publish"];
@@ -607,6 +623,7 @@ const problem = computed<{ text: string; section?: Section } | null>(() => {
     return { text: where + explainProblem(props.t, error instanceof Error ? error.message : String(error)), ...(target ? { section: target } : {}) };
   }
 });
+const playtestOpen = ref(false);
 const publishing = ref(false);
 const publishMessage = ref("");
 const publishOk = ref(false);
@@ -638,6 +655,8 @@ async function publish(): Promise<void> {
 .de-save { font-size: 13px; color: var(--ed-muted); }
 .de-save-failed { color: var(--ed-bad); }
 .de-save-saved { color: var(--ed-good); }
+.de-playtest { margin-left: auto; }
+.de-publish-row { display: flex; flex-wrap: wrap; gap: 10px; }
 .de-body { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 18px; align-items: start; }
 .de-nav { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 4px; }
 .de-nav-item { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 14px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--ed-text); font: inherit; font-size: 15px; text-align: left; cursor: pointer; }

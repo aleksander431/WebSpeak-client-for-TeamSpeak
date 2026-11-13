@@ -8,6 +8,7 @@ import { SkinRegistry } from "./admin/skin-registry.js";
 import { AdventureLibrary } from "./admin/adventure-library.js";
 import { AdventureEditorStore } from "./admin/adventure-editor.js";
 import { FileTabletopStore } from "./server/tabletop-store.js";
+import { applyPendingDndRestore } from "./admin/dnd-backup.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -58,6 +59,8 @@ async function main() {
   const chatStorage = new ChatStorage(database, path.join(DATA_DIR, "chat-files"));
   await chatStorage.initialize();
 
+  // A D&D restore staged from the admin page swaps its folders in before anything reads them.
+  await applyPendingDndRestore(DATA_DIR, (message, details) => logger.info(details, message));
   const adventureLibrary = new AdventureLibrary(path.join(DATA_DIR, "adventures"));
   await adventureLibrary.load((message, details) => logger.warn(details, message));
   const adventureEditor = new AdventureEditorStore(path.join(DATA_DIR, "editor"), adventureLibrary, async url => {
@@ -100,6 +103,7 @@ async function main() {
     skinRegistry: new SkinRegistry(path.join(DATA_DIR, "skins")),
     adventureLibrary,
     adventureEditor,
+    dndBackup: { dataDir: DATA_DIR, flush: async () => { await Promise.all([tabletopStore.flush(), heroVault.flush()]); } },
     logger,
     nextVisitorNumber: () => database.nextVisitorNumber(),
     visitorCount: () => database.getVisitorCount(),
