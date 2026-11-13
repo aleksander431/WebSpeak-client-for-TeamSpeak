@@ -429,10 +429,11 @@ onBeforeUnmount(() => {
 .wt-offer-text strong, .wt-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wt-offer-text small, .wt-title small { overflow: hidden; color: var(--wt-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 
-.wt-window { position: fixed; right: 20px; top: 84px; z-index: 58; display: flex; flex-direction: column; width: min(440px, calc(100vw - 24px)); border-radius: 14px; border: 1px solid var(--wt-line); background: var(--wt-bg); box-shadow: 0 24px 60px rgba(0, 0, 0, .5); overflow: hidden; animation: wt-in .2s ease-out; }
+/* Top centre by default: over the voice stage, clear of side panels such as KAAK's chat. */
+.wt-window { position: fixed; left: 50%; top: 84px; translate: -50% 0; z-index: 58; display: flex; flex-direction: column; width: min(440px, calc(100vw - 24px)); border-radius: 14px; border: 1px solid var(--wt-line); background: var(--wt-bg); box-shadow: 0 24px 60px rgba(0, 0, 0, .5); overflow: hidden; animation: wt-in .2s ease-out; }
 .wt-large { width: min(820px, calc(100vw - 24px)); }
-.wt-dragged { right: auto; }
-.wt-full { inset: 0; width: 100%; height: 100%; border-radius: 0; border: 0; }
+.wt-dragged { translate: none; }
+.wt-full { inset: 0; translate: none; width: 100%; height: 100%; border-radius: 0; border: 0; }
 .wt-head { display: flex; align-items: center; gap: 2px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--wt-line); cursor: grab; touch-action: none; user-select: none; }
 .wt-full .wt-head { cursor: default; }
 .wt-title { display: grid; flex: 1 1 auto; min-width: 0; margin-right: 6px; }
@@ -482,7 +483,7 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) { .wt-window, .wt-offer { animation: none; } }
 @media (max-width: 740px) {
   /* Phones keep their controls at the bottom, so the video sits at the top. */
-  .wt-window:not(.wt-full), .wt-offer { right: 8px; left: 8px; top: calc(56px + env(safe-area-inset-top)); width: auto; max-width: none; }
+  .wt-window:not(.wt-full), .wt-offer { right: 8px; left: 8px; top: calc(56px + env(safe-area-inset-top)); width: auto; max-width: none; translate: none; }
   .wt-dragged:not(.wt-full) { left: 8px !important; top: calc(56px + env(safe-area-inset-top)) !important; }
   .wt-volume { display: none; }
 }
