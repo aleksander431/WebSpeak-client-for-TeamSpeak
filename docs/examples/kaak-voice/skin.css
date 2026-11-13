@@ -4869,6 +4869,9 @@
 /* A message that mentions you keeps its text clear of the marker line. */
 [data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-row.mentions-me .message-bubble { padding-left: 10px; border-radius: 4px; }
 
+/* A WebSpeak note only you see (such as /help) keeps its text clear of the dashed frame. */
+[data-ws-plugin-part="kaak-workspace"][data-ws-plugin-surface="voice"] .message-row.local-note .message-bubble { padding: 8px 12px; border-radius: 6px; border-color: var(--skin-kaak-border); background: var(--skin-kaak-panel); }
+
 /* Phone member cards: the avatar sits inside the card, clear of the menu button. */
 @media (max-width: 820px) {
   [data-ws-plugin-part="kaak-workspace.member-cards"] .voice-avatar-wrap { padding: 16px 0 0; }

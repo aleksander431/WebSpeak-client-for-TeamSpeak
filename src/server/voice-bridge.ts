@@ -5,6 +5,7 @@ import { SessionEventCoordinator, type SessionDirectoryState } from "./session-e
 import { ScreenShareCoordinator } from "./screen-share-coordinator.js";
 import { WhiteboardCoordinator, whiteboardBoardKey } from "./whiteboard-coordinator.js";
 import { WatchCoordinator } from "./watch-coordinator.js";
+import { ChatCommandRunner } from "./chat-command-runner.js";
 import { parseWatchClientMessage, type WatchClientMessage } from "../shared/watch-together.js";
 import { MemoryWhiteboardStore, type WhiteboardStore } from "./whiteboard-store.js";
 import { parseWhiteboardClientMessage } from "../shared/whiteboard.js";
@@ -170,6 +171,7 @@ interface WebClientEntry extends SessionDirectoryState {
   /** Push-to-talk gate (desktop client); applied to every WebRTC peer of the session. */
   voiceGateOpen: boolean;
   onChatSent?(scope: "channel" | "server", channelId: string, message: string): string | undefined;
+  chatCommands?: ChatCommandRunner;
   onChatReact?(ref: string, emoji: string, active: boolean): boolean;
   onChatPin?(ref: string, active: boolean): "pinned" | "unpinned" | "limit" | "unavailable";
   onOwnAvatar?(uid: string, marker: string, avatar: string | null): void;
@@ -410,6 +412,24 @@ export class VoiceBridge {
         if (this.entries.get(entryId) === entry && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
       };
       entry!.onAccompaniment = (active) => this.setAccompaniment(entry!, active, sendJson);
+      entry!.chatCommands = new ChatCommandRunner({
+        send: async (place, message) => {
+          if (place.scope === "channel") {
+            const channelId = tsClient.getChannelId();
+            await tsClient.sendTextMessage("channel", message, channelId);
+            return { channelId: String(channelId), ref: entry!.onChatSent?.("channel", String(channelId), message) };
+          }
+          if (place.scope === "server") {
+            await tsClient.sendTextMessage("server", message);
+            return { ref: entry!.onChatSent?.("server", "", message) };
+          }
+          await tsClient.sendTextMessage("private", message, BigInt(place.clientId));
+        },
+        notifyOwner: (place, message, sent) => {
+          if (place.scope === "private" || !tsReady) return;
+          sendJson({ type: "chatSent", scope: place.scope, message, ...(sent?.channelId ? { channelId: sent.channelId } : {}), ...(sent?.ref ? { ref: sent.ref } : {}) });
+        },
+      });
       try {
         entry.audioTransport = new SessionAudioTransport({
           audio: entry.audio, socket: ws, client: tsClient,
@@ -1176,6 +1196,7 @@ export class VoiceBridge {
     this.watches.removePeer(entry.id);
     if (this.entries.get(entry.id) === entry) this.entries.delete(entry.id);
     entry.events?.close();
+    entry.chatCommands?.close();
     entry.events = null;
     if (entry.reconnectTimer) {
       clearTimeout(entry.reconnectTimer);

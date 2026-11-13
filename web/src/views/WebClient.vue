@@ -1231,6 +1231,7 @@ const {
   whiteboard: whiteboardTransport,
   games: gameTransport,
   watch: watchTransport,
+  setChatLanguage,
   serverInfo: voiceServerInfo,
   sessionEpoch,
   memberConversationKey,
@@ -1507,6 +1508,8 @@ let stopViewportObservation: (() => void) | undefined;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 const language = ref<Language>(getInitialLanguage());
+// Slash-command results are worded in the page's language.
+watch(language, value => setChatLanguage(value), { immediate: true });
 watch(language, (value) => { pageLanguage.value = value; }, { immediate: true });
 const activeSkin = shallowRef<InstalledSkin | null>(null);
 const skinEditorMode = useSkinEditorMode();

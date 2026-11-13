@@ -1,3 +1,4 @@
+import type { ChatCommandRunner, ChatPlace } from "./chat-command-runner.js";
 import type { ServerMessage } from "../shared/server-messages.js";
 import type { ChannelInfo } from "../shared/voice-models.js";
 import { AVATAR_UPLOAD_MAX_BYTES, type ClientCommand } from "../shared/client-commands.js";
@@ -25,6 +26,8 @@ export interface VoiceCommandContext extends AudioStatsSource {
    * history. Returns the message's reaction reference, if reactions are kept.
    */
   onChatSent?(scope: "channel" | "server", channelId: string, message: string): string | undefined;
+  /** Slash commands (/roll, /pick, /timer…): the text to send instead, an error, or null for ordinary text. */
+  chatCommands?: Pick<ChatCommandRunner, "run">;
   /** Start or stop accompaniment; the bridge decides between a music client and mixing. */
   onAccompaniment?(active: boolean): Promise<void>;
   /** Passwords this session entered per channel id, so its music client can follow. */
@@ -98,6 +101,18 @@ export async function handleCommand(
   }
 
   let chatRef: string | undefined;
+  let sentMessage: string | undefined;
+  // A slash command becomes the text the gateway worked out (a fair dice roll, a pick, a timer).
+  const commanded = (message: string, place: ChatPlace, payload: { lang?: string; tz?: number }): string | null => {
+    const outcome = entry.chatCommands?.run(message, place, payload.lang, payload.tz) ?? null;
+    if (!outcome) return message;
+    if ("error" in outcome) {
+      sendJson({ type: "error", requestId: command.requestId, error: { code: outcome.error, message: outcome.error, recoverable: false } });
+      return null;
+    }
+    sentMessage = outcome.message;
+    return outcome.message;
+  };
   try {
     if (command.type === "moveClient") {
       const clientId = command.payload.clientId;
@@ -128,13 +143,15 @@ export async function handleCommand(
         sendJson({ type: "error", requestId: command.requestId, error: { code: "CHANNEL_CHANGED", message: "所在频道已变化，请确认频道后重试", recoverable: false } });
         return;
       }
-      const message = command.payload.message.trim();
+      const message = commanded(command.payload.message.trim(), { scope: "channel" }, command.payload);
+      if (message === null) return;
       if (message) {
         await entry.tsClient.sendTextMessage("channel", message, channelId);
         chatRef = entry.onChatSent?.("channel", String(channelId), message);
       }
     } else if (command.type === "sendServerMessage") {
-      const message = command.payload.message.trim();
+      const message = commanded(command.payload.message.trim(), { scope: "server" }, command.payload);
+      if (message === null) return;
       if (message) {
         await entry.tsClient.sendTextMessage("server", message);
         chatRef = entry.onChatSent?.("server", "", message);
@@ -146,7 +163,8 @@ export async function handleCommand(
         sendJson({ type: "error", requestId: command.requestId, error: { code: "CLIENT_NOT_FOUND", message: "成员已离线", recoverable: false } });
         return;
       }
-      const message = command.payload.message.trim();
+      const message = commanded(command.payload.message.trim(), { scope: "private", clientId }, command.payload);
+      if (message === null) return;
       if (message) await entry.tsClient.sendTextMessage("private", message, BigInt(clientId));
     } else if (command.type === "poke") {
       const clientId = command.payload.clientId;
@@ -226,7 +244,7 @@ export async function handleCommand(
       const clientId = command.payload.clientId;
       entry.webrtc?.setMemberVolume(clientId, command.payload.volume);
     }
-    if (command.requestId) sendJson({ type: "commandCompleted", requestId: command.requestId, ...(chatRef ? { chatRef } : {}) });
+    if (command.requestId) sendJson({ type: "commandCompleted", requestId: command.requestId, ...(chatRef ? { chatRef } : {}), ...(sentMessage ? { sentMessage } : {}) });
   } catch (error: unknown) {
     const operation = classifyOperationError(error, "OPERATION_FAILED", "操作失败");
     sendJson({ type: "error", requestId: command.requestId, error: { code: operation.code, message: operation.message, recoverable: false } });

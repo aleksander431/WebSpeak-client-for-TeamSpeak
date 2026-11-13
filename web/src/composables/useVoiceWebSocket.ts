@@ -19,6 +19,7 @@ import { parseServerMessage } from "../../../src/shared/server-messages.js";
 import { parseChatSessionAccess, type ChatSessionAccess } from "../../../src/shared/chat-storage.js";
 import { parseWhiteboardServerMessage, type WhiteboardClientMessage, type WhiteboardServerMessage } from "../../../src/shared/whiteboard.js";
 import { parseGameServerMessage, type GameClientMessage, type GameServerMessage } from "../../../src/shared/tabletop.js";
+import { chatCommandHelp, chatCommandLanguage, parseChatCommand } from "../../../src/shared/chat-commands.js";
 import { parseWatchServerMessage, type WatchClientMessage, type WatchServerMessage } from "../../../src/shared/watch-together.js";
 import type { ChatMessage } from "../../../src/shared/voice-models.js";
 import { CHAT_COMMAND_MAX_LENGTH, type ClientCommandPayloads, type ClientCommandType } from "../../../src/shared/client-commands.js";
@@ -1376,14 +1377,22 @@ export function useVoiceWebSocket() {
         break;
       case "commandCompleted": {
         const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
-        commands.settle(requestId, undefined, msg.chatRef ? { chatRef: msg.chatRef } : undefined);
+        commands.settle(requestId, undefined, msg.chatRef || msg.sentMessage
+          ? { ...(msg.chatRef ? { chatRef: msg.chatRef } : {}), ...(msg.sentMessage ? { sentMessage: msg.sentMessage } : {}) } : undefined);
+        break;
+      }
+      case "chatSent": {
+        // A timer of ours rang: TeamSpeak never echoes our own messages, so the gateway tells us.
+        sessionState.appendLocal({ scope: msg.scope, ...(msg.channelId ? { targetId: msg.channelId } : {}), senderId: state.tsClientId,
+          invokerName: lastConnection?.nickname || "You", message: msg.message, ...(msg.ref ? { ref: msg.ref } : {}) });
         break;
       }
       case "error": {
         const code = normalizedClientErrorCode(msg.error?.code, "OPERATION_FAILED");
         const text = protocolErrorMessage(code, String(msg.error?.message || msg.message || "操作失败"));
         // A reaction to a message the gateway forgot is not worth a page-wide error.
-        if (!["REACTION_UNAVAILABLE", "PIN_UNAVAILABLE", "PIN_LIMIT", "INVALID_AVATAR", "AVATAR_TOO_LARGE", "AVATAR_NOT_ALLOWED", "AVATAR_FAILED"].includes(msg.error?.code ?? "")) { state.errorCode = code; state.error = text; }
+        if (!["REACTION_UNAVAILABLE", "PIN_UNAVAILABLE", "PIN_LIMIT", "INVALID_AVATAR", "AVATAR_TOO_LARGE", "AVATAR_NOT_ALLOWED", "AVATAR_FAILED"].includes(msg.error?.code ?? "")
+          && !code.startsWith("CHAT_COMMAND_")) { state.errorCode = code; state.error = text; }
         const requestId = typeof msg.requestId === "string" ? msg.requestId : "";
         commands.settle(requestId, Object.assign(new Error(text), { code }));
         break;
@@ -1444,10 +1453,19 @@ export function useVoiceWebSocket() {
   ): Promise<void> {
     const generation = chatGeneration;
     const senderId = state.tsClientId;
-    const result = await commands.sendForResult(type, payload);
+    const command = parseChatCommand(payload.message);
+    if (command?.name === "help") {
+      // Only for this page: a list of the commands, never sent.
+      sessionState.appendLocal({ ...local, senderId: 0, invokerName: "WebSpeak", message: chatCommandHelp(chatCommandLanguage(chatLanguage)), isLocal: true }, false);
+      return;
+    }
+    if (command && !command.name) throw Object.assign(new Error("unknown command"), { code: "CHAT_COMMAND_UNKNOWN" });
+    // Slash commands are worked out by the gateway in the page's language and time zone.
+    const sent = command ? { ...payload, lang: chatLanguage, tz: new Date().getTimezoneOffset() } : payload;
+    const result = await commands.sendForResult(type, sent);
     if (generation !== chatGeneration || !state.connected) throw new Error("语音连接已关闭");
     // The chat shows "You" for own messages; the name only feeds the avatar initial.
-    sessionState.appendLocal({ ...local, senderId, invokerName: lastConnection?.nickname || "You", message: payload.message,
+    sessionState.appendLocal({ ...local, senderId, invokerName: lastConnection?.nickname || "You", message: result.sentMessage ?? payload.message,
       ...(result.chatRef ? { ref: result.chatRef } : {}) });
   }
 
@@ -1461,6 +1479,12 @@ export function useVoiceWebSocket() {
   async function pinChat(ref: string, active: boolean): Promise<void> {
     if (!state.connected || ws.value?.readyState !== WebSocket.OPEN) throw Object.assign(new Error("not connected"), { code: "SESSION_NOT_READY" });
     await sendCommandAndWait("chatPin", { ref, active });
+  }
+
+  /** The page's language, for the wording of slash-command results. */
+  let chatLanguage = "en";
+  function setChatLanguage(language: string): void {
+    chatLanguage = language;
   }
 
   async function sendTextMessage(message: string, targetId = ""): Promise<void> {
@@ -1738,6 +1762,7 @@ export function useVoiceWebSocket() {
     whiteboard,
     games,
     watch: watchTogether,
+    setChatLanguage,
     chatAccess,
     ws,
     state,

@@ -41,7 +41,10 @@ export type ServerMessage =
    * client (`separate`, with that client's id), or mixed into the voice.
    */
   | Message<"accompanimentRoute", { separate: boolean; clientId?: number }>
-  | Message<"commandCompleted", { requestId: string; chatRef?: string }>
+  /** `sentMessage`: what was sent instead of the text typed (the result of a slash command). */
+  | Message<"commandCompleted", { requestId: string; chatRef?: string; sentMessage?: string }>
+  /** A message the session's client sent on its own (a timer ringing), for the owner's history. */
+  | Message<"chatSent", { scope: "channel" | "server"; channelId?: string; message: string; ref?: string }>
   | Message<"screenShareCompleted", { requestId: string }>
   | Message<"error", Request & { error?: { code?: string; message?: string; recoverable?: boolean }; message?: string }>
   | Message<"screenShareList", { streams: ScreenShareStreamDescription[] }>
@@ -189,7 +192,8 @@ const valid: Record<ServerMessage["type"], (message: RecordValue) => boolean> = 
   webrtcAnswer: m => isRecord(m.payload) && isSessionDescription(m.payload.sdp, "answer"),
   voiceActivity: m => arrayOf(m.clientIds, clientId),
   accompanimentRoute: m => boolean(m.separate) && optional(m.clientId, clientId),
-  commandCompleted: m => text(m.requestId) && optional(m.chatRef, chatRef),
+  commandCompleted: m => text(m.requestId) && optional(m.chatRef, chatRef) && optional(m.sentMessage, text),
+  chatSent: m => (m.scope === "channel" || m.scope === "server") && text(m.message) && optional(m.channelId, channelId) && optional(m.ref, chatRef),
   screenShareCompleted: m => text(m.requestId),
   error: m => optional(m.message, text) && optional(m.error, v => isRecord(v) && optional(v.code, text) && optional(v.message, text) && optional(v.recoverable, boolean)),
   screenShareList: m => Array.isArray(m.streams),

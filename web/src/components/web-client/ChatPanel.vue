@@ -265,7 +265,7 @@
       >
         <article
           v-if="chatTab !== 'events'"
-          :class="['message-row', { mine: message.isSelf, 'mentions-me': mentionsMe(message) }]"
+          :class="['message-row', { mine: message.isSelf, 'mentions-me': mentionsMe(message), 'local-note': message.isLocal }]"
           data-ws-part="voice.chat.message"
           :data-ws-state="message.isSelf ? 'mine' : 'other'"
           :data-ws-mention="mentionsMe(message) ? 'self' : undefined"
@@ -283,6 +283,10 @@
             ><div class="message-meta"
               ><strong>{{ message.isSelf ? t("you") : message.invokerName }}</strong
               ><time>{{ formatTime(message.timestamp) }}</time
+              ><small
+                v-if="message.isLocal"
+                class="message-local-note"
+                >{{ t("chatLocalNote") }}</small
               ><Icon
                 v-if="isPinned(message)"
                 name="pin"

@@ -477,7 +477,8 @@ export function useWebClientChat({
     } catch (error) {
       if (isCurrent()) {
         const code = (error as { code?: string } | null)?.code;
-        const feedback = code === "CLIENT_NOT_FOUND" ? "chatTargetUnavailable" : code === "CHANNEL_CHANGED" ? "chatChannelChanged" : "chatSendFailed";
+        const feedback = code === "CLIENT_NOT_FOUND" ? "chatTargetUnavailable" : code === "CHANNEL_CHANGED" ? "chatChannelChanged"
+          : code?.startsWith("CHAT_COMMAND_") ? chatCommandFeedback(code) : "chatSendFailed";
         errors.set(key, feedback);
         if (destination.value === key) sendError.value = feedback;
       }
@@ -592,7 +593,7 @@ export function useWebClientChat({
     if (!connected.value || !serverKey.value) return;
     const key = normalizeChatHistoryServerKey(serverKey.value);
     for (const message of messages) {
-      if (message.isHistory || message.scope === "system" || persistedMessageIds.has(message.id)) continue;
+      if (message.isHistory || message.isLocal || message.scope === "system" || persistedMessageIds.has(message.id)) continue;
       persistedMessageIds.add(message.id);
       void saveChatHistoryMessage(key, message);
     }
@@ -654,3 +655,19 @@ function longMessageFileName(text: string): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `message-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.${extensions[language] ?? "txt"}`;
 }
+
+/** The chat's message key for a slash command the gateway or the page refused. */
+function chatCommandFeedback(code: string): string {
+  const known: Record<string, string> = {
+    CHAT_COMMAND_UNKNOWN: "chatCommandUnknown",
+    CHAT_COMMAND_BAD_DICE: "chatCommandBadDice",
+    CHAT_COMMAND_PICK_FEW: "chatCommandPickFew",
+    CHAT_COMMAND_BAD_TIMER: "chatCommandBadTimer",
+    CHAT_COMMAND_TIMER_RANGE: "chatCommandTimerRange",
+    CHAT_COMMAND_TIMER_LIMIT: "chatCommandTimerLimit",
+    CHAT_COMMAND_TIMER_NONE: "chatCommandTimerNone",
+    CHAT_COMMAND_TIMER_PRIVATE: "chatCommandTimerPrivate",
+  };
+  return known[code] ?? "chatSendFailed";
+}
+

@@ -10,9 +10,10 @@ export const AVATAR_UPLOAD_MAX_BYTES = 200_000;
 export interface ClientCommandPayloads {
   switchChannel: { channelId: string; password?: string };
   moveClient: { clientId: number; channelId: string; password?: string };
-  sendTextMessage: { message: string; channelId?: string };
-  sendServerMessage: { message: string };
-  sendPrivateMessage: { clientId: number; message: string; clientUid?: string };
+  /** `lang` and `tz` (the page's language and `getTimezoneOffset()`) word the results of slash commands. */
+  sendTextMessage: { message: string; channelId?: string; lang?: string; tz?: number };
+  sendServerMessage: { message: string; lang?: string; tz?: number };
+  sendPrivateMessage: { clientId: number; message: string; clientUid?: string; lang?: string; tz?: number };
   poke: { clientId: number; message: string };
   setAway: { away: boolean; message?: string };
   setWhisperTargets: { targetIds: number[] };
@@ -77,6 +78,11 @@ export function parseClientCommand(raw: string): ClientCommandResult {
     return { error: { code: "INVALID_CHANNEL_PASSWORD", message: "频道密码无效" } };
   }
   if (value.type === "sendTextMessage" && (typeof value.payload.message !== "string" || value.payload.message.length > CHAT_COMMAND_MAX_LENGTH)) {
+    return { error: { code: "INVALID_TEXT_MESSAGE", message: "文字消息无效" } };
+  }
+  if ((value.type === "sendTextMessage" || value.type === "sendServerMessage" || value.type === "sendPrivateMessage")
+    && ((value.payload.lang !== undefined && (typeof value.payload.lang !== "string" || !/^[a-z]{2}$/.test(value.payload.lang)))
+      || (value.payload.tz !== undefined && (typeof value.payload.tz !== "number" || !Number.isFinite(value.payload.tz) || Math.abs(value.payload.tz) > 840)))) {
     return { error: { code: "INVALID_TEXT_MESSAGE", message: "文字消息无效" } };
   }
   if (value.type === "sendTextMessage" && value.payload.channelId !== undefined && (typeof value.payload.channelId !== "string" || !/^\d{1,20}$/.test(value.payload.channelId))) {

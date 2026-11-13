@@ -48,6 +48,8 @@ export interface ChatMessage {
   isHistory?: boolean;
   /** Gateway reference for reactions (channel and server messages only). */
   ref?: string;
+  /** Shown only in this browser (the /help list); never sent or kept. */
+  isLocal?: boolean;
 }
 
 export interface ServerEvent {

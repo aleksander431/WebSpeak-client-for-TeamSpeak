@@ -8,6 +8,8 @@ interface CommandOptions {
 /** What a completed command may report back (a sent chat message's reaction reference). */
 export interface CommandResult {
   chatRef?: string;
+  /** What the gateway sent instead of the typed text (a slash command's result). */
+  sentMessage?: string;
 }
 
 interface PendingCommand {

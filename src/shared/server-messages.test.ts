@@ -20,6 +20,7 @@ const samples: Record<ServerMessage["type"], ServerMessage> = {
   channelList: { type: "channelList", channels: [{ id: "1", parentID: "0", name: "Lobby", maxClients: 10, maxClientsLimited: true, passwordProtected: true, members: [{ id: 1, nickname: "Owner" }] }] },
   chatMessage: { type: "chatMessage", scope: "channel", targetId: "1", invokerId: 2, message: "hello", ref: "0123456789abcdef" },
   chatReactions: { type: "chatReactions", ref: "0123456789abcdef", reactions: [{ emoji: "👍", count: 2, names: ["A", "B"], mine: true }] },
+  chatSent: { type: "chatSent", scope: "channel", channelId: "1", message: "⏰ Time's up!", ref: "0123456789abcdef" },
   chatPins: { type: "chatPins", scope: "channel", channelId: "5", pins: [{ ref: "0123456789abcdef", senderName: "Kria", message: "rules", timestamp: 1, pinnedBy: "Alex", pinnedAt: 2 }] },
   pokeReceived: { type: "pokeReceived", invokerId: 2, message: "poke" },
   serverEvent: { type: "serverEvent", event },

@@ -193,8 +193,8 @@ export function createVoiceSessionState(options: SessionStateOptions) {
     return true;
   }
 
-  function appendLocal(message: Omit<ChatMessage, "id" | "timestamp" | "isSelf">): void {
-    chatMessages.push({ ...message, id: nextId("self"), timestamp: Date.now(), isSelf: true });
+  function appendLocal(message: Omit<ChatMessage, "id" | "timestamp" | "isSelf">, isSelf = true): void {
+    chatMessages.push({ ...message, id: nextId(isSelf ? "self" : "local"), timestamp: Date.now(), isSelf });
   }
 
   function reset(): void {
