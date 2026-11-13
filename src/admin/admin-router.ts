@@ -1,5 +1,7 @@
 import { ADVENTURE_ARCHIVE_LIMIT_BYTES, AdventureLibrary, AdventureLibraryError } from "./adventure-library.js";
 import { AdventureEditorError, type AdventureEditorStore } from "./adventure-editor.js";
+import { onlineStats } from "../server/online-stats.js";
+import { ONLINE_STATS_RANGES, type OnlineStatsRange } from "../shared/online-stats.js";
 import { DND_RESTORE_LIMIT_BYTES, DndBackupError, cancelDndRestore, dndBackupSize, pendingDndRestore, stageDndRestore, writeDndBackup } from "./dnd-backup.js";
 import { Router, raw as expressRaw, type NextFunction, type Request, type Response } from "express";
 import { existsSync, readFileSync } from "node:fs";
@@ -315,6 +317,16 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
       }
       options.service.database.addAudit("ADMIN_ADVENTURE_REMOVED", { id });
       response.json({ ok: true, adventures: library.catalog() });
+    } catch (error: unknown) {
+      sendAdminError(response, error);
+    }
+  });
+
+  router.get("/stats", (request, response) => {
+    const range = (ONLINE_STATS_RANGES as readonly string[]).includes(String(request.query.range)) ? request.query.range as OnlineStatsRange : "day";
+    const tz = Number(request.query.tz);
+    try {
+      response.json(onlineStats(options.service.database, range, Number.isFinite(tz) && Math.abs(tz) <= 840 ? Math.round(tz) : 0, Date.now()));
     } catch (error: unknown) {
       sendAdminError(response, error);
     }

@@ -130,6 +130,7 @@
       <path d="m5.8 18.55-2.1 2.1 3.75-.45m10.75-1.65 2.1 2.1-3.75-.45" fill="#f2a53d" stroke="#f2a53d" stroke-width="1.5" />
     </template>
     <path v-else-if="name === 'check'" d="m5 12 4 4L19 6" />
+    <path v-else-if="name === 'chart'" d="M3 3v18h18M7 15l4-5 3 3 5-7" />
     <template v-else-if="name === 'dice'">
       <path d="M12 2.5 20.5 7.3v9.4L12 21.5l-8.5-4.8V7.3L12 2.5Z" />
       <path d="M12 8.2 16 15H8l4-6.8Z" />

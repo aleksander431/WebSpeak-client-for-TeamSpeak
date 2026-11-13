@@ -15,6 +15,7 @@ import { AdminSessionStore } from "../admin/admin-session.js";
 import { isSafeOpenTargetForPrefill, resolveSafeOpenTarget, TeamSpeakTargetResolutionError } from "../security/open-target-policy.js";
 import { parseIdentity } from "@honeybbq/teamspeak/client";
 import { ServerPreviewService } from "./server-preview.js";
+import { OnlineStatsRecorder } from "./online-stats.js";
 import type { ServerPreview } from "../shared/server-preview.js";
 import { JoinRateLimiter } from "./join-rate-limit.js";
 import type { ConfiguredAccelerationRelay } from "./acceleration-relay.js";
@@ -181,6 +182,15 @@ export function createWebServer(options: WebServerOptions): WebServer {
     fixed: () => options.adminService.getConnectionPolicy().accessMode === "fixed",
     live: async () => voiceBridge.liveDirectory(await resolveTeamSpeakTarget(options.adminService.getConnectionPolicy().defaultTarget)),
     query: () => options.adminService.getTsAdminPreview(),
+  });
+  // Once a minute: how many are online and who, for the admin statistics page.
+  const onlineStats = new OnlineStatsRecorder(options.adminService.database, {
+    webSessions: () => voiceBridge.getSessionSummaries().filter(session => session.state === "connected").map(session => session.nickname),
+    serverMembers: async () => {
+      if (!options.adminService.isInitialized()) return null;
+      const preview = await serverPreview.read();
+      return preview.available ? preview.channels.flatMap(channel => channel.members.map(member => member.nickname)) : null;
+    },
   });
   app.get("/api/server-preview", async (request, response) => {
     response.setHeader("Cache-Control", "no-store");
@@ -498,11 +508,13 @@ export function createWebServer(options: WebServerOptions): WebServer {
       return new Promise((resolve) => {
         server.listen(options.port, () => {
           logger.info({ port: options.port }, "Web server started");
+          onlineStats.start();
           resolve();
         });
       });
     },
     async stop(): Promise<void> {
+      onlineStats.stop();
       await voiceBridge.shutdown();
       adminSessions.clear();
       return new Promise((resolve) => {

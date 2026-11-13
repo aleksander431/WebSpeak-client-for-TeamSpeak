@@ -112,6 +112,13 @@ const editorLinks = object({ links: array(editorLink), available: optional(boole
 const dndPending = nullable(object({ createdAt: text }));
 const dndBackupStatus = object({ available: boolean, pending: dndPending, files: number, bytes: number, limitBytes: number });
 const dndRestore = object({ ok: choice(true), pending: dndPending, files: optional(number), bytes: optional(number) });
+const onlinePoint = object({ at: number, web: number, ts: nullable(number) });
+const onlinePerson = object({ nickname: text, minutes: number, webMinutes: number, visits: number, days: number, lastDay: text });
+const onlineStats = object({
+  range: choice("day", "week", "month"), from: number, to: number, step: number, points: array(onlinePoint),
+  heatmap: array(array(number)), peak: nullable(object({ count: number, at: number })), people: number,
+  top: array(onlinePerson), since: nullable(number), serverKnown: boolean,
+});
 const sessionStatus = object({ authenticated: boolean, mustChangePassword: optional(boolean), csrfToken: optional(text) });
 
 export const adminResponses = {
@@ -144,6 +151,7 @@ export const adminResponses = {
   adventures,
   editorLinks,
   dndBackupStatus,
+  onlineStats,
   dndRestore,
   defaultSkin: object({ ok: choice(true), defaultSkinId: text }),
   updatedSkin: object({ ok: choice(true), skin, defaultSkinId: text }),

@@ -16,7 +16,7 @@ export interface EventHistoryRow {
   createdAt: number;
 }
 
-export const DATABASE_SCHEMA_VERSION = 21;
+export const DATABASE_SCHEMA_VERSION = 22;
 export type AccessMode = "fixed" | "open";
 
 export interface PersistedSettings {
@@ -1393,7 +1393,73 @@ export class WebSpeakDatabase {
         }
         this.database.exec("PRAGMA user_version = 21;");
       });
+      version = 21;
     }
+    if (version === 21) {
+      this.transaction(() => {
+        // Online statistics for the admin console: the most people seen in each
+        // five-minute bucket, and minutes and visits per nickname per UTC day.
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS online_samples (
+            at INTEGER PRIMARY KEY,
+            web INTEGER NOT NULL,
+            ts INTEGER
+          );
+          CREATE TABLE IF NOT EXISTS online_presence (
+            day TEXT NOT NULL,
+            nickname TEXT NOT NULL,
+            minutes INTEGER NOT NULL DEFAULT 0,
+            web_minutes INTEGER NOT NULL DEFAULT 0,
+            visits INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (day, nickname)
+          );
+          PRAGMA user_version = 22;
+        `);
+      });
+    }
+  }
+
+  // ---- Online statistics ----
+
+  /** Keeps the larger counts seen in a bucket; `ts` stays unknown until a reading has it. */
+  addOnlineSample(at: number, web: number, ts: number | null): void {
+    this.database.prepare(
+      `INSERT INTO online_samples (at, web, ts) VALUES (?, ?, ?)
+       ON CONFLICT(at) DO UPDATE SET web = MAX(web, excluded.web),
+         ts = CASE WHEN excluded.ts IS NULL THEN ts WHEN ts IS NULL THEN excluded.ts ELSE MAX(ts, excluded.ts) END`,
+    ).run(at, web, ts);
+  }
+
+  addOnlinePresence(day: string, entries: Array<{ nickname: string; minutes: number; web: boolean; visit: boolean }>): void {
+    if (!entries.length) return;
+    const statement = this.database.prepare(
+      `INSERT INTO online_presence (day, nickname, minutes, web_minutes, visits) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(day, nickname) DO UPDATE SET minutes = minutes + excluded.minutes,
+         web_minutes = web_minutes + excluded.web_minutes, visits = visits + excluded.visits`,
+    );
+    this.transaction(() => {
+      for (const entry of entries) statement.run(day, entry.nickname, entry.minutes, entry.web ? entry.minutes : 0, entry.visit ? 1 : 0);
+    });
+  }
+
+  onlineSamples(from: number, to: number): Array<{ at: number; web: number; ts: number | null }> {
+    return this.database.prepare("SELECT at, web, ts FROM online_samples WHERE at >= ? AND at < ? ORDER BY at").all(from, to) as Array<{ at: number; web: number; ts: number | null }>;
+  }
+
+  onlinePresence(fromDay: string, limit: number): Array<{ nickname: string; minutes: number; webMinutes: number; visits: number; days: number; lastDay: string }> {
+    return this.database.prepare(
+      `SELECT nickname, SUM(minutes) AS minutes, SUM(web_minutes) AS webMinutes, SUM(visits) AS visits, COUNT(*) AS days, MAX(day) AS lastDay
+       FROM online_presence WHERE day >= ? GROUP BY nickname ORDER BY minutes DESC, nickname LIMIT ?`,
+    ).all(fromDay, limit) as Array<{ nickname: string; minutes: number; webMinutes: number; visits: number; days: number; lastDay: string }>;
+  }
+
+  onlinePeople(fromDay: string): number {
+    return (this.database.prepare("SELECT COUNT(DISTINCT nickname) AS count FROM online_presence WHERE day >= ?").get(fromDay) as { count: number }).count;
+  }
+
+  pruneOnlineStats(beforeAt: number, beforeDay: string): void {
+    this.database.prepare("DELETE FROM online_samples WHERE at < ?").run(beforeAt);
+    this.database.prepare("DELETE FROM online_presence WHERE day < ?").run(beforeDay);
   }
 
   private writeSettings(settings: SettingsUpdate, now: string): void {
