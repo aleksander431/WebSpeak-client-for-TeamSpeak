@@ -4,6 +4,8 @@ import { SessionAudioTransport } from "./session-audio.js";
 import { SessionEventCoordinator, type SessionDirectoryState } from "./session-events.js";
 import { ScreenShareCoordinator } from "./screen-share-coordinator.js";
 import { WhiteboardCoordinator, whiteboardBoardKey } from "./whiteboard-coordinator.js";
+import { WatchCoordinator } from "./watch-coordinator.js";
+import { parseWatchClientMessage, type WatchClientMessage } from "../shared/watch-together.js";
 import { MemoryWhiteboardStore, type WhiteboardStore } from "./whiteboard-store.js";
 import { parseWhiteboardClientMessage } from "../shared/whiteboard.js";
 import { parseGameClientMessage, type GameClientMessage } from "../shared/tabletop.js";
@@ -42,6 +44,14 @@ import { ChatReactionHub } from "./chat-reactions.js";
 import { ChatPinStore } from "./chat-pins.js";
 import type { ChatPin } from "../shared/chat-pins.js";
 import type { ChatHistoryMessage } from "../shared/chat-storage.js";
+
+/** Watch-together frames, decoded the same way as game frames. */
+export function parseWatchFrame(raw: string): WatchClientMessage | { error: { code: string } } | null {
+  if (!raw.includes("\"watch")) return null;
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return null; }
+  return parseWatchClientMessage(value);
+}
 
 /** Game frames arrive as JSON text; the shared parser takes the decoded value. */
 export function parseGameFrame(raw: string): GameClientMessage | { error: { code: string } } | null {
@@ -179,6 +189,7 @@ export class VoiceBridge {
   private readonly screenShares: ScreenShareCoordinator;
   private readonly whiteboards: WhiteboardCoordinator;
   private readonly tabletops: TabletopCoordinator;
+  private readonly watches: WatchCoordinator;
   private readonly identityLeases = new IdentityLeaseStore();
   private wss: WebSocketServer | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -233,6 +244,17 @@ export class VoiceBridge {
         }
       },
       logger: { warn: (message, details) => this.logger.warn(details ?? {}, message) },
+    });
+    this.watches = new WatchCoordinator({
+      send: (entryId, message) => {
+        const entry = this.entries.get(entryId);
+        if (entry?.ws.readyState !== WebSocket.OPEN) return;
+        try {
+          entry.ws.send(JSON.stringify(message));
+        } catch (error: unknown) {
+          this.logger.warn({ entryId, messageType: message.type, errorName: error instanceof Error ? error.name : "unknown" }, "Could not send watch-together message to browser");
+        }
+      },
     });
     this.tabletops = new TabletopCoordinator({
       adventures: () => [...BUILT_IN_ADVENTURES, ...(options.adventures?.list() ?? [])],
@@ -666,6 +688,7 @@ export class VoiceBridge {
           if (id === tsClient.getClientId()) {
             this.whiteboards.onBoardChanged({ entryId, nickname: entry!.nickname, boardKey: whiteboardBoardKey(teamSpeakTargetKey(entry!.target), channelId) });
             this.tabletops.onTableChanged({ ...tableParticipant(), tableKey: tabletopTableKey(teamSpeakTargetKey(entry!.target), channelId) });
+            this.watches.onRoomChanged({ entryId, nickname: entry!.nickname, roomKey: tabletopTableKey(teamSpeakTargetKey(entry!.target), channelId) });
           }
         },
         onNotification: notification => this.screenShares.handleNotification(entry!, notification),
@@ -721,6 +744,7 @@ export class VoiceBridge {
           this.screenShares.removePeer(entryId);
           this.whiteboards.removePeer(entryId);
           this.tabletops.removePeer(entryId);
+          this.watches.removePeer(entryId);
           resetDirectoryForReconnect();
           sendJson({ type: "disconnected", recoverable: isRecoverable(normalized) });
           scheduleReconnect(normalized);
@@ -793,6 +817,22 @@ export class VoiceBridge {
             nickname: entry!.nickname,
             boardKey: whiteboardBoardKey(teamSpeakTargetKey(entry!.target), tsClient.getChannelId()),
           }, whiteboardMessage);
+          return;
+        }
+        const watchMessage = parseWatchFrame(rawMessage);
+        if (watchMessage) {
+          const rejectWatch = (code: string) => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "watchError", code }));
+          };
+          if ("error" in watchMessage) {
+            rejectWatch(watchMessage.error.code);
+            return;
+          }
+          if (!tsReady || session.state !== "connected") {
+            rejectWatch("SESSION_NOT_READY");
+            return;
+          }
+          this.watches.handleMessage({ entryId, nickname: entry!.nickname, roomKey: tabletopTableKey(teamSpeakTargetKey(entry!.target), tsClient.getChannelId()) }, watchMessage);
           return;
         }
         const gameMessage = parseGameFrame(rawMessage);
@@ -1133,6 +1173,7 @@ export class VoiceBridge {
     this.screenShares.removePeer(entry.id);
     this.whiteboards.removePeer(entry.id);
     this.tabletops.removePeer(entry.id);
+    this.watches.removePeer(entry.id);
     if (this.entries.get(entry.id) === entry) this.entries.delete(entry.id);
     entry.events?.close();
     entry.events = null;

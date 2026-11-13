@@ -19,6 +19,7 @@ import { parseServerMessage } from "../../../src/shared/server-messages.js";
 import { parseChatSessionAccess, type ChatSessionAccess } from "../../../src/shared/chat-storage.js";
 import { parseWhiteboardServerMessage, type WhiteboardClientMessage, type WhiteboardServerMessage } from "../../../src/shared/whiteboard.js";
 import { parseGameServerMessage, type GameClientMessage, type GameServerMessage } from "../../../src/shared/tabletop.js";
+import { parseWatchServerMessage, type WatchClientMessage, type WatchServerMessage } from "../../../src/shared/watch-together.js";
 import type { ChatMessage } from "../../../src/shared/voice-models.js";
 import { CHAT_COMMAND_MAX_LENGTH, type ClientCommandPayloads, type ClientCommandType } from "../../../src/shared/client-commands.js";
 export type { ScreenShareStreamDescription as ScreenShareStream, ScreenShareViewerDescription as ScreenShareViewer, ScreenSharePeerSignal as ScreenShareSignal } from "../../../src/shared/screen-share.js";
@@ -334,6 +335,18 @@ export function useVoiceWebSocket() {
     subscribe(listener: (message: GameServerMessage) => void): () => void {
       gameListeners.add(listener);
       return () => { gameListeners.delete(listener); };
+    },
+  };
+  // Watching a video together uses the same socket too.
+  const watchListeners = new Set<(message: WatchServerMessage) => void>();
+  const watchTogether = {
+    isOpen: () => ws.value?.readyState === WebSocket.OPEN && state.connected,
+    send(message: WatchClientMessage) {
+      if (ws.value?.readyState === WebSocket.OPEN) ws.value.send(JSON.stringify(message));
+    },
+    subscribe(listener: (message: WatchServerMessage) => void): () => void {
+      watchListeners.add(listener);
+      return () => { watchListeners.delete(listener); };
     },
   };
   const inputDevices = reactive<AudioInputDevice[]>([]);
@@ -1216,6 +1229,11 @@ export function useVoiceWebSocket() {
       if (message) for (const listener of whiteboardListeners) listener(message);
       return;
     }
+    if (typeof rawType === "string" && rawType.startsWith("watch")) {
+      const message = parseWatchServerMessage(raw);
+      if (message) for (const listener of watchListeners) listener(message);
+      return;
+    }
     if (typeof rawType === "string" && rawType.startsWith("game")) {
       const message = parseGameServerMessage(raw);
       if (message) for (const listener of gameListeners) listener(message);
@@ -1719,6 +1737,7 @@ export function useVoiceWebSocket() {
     ...cameraApi,
     whiteboard,
     games,
+    watch: watchTogether,
     chatAccess,
     ws,
     state,

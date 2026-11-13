@@ -852,7 +852,8 @@ test("the distributable KAAK package provides full home and voice surfaces", asy
   assert.match(skin.css, /kaak-workspace\.desktop-room-settings"\]\s*\{[\s\S]*?display: flex;[\s\S]*?align-items: center;/, "the settings gear and label share a centered control row");
   assert.match(skin.css, /kaak-workspace\.voice-stage-invite"\]\s*\{[\s\S]*?width: 34px;[\s\S]*?height: 34px;/, "the invite action is an icon-only header control");
   assert.match(skin.css, /kaak-workspace\.voice-stage-whiteboard"\][^{]*\{[\s\S]*?width: 34px;[\s\S]*?height: 34px;/, "the whiteboard action matches the invite control");
-  assert.match(skin.css, /kaak-workspace\.voice-stage-game"\]\s*\{[\s\S]*?width: 34px;[\s\S]*?height: 34px;/, "the game action matches the whiteboard control");
+  assert.match(skin.css, /kaak-workspace\.voice-stage-game"\][^{]*\{[\s\S]*?width: 34px;[\s\S]*?height: 34px;/, "the game action matches the whiteboard control");
+  assert.match(skin.css, /kaak-workspace\.voice-stage-watch"\]\s*\{[\s\S]*?width: 34px;[\s\S]*?height: 34px;/, "the watch-together action matches the whiteboard control");
   assert.match(skin.css, /voice-card[\s\S]*?aspect-ratio: 1\.82;/);
   assert.match(skin.css, /\.voice-card\s*\{[\s\S]*?transition: border-color \.18s ease, background-color \.18s ease, box-shadow \.18s ease;/);
   assert.match(skin.css, /voice-card[\s\S]*?max-width: 480px;/);

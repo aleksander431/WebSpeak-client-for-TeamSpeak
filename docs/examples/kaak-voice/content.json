@@ -69,7 +69,8 @@
         "adminConsole": "管理控制台",
         "communityLinks": "社区与管理入口",
         "kaakOpenWhiteboard": "打开白板",
-        "kaakPeopleSuffix": "人"
+        "kaakPeopleSuffix": "人",
+        "kaakOpenWatch": "一起看视频"
       }
     },
     "en": {
@@ -140,7 +141,8 @@
         "adminConsole": "Admin console",
         "communityLinks": "Community and administration",
         "kaakOpenWhiteboard": "Open whiteboard",
-        "kaakPeopleSuffix": "people"
+        "kaakPeopleSuffix": "people",
+        "kaakOpenWatch": "Watch together"
       }
     },
     "de": {
@@ -211,7 +213,8 @@
         "adminConsole": "Administrationskonsole",
         "communityLinks": "Community und Verwaltung",
         "kaakOpenWhiteboard": "Whiteboard öffnen",
-        "kaakPeopleSuffix": "Personen"
+        "kaakPeopleSuffix": "Personen",
+        "kaakOpenWatch": "Zusammen schauen"
       }
     },
     "ru": {
@@ -282,7 +285,8 @@
         "adminConsole": "Панель администратора",
         "communityLinks": "Сообщество и управление",
         "kaakOpenWhiteboard": "Открыть доску",
-        "kaakPeopleSuffix": "чел."
+        "kaakPeopleSuffix": "чел.",
+        "kaakOpenWatch": "Смотреть вместе"
       }
     },
     "ja": {
@@ -353,7 +357,8 @@
         "adminConsole": "管理コンソール",
         "communityLinks": "コミュニティと管理",
         "kaakOpenWhiteboard": "ホワイトボードを開く",
-        "kaakPeopleSuffix": "人"
+        "kaakPeopleSuffix": "人",
+        "kaakOpenWatch": "一緒に見る"
       }
     }
   }

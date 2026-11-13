@@ -403,7 +403,8 @@
         "voice.whiteboard.open",
         "voice.whisper.status.read",
         "voice.whisper.control",
-        "voice.game.open"
+        "voice.game.open",
+        "voice.watch.open"
       ],
       "actions": {
         "switch-server": {
@@ -481,6 +482,10 @@
         },
         "open-game": {
           "type": "voice.openGame",
+          "args": {}
+        },
+        "open-watch": {
+          "type": "voice.openWatch",
           "args": {}
         }
       },
@@ -779,6 +784,23 @@
                 "children": [
                   {
                     "text": "{{skin.messages.kaakOpenWhiteboard}}"
+                  }
+                ]
+              },
+              {
+                "tag": "button",
+                "part": "mobile-room-watch",
+                "attributes": {
+                  "type": "button",
+                  "role": "menuitem",
+                  "aria-label": "{{skin.messages.kaakOpenWatch}}"
+                },
+                "events": {
+                  "click": "open-watch"
+                },
+                "children": [
+                  {
+                    "text": "{{skin.messages.kaakOpenWatch}}"
                   }
                 ]
               },
@@ -1305,6 +1327,54 @@
                                 "tag": "path",
                                 "attributes": {
                                   "d": "M12 8.2 16 15H8l4-6.8Z"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "tag": "button",
+                        "part": "voice-stage-watch",
+                        "className": "voice-stage-watch",
+                        "attributes": {
+                          "type": "button",
+                          "aria-label": "{{skin.messages.kaakOpenWatch}}",
+                          "title": "{{skin.messages.kaakOpenWatch}}"
+                        },
+                        "events": {
+                          "click": "open-watch"
+                        },
+                        "children": [
+                          {
+                            "tag": "svg",
+                            "className": "voice-stage-action-icon",
+                            "attributes": {
+                              "width": 18,
+                              "height": 18,
+                              "viewbox": "0 0 24 24",
+                              "fill": "none",
+                              "stroke": "currentColor",
+                              "stroke-width": 1.8,
+                              "stroke-linecap": "round",
+                              "stroke-linejoin": "round",
+                              "aria-hidden": "true"
+                            },
+                            "children": [
+                              {
+                                "tag": "rect",
+                                "attributes": {
+                                  "x": 3,
+                                  "y": 4.5,
+                                  "width": 18,
+                                  "height": 13,
+                                  "rx": 2
+                                }
+                              },
+                              {
+                                "tag": "path",
+                                "attributes": {
+                                  "d": "M10 8.5v6l5-3-5-3Z M8.5 21h7"
                                 }
                               }
                             ]

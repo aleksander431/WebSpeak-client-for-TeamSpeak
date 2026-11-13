@@ -4753,7 +4753,8 @@
 
 /* Whiteboard entry next to the invite link (same look). */
 [data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"],
-[data-ws-plugin-part="kaak-workspace.voice-stage-game"] {
+[data-ws-plugin-part="kaak-workspace.voice-stage-game"],
+[data-ws-plugin-part="kaak-workspace.voice-stage-watch"] {
   display: grid;
   flex: 0 0 34px;
   place-items: center;
@@ -4769,7 +4770,8 @@
 }
 
 [data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"] .voice-stage-action-icon,
-[data-ws-plugin-part="kaak-workspace.voice-stage-game"] .voice-stage-action-icon {
+[data-ws-plugin-part="kaak-workspace.voice-stage-game"] .voice-stage-action-icon,
+[data-ws-plugin-part="kaak-workspace.voice-stage-watch"] .voice-stage-action-icon {
   display: block;
   flex: 0 0 18px;
   width: 18px;
@@ -4780,7 +4782,9 @@
 [data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"]:hover,
 [data-ws-plugin-part="kaak-workspace.voice-stage-whiteboard"]:focus-visible,
 [data-ws-plugin-part="kaak-workspace.voice-stage-game"]:hover,
-[data-ws-plugin-part="kaak-workspace.voice-stage-game"]:focus-visible {
+[data-ws-plugin-part="kaak-workspace.voice-stage-game"]:focus-visible,
+[data-ws-plugin-part="kaak-workspace.voice-stage-watch"]:hover,
+[data-ws-plugin-part="kaak-workspace.voice-stage-watch"]:focus-visible {
   color: var(--skin-kaak-text);
   border-color: #5a7e35;
   background: #33363b;

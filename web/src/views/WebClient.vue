@@ -722,6 +722,17 @@
                       name="dice"
                       :size="14"
                     /> <span>{{ t("game") }}</span></button
+                  ><button
+                    v-if="voiceState.connected"
+                    type="button"
+                    :class="['whiteboard-open-button', { 'watch-live': watchClient.state.room }]"
+                    data-ws-part="voice.watch-open"
+                    :title="t('watchOpenHint')"
+                    @click="openWatch"
+                    ><Icon
+                      name="play"
+                      :size="14"
+                    /> <span>{{ t("watch") }}</span></button
                   ><span class="section-counter">{{
                   t("onlineShort", { count: currentMembers.length })
                 }}</span></span></div
@@ -1009,6 +1020,14 @@
       />
     </Teleport>
 
+    <WatchPanel
+      v-if="voiceState.connected"
+      ref="watchPanel"
+      :client="watchClient"
+      :t="t"
+      :self-name="nickname"
+    />
+
     <GamePanel
       v-if="gameClient.state.open"
       :client="gameClient"
@@ -1146,6 +1165,8 @@ import ScreenShareSettingsDialog from "../components/web-client/ScreenShareSetti
 import WhiteboardPanel from "../components/web-client/WhiteboardPanel.vue";
 import GamePanel from "../components/web-client/GamePanel.vue";
 import { GameClient } from "../game/game-client.js";
+import { WatchClient } from "../watch/watch-client.js";
+import WatchPanel from "../components/web-client/WatchPanel.vue";
 import { WhiteboardClient } from "../whiteboard/whiteboard-client.js";
 import { useDesktopBridge } from "../composables/useDesktopBridge.js";
 import { WEB_CLIENT_T, pageLanguage } from "../composables/useWebClientT.js";
@@ -1208,6 +1229,7 @@ const {
   state: voiceState,
   whiteboard: whiteboardTransport,
   games: gameTransport,
+  watch: watchTransport,
   serverInfo: voiceServerInfo,
   sessionEpoch,
   memberConversationKey,
@@ -1411,6 +1433,14 @@ function closeGame() {
   gameClient.close();
 }
 onUnmounted(() => gameClient.dispose());
+// Watching a video together: every connected page knows the channel's video and may join it.
+const watchClient = new WatchClient(watchTransport);
+const watchPanel = ref<InstanceType<typeof WatchPanel> | null>(null);
+watch(() => voiceState.connected, connected => watchClient.setConnected(connected), { immediate: true });
+function openWatch() {
+  if (voiceState.connected) watchPanel.value?.open();
+}
+onUnmounted(() => watchClient.dispose());
 const { panelOpen: performancePanelOpen } = performance;
 
 const query = new URLSearchParams(location.search);
@@ -2222,6 +2252,7 @@ const skinPluginActions = {
   "voice.stopScreenShare": () => { if (screenShareActive.value) stopScreenShare(); },
   "voice.openWhiteboard": () => { if (voiceState.connected) openWhiteboard(); },
   "voice.openGame": () => openGame(),
+  "voice.openWatch": () => openWatch(),
   "voice.toggleCamera": () => toggleCamera(),
   "voice.joinScreenShare": (args: Record<string, string | number | boolean>) => {
     if (!voiceState.connected || typeof args.streamId !== "string") return;

@@ -1581,6 +1581,12 @@
   border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
 }
 
+/* A video is playing together in this channel. */
+:deep(.whiteboard-open-button.watch-live) {
+  color: #e2504c;
+  border-color: color-mix(in srgb, #e2504c 45%, var(--border));
+}
+
 :deep(.voice-grid) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(142px, 1fr));

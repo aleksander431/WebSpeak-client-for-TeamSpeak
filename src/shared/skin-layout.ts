@@ -430,6 +430,12 @@ const PUBLIC_PART_IDS = new Set<string>([
   "voice.whiteboard.zoom",
   "voice.whiteboard-open",
   "voice.game-open",
+  "voice.watch-open",
+  "voice.watch",
+  "voice.watch.offer",
+  "voice.watch.player",
+  "voice.watch.controls",
+  "voice.watch.start",
   "voice.game",
   "voice.game.header",
   "voice.game.stage",
@@ -493,7 +499,7 @@ const ACTION_PART_IDS = new Set([
   "voice.favorite-servers.strip.server", "demo.voice-card", "home.identity-import.drop-zone",
   "voice.channel-group", "voice.member-row", "voice.server-switcher.trigger", "voice.server-switcher.item",
   "voice.channel-tree.expander", "voice.channel-tree.row", "demo.skin-switcher", "demo.language-switcher",
-  "voice.whiteboard-open", "voice.game-open", "voice.whiteboard.close", "voice.whiteboard.popout", "voice.self-avatar", "voice.member.avatar-edit", "voice.member.preview-toggle", "voice.member.camera", "voice.member.camera-toggle", "voice.mobile-camera-toggle", "voice.channel-tree.member-screen-share", "voice.member-row.screen-share", "home.server-preview.channel", "home.server-preview.toggle", "voice.avatar.close", "voice.avatar.choose", "voice.avatar.remove", "voice.avatar.cancel", "voice.avatar.save", "voice.whiteboard.theme", "voice.chat.attach", "voice.chat.attachment-image", "voice.chat.attachment-file",
+  "voice.whiteboard-open", "voice.game-open", "voice.watch-open", "voice.whiteboard.close", "voice.whiteboard.popout", "voice.self-avatar", "voice.member.avatar-edit", "voice.member.preview-toggle", "voice.member.camera", "voice.member.camera-toggle", "voice.mobile-camera-toggle", "voice.channel-tree.member-screen-share", "voice.member-row.screen-share", "home.server-preview.channel", "home.server-preview.toggle", "voice.avatar.close", "voice.avatar.choose", "voice.avatar.remove", "voice.avatar.cancel", "voice.avatar.save", "voice.whiteboard.theme", "voice.chat.attach", "voice.chat.attachment-image", "voice.chat.attachment-file",
   "voice.chat.code-copy", "voice.chat.reaction", "voice.chat.reply", "voice.chat.react", "voice.chat.search-toggle", "voice.chat.pinned-bar", "voice.chat.pinned-unpin", "voice.chat.pin", "voice.chat.image-viewer.previous", "voice.chat.image-viewer.next", "voice.screen-gallery.layout-focus", "voice.screen-gallery.layout-grid", "voice.screen-gallery.tile", "voice.screen-gallery.tile-audio", "voice.screen-gallery.tile-close", "voice.screen-gallery.tile-popout", "voice.screen-player.popout", "voice.chat.tab-close",
 ]);
 const INTERACTIVE_PART_IDS = new Set([
@@ -513,7 +519,7 @@ const INTERACTIVE_PART_IDS = new Set([
   "voice.audio-settings.device-select-trigger",
   "voice.screen-player.exit", "voice.screen-player.fullscreen", "demo.voice-card",
   "home.identity-import.drop-zone", "voice.channel-group", "voice.member-row", "demo.skin-switcher",
-  "demo.language-switcher", "voice.whiteboard-open", "voice.game-open", "voice.whiteboard.close", "voice.whiteboard.popout", "voice.self-avatar", "voice.member.avatar-edit", "voice.member.preview-toggle", "voice.member.camera", "voice.member.camera-toggle", "voice.mobile-camera-toggle", "voice.channel-tree.member-screen-share", "voice.member-row.screen-share", "home.server-preview.channel", "home.server-preview.toggle", "voice.avatar.close", "voice.avatar.choose", "voice.avatar.remove", "voice.avatar.cancel", "voice.avatar.save", "voice.whiteboard.theme", "voice.chat.attach", "voice.chat.attachment-image", "voice.chat.attachment-file",
+  "demo.language-switcher", "voice.whiteboard-open", "voice.game-open", "voice.watch-open", "voice.whiteboard.close", "voice.whiteboard.popout", "voice.self-avatar", "voice.member.avatar-edit", "voice.member.preview-toggle", "voice.member.camera", "voice.member.camera-toggle", "voice.mobile-camera-toggle", "voice.channel-tree.member-screen-share", "voice.member-row.screen-share", "home.server-preview.channel", "home.server-preview.toggle", "voice.avatar.close", "voice.avatar.choose", "voice.avatar.remove", "voice.avatar.cancel", "voice.avatar.save", "voice.whiteboard.theme", "voice.chat.attach", "voice.chat.attachment-image", "voice.chat.attachment-file",
   "voice.chat.code-copy", "voice.chat.reaction", "voice.chat.reply", "voice.chat.react", "voice.chat.search-toggle", "voice.chat.pinned-bar", "voice.chat.pinned-unpin", "voice.chat.pin", "voice.chat.image-viewer.previous", "voice.chat.image-viewer.next", "voice.screen-gallery.layout-focus", "voice.screen-gallery.layout-grid", "voice.screen-gallery.tile", "voice.screen-gallery.tile-audio", "voice.screen-gallery.tile-close", "voice.screen-gallery.tile-popout", "voice.screen-player.popout", "voice.chat.tab-close",
 ]);
 const IDENTITY_PART_IDS = new Set([

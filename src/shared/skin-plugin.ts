@@ -40,6 +40,7 @@ export const SKIN_PLUGIN_PERMISSIONS = Object.freeze({
   "voice.screenShare.control": Object.freeze({ policyVersion: 1, description: "Start or stop the user's screen share, or join/leave a visible share through the host." }),
   "voice.whiteboard.open": Object.freeze({ policyVersion: 1, description: "Open the host's shared whiteboard for the current channel; drawing happens in the trusted host panel." }),
   "voice.game.open": Object.freeze({ policyVersion: 1, description: "Open the host's channel game table (D&D); seats, dice and sheets live in the trusted host panel." }),
+  "voice.watch.open": Object.freeze({ policyVersion: 1, description: "Open the host's watch-together player for the channel's shared video, or its form to start one." }),
 } as const);
 
 export type SkinPluginPermission = keyof typeof SKIN_PLUGIN_PERMISSIONS;
@@ -132,7 +133,7 @@ export type SkinPluginAction =
   | "audio.toggleNoiseSuppression" | "audio.toggleAccompaniment"
   | "voice.connect" | "voice.disconnect" | "voice.setAway" | "voice.setWhisperActive"
   | "voice.startScreenShare" | "voice.stopScreenShare" | "voice.joinScreenShare" | "voice.leaveScreenShare"
-  | "voice.openWhiteboard" | "voice.toggleCamera" | "voice.openGame";
+  | "voice.openWhiteboard" | "voice.toggleCamera" | "voice.openGame" | "voice.openWatch";
 
 export interface SkinPluginActionDefinition {
   type: SkinPluginAction;
@@ -228,11 +229,11 @@ const PASSIVE_EVENTS = new Set<string>(["focus", "blur", "pointerenter", "pointe
 const ACTIONS = new Set<string>([
   "ui.setState", "ui.toggleState", "session.copyInviteLink", "voice.joinChannel", "favorites.switch", "quickServers.switch", "chat.sendMessage", "chat.togglePanel",
   "voice.toggleMicrophone", "voice.toggleOutputMute", "voice.setOutputVolume", "audio.openSettings", "audio.toggleNoiseSuppression", "audio.toggleAccompaniment", "voice.connect", "voice.disconnect", "voice.setAway", "voice.setWhisperActive",
-  "voice.startScreenShare", "voice.stopScreenShare", "voice.joinScreenShare", "voice.leaveScreenShare", "voice.openWhiteboard", "voice.toggleCamera", "voice.openGame",
+  "voice.startScreenShare", "voice.stopScreenShare", "voice.joinScreenShare", "voice.leaveScreenShare", "voice.openWhiteboard", "voice.toggleCamera", "voice.openGame", "voice.openWatch",
 ]);
 const V3_ACTIONS = new Set<string>([
   "ui.toggleState", "session.copyInviteLink", "chat.togglePanel", "voice.toggleMicrophone", "voice.toggleOutputMute", "voice.setOutputVolume", "audio.openSettings", "audio.toggleNoiseSuppression", "audio.toggleAccompaniment", "voice.connect", "voice.disconnect", "voice.setAway",
-  "voice.setWhisperActive", "voice.startScreenShare", "voice.stopScreenShare", "voice.joinScreenShare", "voice.leaveScreenShare", "voice.openWhiteboard", "voice.toggleCamera", "voice.openGame",
+  "voice.setWhisperActive", "voice.startScreenShare", "voice.stopScreenShare", "voice.joinScreenShare", "voice.leaveScreenShare", "voice.openWhiteboard", "voice.toggleCamera", "voice.openGame", "voice.openWatch",
 ]);
 const PERMISSIONS = new Set<string>(Object.keys(SKIN_PLUGIN_PERMISSIONS));
 const HOST_WIDGETS = new Set<string>(SKIN_PLUGIN_HOST_WIDGETS);
@@ -262,6 +263,7 @@ const ACTION_ARGS: Record<SkinPluginAction, ReadonlySet<string>> = {
   "voice.leaveScreenShare": new Set([]),
   "voice.openWhiteboard": new Set([]),
   "voice.openGame": new Set([]),
+  "voice.openWatch": new Set([]),
 };
 const ACTION_PERMISSION: Record<SkinPluginAction, SkinPluginPermission | null> = {
   "ui.setState": null,
@@ -289,6 +291,7 @@ const ACTION_PERMISSION: Record<SkinPluginAction, SkinPluginPermission | null> =
   "voice.leaveScreenShare": "voice.screenShare.control",
   "voice.openWhiteboard": "voice.whiteboard.open",
   "voice.openGame": "voice.game.open",
+  "voice.openWatch": "voice.watch.open",
 };
 export const SKIN_PLUGIN_ACTION_PERMISSIONS: readonly SkinPluginPermission[] = Object.freeze([...new Set(
   Object.values(ACTION_PERMISSION).filter((permission): permission is SkinPluginPermission => permission !== null),
