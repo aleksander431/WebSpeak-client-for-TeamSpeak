@@ -185,6 +185,19 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v1.0.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.0) · 2026-11-13
+
+- **D&D am Kanaltisch** (nur am Computer): Plätze, faire Würfe auf dem Server, Heldenbögen und Heldenbaukasten, Szenen und taktische Karten mit Nebel, Marker und Pings, Initiative und Züge, Angriffe und Schaden mit einem Klick, Zustände, Ressourcen und Rasten, Stufen, Erfahrung, Inventar und Münzen, Heldentresor, gespeicherte Tische, Erzählung, Szenenmusik (Bibliothek mit 24 neuen Loops), vorbereitete Begegnungen, Improvisationswerkzeuge, Regelhilfe, Gruppentagebuch und ein Einführungsabenteuer.
+- **Abenteuer-Editor**: Freigabelinks, Bildbibliothek (NSCs, Karten in vielen Größen, Monster, Gegenstände, Porträts), Beute in Szenen und Probespielen eines Entwurfs ohne Veröffentlichung. Im Admin-Bereich lassen sich alle D&D-Daten sichern und wiederherstellen.
+- **Kameras**: Kamerabild direkt in der Mitgliedskarte, neben der Bildschirmfreigabe.
+- **Gemeinsam schauen**: Ein YouTube-Video, ein Link auf eine Videodatei oder ein Video aus dem Chat läuft synchron für den ganzen Kanal — Pause, Spulen und Videowechsel gelten für alle. Schwebendes Fenster, eine Warteschlange, die von selbst weiterspielt, und eine Schaltfläche „Gemeinsam schauen“ unter Videolinks im Chat.
+- **Chatbefehle**: `/roll 2d6+3`, `/coin`, `/pick Sascha, Mirra`, `/timer 5m Pause`. Der Server würfelt, das Ergebnis ist fair und für alle sichtbar, auch im normalen TeamSpeak. `/help` zeigt die Befehle.
+- **Online-Statistik** im Admin-Bereich: Personen online im Zeitverlauf, Stoßzeiten, wer am häufigsten online ist, und ein „Monatsrückblick“ (Nachteule, Frühaufsteher, Stammgäste, Spitze, Neue), der in den Chat kopiert werden kann.
+- **Identität**: Alle Geräte und Browser eines passwortgeschützten Nicknamens treten mit derselben TeamSpeak-Identität bei; die gemerkte Identität übersteht das Neuladen der Seite, und der eigene Avatar wird beim erneuten Verbinden wiederhergestellt, auch wenn der Server die Datei verloren hat.
+- Privatchats: Tabs lassen sich bis zur nächsten Nachricht schließen; ein Chat mit einem Mitglied ohne UID wird per Nickname mit seinem Verlauf zusammengeführt.
+- Desktop-Client (neue App-Version nötig): Mitglieder, die ihren Bildschirm teilen, bekommen im Overlay ein Symbol; das Overlay kann mittig an jeder Bildschirmseite stehen.
+- Behoben: Das Raster der Bildauswahl im Editor ließ sich nicht scrollen.
+
 ### [v0.5.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.2) · 2026-11-09
 
 - Anmeldeseite: Browser, die beitreten dürfen (freigegebene Geräte, wenn die Freigabe aktiv ist), sehen, wer gerade in welchen Kanälen auf dem Server ist; ein Klick auf einen Kanal trägt ihn ins Kanalfeld ein. Dieselbe Liste steht in einem getrennten Raum unter „Erneut verbinden“; dort verbindet ein Klick direkt in diesen Kanal. Die Liste kommt von einem verbundenen WebSpeak-Nutzer oder, wenn niemand verbunden ist, über den optionalen ServerQuery-Zugang im Admin-Bereich.

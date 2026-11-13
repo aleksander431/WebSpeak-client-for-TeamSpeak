@@ -195,6 +195,19 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
+### [v1.0.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.0) · 2026-11-13
+
+- **D&D at the channel table** (desktop only): seats, fair server-side dice, hero sheets and a hero builder, scenes and tactical maps with fog, tokens and pings, initiative and turns, one-click attacks and damage, conditions, resources and rests, levels, experience, inventory and coins, a hero vault, saved tables, narration, scene music (a library of 24 new loops), prepared encounters, improvisation tools, rules help, a party journal and a tutorial adventure.
+- **Adventure editor**: approval links, a picture library (NPCs, maps in many sizes, monsters, items, portraits), scene loot, and playtesting a draft without publishing it. The admin panel can back up and restore all D&D data.
+- **Cameras**: camera video shows right in the member card, alongside screen sharing.
+- **Watch together**: a YouTube video, a video file link or a video from the chat plays in sync for the whole channel — pause, seek and changing the video happen for everyone. A floating window, a queue that plays on by itself, and a "Watch together" button under video links in the chat.
+- **Chat commands**: `/roll 2d6+3`, `/coin`, `/pick Sasha, Mirra`, `/timer 5m break`. The server rolls the dice, so results are fair and everyone sees them, even in the regular TeamSpeak client. `/help` lists the commands.
+- **Online statistics** in the admin panel: people online over time, busy hours, who is online most, and a "month in review" (night owl, early bird, regulars, peak, newcomers) that can be copied into the chat.
+- **Identity**: every device and browser of a password-protected nickname joins with the same TeamSpeak identity; the remembered identity survives page reloads, and your own avatar is restored on reconnect even when the server lost the file.
+- Private chats: tabs can be closed until their next message; a chat with a member without a UID is merged into its history by nickname.
+- Desktop client (needs the new app version): members who share their screen get a badge in the overlay; the overlay can sit at the middle of any side of the screen.
+- Fix: the editor's picture picker grid did not scroll.
+
 ### [v0.5.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v0.5.2) · 2026-11-09
 
 - Join page: browsers that may join (approved devices, when approval is on) see who is on the server now, by channel; a click on a channel puts it into the channel field. The same list appears under "Reconnect now" in a disconnected room, where a click rejoins straight into that channel. The list comes from a connected WebSpeak user or, when nobody is connected, from the optional ServerQuery access in the admin panel.

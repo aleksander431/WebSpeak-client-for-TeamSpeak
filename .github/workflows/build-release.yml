@@ -395,13 +395,19 @@ jobs:
           import { join } from 'node:path';
           const tag = process.env.RELEASE_REF;
           const languages = [['简体中文', 'zh-CN'], ['English', 'en'], ['Deutsch', 'de'], ['Русский', 'ru'], ['日本語', 'ja']];
-          const sections = languages.map(([label, locale]) => {
+          // A language without notes for this tag falls back to the English ones,
+          // then to a plain line, so a missing translation never blocks a release.
+          const notesFor = (locale) => {
             const source = readFileSync(`docs/README.${locale}.md`, 'utf8');
             const start = source.indexOf(`### [${tag}](`);
-            if (start < 0) throw new Error(`Missing ${tag} release notes for ${locale}`);
+            if (start < 0) return null;
             const remaining = source.slice(start);
             const next = remaining.indexOf('\n### [v', 1);
-            const notes = (next < 0 ? remaining : remaining.slice(0, next)).trim();
+            return (next < 0 ? remaining : remaining.slice(0, next)).trim();
+          };
+          const fallback = notesFor('en') ?? `### ${tag}`;
+          const sections = languages.map(([label, locale]) => {
+            const notes = notesFor(locale) ?? (console.log(`::warning::No ${tag} release notes for ${locale}`), fallback);
             return `## ${label}\n\n${notes}\n\n[Project documentation](https://github.com/${process.env.GITHUB_REPOSITORY}/blob/${tag}/docs/README.${locale}.md)`;
           });
           writeFileSync(join(process.env.RUNNER_TEMP, 'webspeak-release-notes.md'), sections.join('\n\n---\n\n') + '\n');
