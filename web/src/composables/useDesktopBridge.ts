@@ -24,7 +24,7 @@ export interface DesktopHost {
 export interface DesktopOverlayRoster {
   connected: boolean;
   channel: string;
-  members: { id: number; name: string; muted: boolean; self: boolean; avatar?: string }[];
+  members: { id: number; name: string; muted: boolean; self: boolean; streaming?: boolean; avatar?: string }[];
 }
 
 export interface DesktopState {

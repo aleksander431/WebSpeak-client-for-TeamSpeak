@@ -1715,6 +1715,7 @@ useDesktopBridge({
       return {
         id: member.id, name: member.nickname, self,
         muted: self ? microphoneMuted.value || outputMuted.value : Boolean(member.inputMuted || member.outputMuted),
+        ...(isMemberSharingScreen(member) ? { streaming: true } : {}),
         ...(member.avatar?.startsWith("data:image/") ? { avatar: member.avatar } : {}),
       };
     }) : [],

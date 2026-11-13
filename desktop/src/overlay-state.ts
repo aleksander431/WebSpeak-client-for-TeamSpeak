@@ -12,6 +12,8 @@ export interface OverlayMember {
   /** Microphone or sound muted. */
   muted: boolean;
   self: boolean;
+  /** Sharing a screen or window right now. */
+  streaming?: boolean;
   /** data:image URL, when TeamSpeak has an avatar for the member. */
   avatar?: string;
 }
@@ -39,7 +41,7 @@ export function parseOverlayRoster(value: unknown): OverlayRoster | null {
     if (!clientId(member.id) || typeof member.name !== "string") continue;
     const avatar = typeof member.avatar === "string" && member.avatar.length <= MAX_AVATAR_LENGTH
       && /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(member.avatar) ? member.avatar : undefined;
-    members.push({ id: member.id, name: member.name.slice(0, 64), muted: member.muted === true, self: member.self === true, ...(avatar ? { avatar } : {}) });
+    members.push({ id: member.id, name: member.name.slice(0, 64), muted: member.muted === true, self: member.self === true, ...(member.streaming === true ? { streaming: true } : {}), ...(avatar ? { avatar } : {}) });
   }
   return { connected: input.connected, channel: typeof input.channel === "string" ? input.channel.slice(0, 128) : "", members };
 }

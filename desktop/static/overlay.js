@@ -11,6 +11,8 @@
   const WIDTH = 270;
   const MUTED_ICON = '<svg class="muted-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l16 16M9 9v3a3 3 0 0 0 5 2.2M15 9.3V5a3 3 0 0 0-5.7-1.3M19 11a7 7 0 0 1-1.3 4M5 11a7 7 0 0 0 11.2 5.6M12 18v3"/></svg>';
 
+  const LIVE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="13" rx="2"/><path d="M8 21h8M12 17.5V21"/><circle cx="12" cy="11" r="2.2" fill="currentColor" stroke="none"/></svg>';
+
   function colorOf(name) {
     let hash = 0;
     for (const char of name) hash = (hash * 31 + char.codePointAt(0)) | 0;
@@ -28,11 +30,15 @@
       name.className = "name";
       const muted = document.createElement("span");
       muted.innerHTML = MUTED_ICON;
-      item.append(avatar, name, muted);
-      entry = { item, avatar, name, muted, key: "" };
+      const live = document.createElement("span");
+      live.className = "live";
+      live.title = "LIVE";
+      live.innerHTML = LIVE_ICON;
+      item.append(avatar, name, live, muted);
+      entry = { item, avatar, name, live, muted, key: "" };
       rows.set(member.id, entry);
     }
-    const key = JSON.stringify([member.name, member.avatar || "", member.muted]);
+    const key = JSON.stringify([member.name, member.avatar || "", member.muted, member.streaming === true]);
     if (entry.key !== key) {
       entry.key = key;
       entry.name.textContent = member.name;
@@ -40,6 +46,7 @@
       if (member.avatar) { entry.avatar.style.backgroundImage = `url("${member.avatar}")`; entry.avatar.textContent = ""; }
       else { entry.avatar.style.backgroundImage = ""; entry.avatar.textContent = Array.from(member.name.trim())[0]?.toUpperCase() || "?"; }
       entry.muted.hidden = !member.muted;
+      entry.live.hidden = member.streaming !== true;
     }
     entry.item.classList.toggle("speaking", speaking.has(member.id));
     return entry.item;

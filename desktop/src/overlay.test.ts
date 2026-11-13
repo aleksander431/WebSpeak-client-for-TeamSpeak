@@ -41,12 +41,12 @@ test("page reports are validated before they reach the overlay", () => {
   const roster = parseOverlayRoster({ connected: true, channel: "Dota", members: [
     { id: 5, name: "Alex", muted: true, self: true, avatar },
     { id: 0, name: "bad id" },
-    { id: 6, name: "Ivan", avatar: "javascript:alert(1)" },
-    { id: 7, name: "x".repeat(100) },
+    { id: 6, name: "Ivan", avatar: "javascript:alert(1)", streaming: true },
+    { id: 7, name: "x".repeat(100), streaming: "yes" },
   ] });
   assert.deepEqual(roster, { connected: true, channel: "Dota", members: [
     { id: 5, name: "Alex", muted: true, self: true, avatar },
-    { id: 6, name: "Ivan", muted: false, self: false },
+    { id: 6, name: "Ivan", muted: false, self: false, streaming: true },
     { id: 7, name: "x".repeat(64), muted: false, self: false },
   ] });
   assert.equal(parseOverlayRoster({ members: [] }), null);
