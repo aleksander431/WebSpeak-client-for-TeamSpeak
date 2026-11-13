@@ -24,7 +24,21 @@ export interface WatchRoomView {
   viewers: string[];
   /** Changes with every new video, so a late answer for an old one is ignored. */
   id: string;
+  /** What plays next, in order. */
+  queue: WatchQueueItem[];
+  /** The video came from the queue, so those watching keep watching. */
+  continued: boolean;
 }
+
+export interface WatchQueueItem {
+  key: string;
+  media: WatchMedia;
+  addedBy: string;
+  /** Seconds to start at (a YouTube `t=`). */
+  start: number;
+}
+
+export const WATCH_QUEUE_MAX = 30;
 
 export type WatchAction = "start" | "play" | "pause" | "seek";
 
@@ -35,7 +49,11 @@ export type WatchClientMessage =
   | { type: "watchControl"; id: string; action: "play" | "pause" | "seek"; position: number }
   | { type: "watchMeta"; id: string; title: string; duration: number }
   | { type: "watchView"; watching: boolean }
-  | { type: "watchStop" };
+  | { type: "watchStop" }
+  | { type: "watchQueue"; url: string }
+  | { type: "watchQueueRemove"; key: string }
+  | { type: "watchNext"; id: string }
+  | { type: "watchEnded"; id: string };
 
 export type WatchServerMessage =
   | { type: "watchState"; room: WatchRoomView | null }
@@ -100,6 +118,17 @@ export function parseWatchClientMessage(value: unknown): WatchClientMessage | { 
     case "watchOpen": return { type: "watchOpen" };
     case "watchClose": return { type: "watchClose" };
     case "watchStop": return { type: "watchStop" };
+    case "watchQueue":
+      return typeof value.url === "string" && value.url.length <= WATCH_URL_MAX_LENGTH ? { type: "watchQueue", url: value.url } : invalid;
+    case "watchQueueRemove": {
+      const key = shortId(value.key);
+      return key ? { type: "watchQueueRemove", key } : invalid;
+    }
+    case "watchNext":
+    case "watchEnded": {
+      const id = shortId(value.id);
+      return id ? { type: value.type, id } : invalid;
+    }
     case "watchStart": {
       if (typeof value.url !== "string" || value.url.length > WATCH_URL_MAX_LENGTH) return invalid;
       const start = value.position === undefined ? undefined : position(value.position);
@@ -151,11 +180,31 @@ export function parseWatchServerMessage(value: unknown): WatchServerMessage | nu
   if (!media || typeof room.id !== "string" || typeof room.title !== "string" || typeof room.startedBy !== "string" || typeof room.playing !== "boolean"
     || typeof room.position !== "number" || typeof room.duration !== "number" || !last || typeof last.by !== "string"
     || !["start", "play", "pause", "seek"].includes(String(last.action)) || typeof last.at !== "number" || !Array.isArray(room.viewers)) return null;
+  const queue: WatchQueueItem[] = [];
+  for (const item of Array.isArray(room.queue) ? room.queue.slice(0, WATCH_QUEUE_MAX) : []) {
+    if (!isRecord(item) || typeof item.key !== "string" || typeof item.addedBy !== "string") continue;
+    const queued = parseMedia(item.media);
+    if (queued) queue.push({ key: item.key, media: queued, addedBy: item.addedBy, start: typeof item.start === "number" ? item.start : 0 });
+  }
   return {
     type: "watchState",
     room: {
       id: room.id, media, title: room.title, duration: room.duration, startedBy: room.startedBy, playing: room.playing, position: room.position,
       last: { by: last.by, action: last.action as WatchAction, at: last.at }, viewers: room.viewers.filter((name): name is string => typeof name === "string"),
+      queue, continued: room.continued === true,
     },
   };
+}
+
+/** The first link in a chat message that can be watched together, or null. */
+export function watchableLink(message: string): string | null {
+  for (const match of message.matchAll(/\[URL=([^\]]+)\]([^[]*)\[\/URL\]|https?:\/\/[^\s<>"\[\]]+/gi)) {
+    const url = (match[1] ?? match[0]).replace(/[),.!?;:]+$/, "");
+    const parsed = parseWatchUrl(url);
+    if (!parsed) continue;
+    // A chat attachment counts only when its name says it is a video, not a picture or a document.
+    if (/\/api\/chat\/files\//.test(url) && !VIDEO_FILE.test((match[2] ?? "").trim())) continue;
+    return url;
+  }
+  return null;
 }

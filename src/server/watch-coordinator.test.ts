@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseWatchClientMessage, parseWatchUrl, watchPositionAfter, type WatchServerMessage } from "../shared/watch-together.js";
+import { parseWatchClientMessage, parseWatchUrl, watchableLink, watchPositionAfter, type WatchServerMessage } from "../shared/watch-together.js";
 import { WATCH_IDLE_MS, WatchCoordinator } from "./watch-coordinator.js";
 
 test("video links: YouTube in its usual forms with start times, direct files and chat attachments", () => {
@@ -18,6 +18,10 @@ test("video links: YouTube in its usual forms with start times, direct files and
   assert.equal(yt("javascript:alert(1)//x.mp4"), null);
   assert.equal(yt("ftp://example.org/a.mp4"), null);
   assert.equal(yt("https://user:pass@example.org/a.mp4"), null);
+  assert.equal(watchableLink("глянь https://example.org/x и https://youtu.be/dQw4w9WgXcQ!"), "https://youtu.be/dQw4w9WgXcQ");
+  assert.equal(watchableLink("[URL=https://talk.example.org/api/chat/files/0123456789abcdef0123456789abcdef]кот.mp4[/URL]"), "https://talk.example.org/api/chat/files/0123456789abcdef0123456789abcdef");
+  assert.equal(watchableLink("просто текст https://example.org/page"), null);
+  assert.equal(watchableLink("[URL=https://talk.example.org/api/chat/files/0123456789abcdef0123456789abcdef]кот.png[/URL]"), null);
 });
 
 test("watch frames are checked before they reach the coordinator", () => {
@@ -97,4 +101,63 @@ test("a room nobody is in is forgotten after a while", () => {
   now += WATCH_IDLE_MS + 1;
   watch.handleMessage({ entryId: "b", nickname: "Мирра", roomKey: "srv#9" }, { type: "watchOpen" });
   assert.equal(watch.roomCount(), 0);
+});
+
+test("a queue: added from anywhere, removed, skipped to and played on when a video ends", () => {
+  let now = 0;
+  let ids = 0;
+  const sent: Array<{ to: string; message: WatchServerMessage }> = [];
+  const watch = new WatchCoordinator({ send: (to, message) => sent.push({ to, message }), now: () => now, randomId: () => `k${++ids}` });
+  const sasha = { entryId: "a", nickname: "Саша", roomKey: "srv#1" };
+  const mirra = { entryId: "b", nickname: "Мирра", roomKey: "srv#1" };
+  const room = (to: string) => { const message = [...sent].reverse().find(item => item.to === to)?.message; return message?.type === "watchState" ? message.room : undefined; };
+  for (const who of [sasha, mirra]) watch.handleMessage(who, { type: "watchOpen" });
+
+  // Queueing with nothing playing starts the video.
+  watch.handleMessage(sasha, { type: "watchQueue", url: "https://youtu.be/dQw4w9WgXcQ" });
+  assert.equal(room("b")?.media.kind, "youtube");
+  assert.deepEqual(room("b")?.queue, []);
+  const first = room("b")!.id;
+  watch.handleMessage(mirra, { type: "watchView", watching: true });
+
+  watch.handleMessage(mirra, { type: "watchQueue", url: "https://example.org/a.mp4" });
+  watch.handleMessage(sasha, { type: "watchQueue", url: "https://youtu.be/aaaaaaaaaaa?t=10" });
+  watch.handleMessage(sasha, { type: "watchQueue", url: "https://example.org/page" });
+  assert.deepEqual([...sent].reverse().find(item => item.to === "a")?.message, { type: "watchError", code: "WATCH_BAD_URL" });
+  assert.deepEqual(room("b")?.queue.map(item => [item.addedBy, item.media.kind, item.start]), [["Мирра", "file", 0], ["Саша", "youtube", 10]]);
+
+  // Skipping plays the next one; those watching keep watching.
+  watch.handleMessage(mirra, { type: "watchNext", id: first });
+  const second = room("a")!;
+  assert.notEqual(second.id, first);
+  assert.equal(second.media.kind, "file");
+  assert.equal(second.startedBy, "Мирра");
+  assert.equal(second.continued, true);
+  assert.deepEqual(second.viewers, ["Мирра", "Саша"]);
+  watch.handleMessage(mirra, { type: "watchNext", id: first });
+  assert.equal(room("a")?.id, second.id, "a second skip of the same video is ignored");
+
+  // An end report before the shared clock reaches the end does nothing.
+  watch.handleMessage(sasha, { type: "watchMeta", id: second.id, title: "A", duration: 60 });
+  now += 30_000;
+  watch.handleMessage(sasha, { type: "watchEnded", id: second.id });
+  assert.equal(room("a")?.id, second.id);
+  now += 31_000;
+  watch.handleMessage(sasha, { type: "watchEnded", id: second.id });
+  const third = room("a")!;
+  assert.equal(third.media.kind, "youtube");
+  assert.equal(third.position, 10);
+  assert.deepEqual(third.queue, []);
+
+  watch.handleMessage(mirra, { type: "watchQueue", url: "https://example.org/b.webm" });
+  const key = room("a")!.queue[0]!.key;
+  watch.handleMessage(sasha, { type: "watchQueueRemove", key });
+  assert.deepEqual(room("a")?.queue, []);
+
+  // The last video ending stops on its last frame.
+  watch.handleMessage(sasha, { type: "watchMeta", id: third.id, title: "B", duration: 20 });
+  now += 20_000;
+  watch.handleMessage(mirra, { type: "watchEnded", id: third.id });
+  assert.equal(room("a")?.playing, false);
+  assert.equal(room("a")?.position, 20);
 });

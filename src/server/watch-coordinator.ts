@@ -1,4 +1,4 @@
-import { parseWatchUrl, watchPositionAfter, type WatchAction, type WatchClientMessage, type WatchMedia, type WatchRoomView, type WatchServerMessage } from "../shared/watch-together.js";
+import { parseWatchUrl, watchPositionAfter, WATCH_QUEUE_MAX, type WatchQueueItem, type WatchAction, type WatchClientMessage, type WatchMedia, type WatchRoomView, type WatchServerMessage } from "../shared/watch-together.js";
 
 /*
  * One shared player per channel (`<target key>#<channel id>`). The gateway
@@ -33,6 +33,8 @@ interface Room {
   position: number;
   updatedAt: number;
   last: { by: string; action: WatchAction; at: number };
+  queue: WatchQueueItem[];
+  continued: boolean;
 }
 
 interface Member { roomKey: string; nickname: string; watching: boolean }
@@ -125,6 +127,7 @@ export class WatchCoordinator {
         this.rooms.set(key, {
           id: this.randomId(), media: parsed.media, title: "", duration: 0, startedBy: nickname, playing: true,
           position: message.position ?? parsed.start, updatedAt: now, last: { by: nickname, action: "start", at: now },
+          queue: room?.queue ?? [], continued: false,
         });
         // Everyone else is offered the new video rather than pulled into it.
         for (const other of this.members.values()) if (other.roomKey === key) other.watching = other === member;
@@ -150,6 +153,44 @@ export class WatchCoordinator {
         if (member.watching === message.watching) return null;
         member.watching = message.watching;
         break;
+      case "watchQueue": {
+        const parsed = parseWatchUrl(message.url);
+        if (!parsed) return "WATCH_BAD_URL";
+        // With nothing playing, a queued video simply starts.
+        if (!room) return this.apply(member, nickname, { type: "watchStart", url: message.url });
+        if (room.queue.length >= WATCH_QUEUE_MAX) return "WATCH_QUEUE_FULL";
+        room.queue.push({ key: this.randomId(), media: parsed.media, addedBy: nickname, start: parsed.start });
+        break;
+      }
+      case "watchQueueRemove": {
+        if (!room) return null;
+        const before = room.queue.length;
+        room.queue = room.queue.filter(item => item.key !== message.key);
+        if (room.queue.length === before) return null;
+        break;
+      }
+      case "watchNext":
+      case "watchEnded": {
+        if (!room || room.id !== message.id) return null;
+        if (message.type === "watchEnded") {
+          // Every viewer reports the end; the first report that fits the shared clock counts.
+          const at = watchPositionAfter(room, now - room.updatedAt);
+          if (room.duration > 0 && at < room.duration - 5) return null;
+        }
+        const next = room.queue.shift();
+        if (!next) {
+          if (message.type === "watchNext") return null;
+          room.playing = false;
+          room.position = room.duration || watchPositionAfter(room, now - room.updatedAt);
+          room.updatedAt = now;
+          break;
+        }
+        Object.assign(room, {
+          id: this.randomId(), media: next.media, title: "", duration: 0, startedBy: next.addedBy, playing: true,
+          position: next.start, updatedAt: now, last: { by: message.type === "watchNext" ? nickname : next.addedBy, action: "start", at: now }, continued: true,
+        });
+        break;
+      }
       case "watchStop":
         if (!room) return null;
         this.rooms.delete(key);
@@ -170,6 +211,7 @@ export class WatchCoordinator {
       id: room.id, media: room.media, title: room.title, duration: room.duration, startedBy: room.startedBy,
       playing: room.playing, position: watchPositionAfter(room, this.now() - room.updatedAt), last: room.last,
       viewers: [...new Set(viewers)].sort((a, b) => a.localeCompare(b)),
+      queue: room.queue.map(item => ({ ...item })), continued: room.continued,
     };
   }
 

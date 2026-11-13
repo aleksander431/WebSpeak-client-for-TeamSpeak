@@ -13,7 +13,7 @@ function harness() {
 
 const room = (id: string, extra: Partial<WatchRoomView> = {}): WatchRoomView => ({
   id, media: { kind: "youtube", id: "dQw4w9WgXcQ", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }, title: "", duration: 0, startedBy: "Саша",
-  playing: true, position: 10, last: { by: "Саша", action: "start", at: 1 }, viewers: ["Саша"], ...extra,
+  playing: true, position: 10, last: { by: "Саша", action: "start", at: 1 }, viewers: ["Саша"], queue: [], continued: false, ...extra,
 });
 
 test("the page follows the shared clock and only opens the player for its own video", () => {
@@ -48,6 +48,17 @@ test("the page follows the shared clock and only opens the player for its own vi
   receive({ type: "watchError", code: "WATCH_BAD_URL" });
   receive({ type: "watchState", room: room("v4") });
   assert.equal(client.state.watching, false);
+
+  // The next video from the queue keeps those watching in.
+  client.setWatching(true);
+  receive({ type: "watchState", room: room("v5", { continued: true }) });
+  assert.equal(client.state.watching, true);
+  client.queue("https://youtu.be/aaaaaaaaaaa");
+  assert.deepEqual(sent.at(-1), { type: "watchQueue", url: "https://youtu.be/aaaaaaaaaaa" });
+  client.ended("old");
+  assert.notEqual(sent.at(-1)?.type, "watchEnded", "a stale end is not reported");
+  client.ended("v5");
+  assert.deepEqual(sent.at(-1), { type: "watchEnded", id: "v5" });
 
   receive({ type: "watchState", room: null });
   assert.equal(client.state.room, null);

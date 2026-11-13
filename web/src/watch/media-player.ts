@@ -12,6 +12,8 @@ export interface MediaPlayerEvents {
   /** The browser refused to start playback without a click. */
   onBlocked(): void;
   onError(code: string): void;
+  /** Played to the end. */
+  onEnded(): void;
 }
 
 export interface MediaPlayer {
@@ -74,6 +76,7 @@ const YT_PAUSED = 2;
 const YT_BUFFERING = 3;
 const YT_UNSTARTED = -1;
 const YT_CUED = 5;
+const YT_ENDED = 0;
 
 async function youtubePlayer(host: HTMLElement, id: string, start: number, events: MediaPlayerEvents): Promise<MediaPlayer> {
   const api = await loadYouTubeApi();
@@ -100,6 +103,7 @@ async function youtubePlayer(host: HTMLElement, id: string, start: number, event
         onReady: event => { player = event.target; applyVolume(); resolve(); },
         onStateChange: event => {
           state = event.data;
+          if (state === YT_ENDED) { wantPlay = false; events.onEnded(); }
           if (state === YT_PLAYING && !metaSent && player) {
             metaSent = true;
             events.onMeta(player.getVideoData?.().title ?? "", player.getDuration() || 0);
@@ -157,6 +161,7 @@ function filePlayer(host: HTMLElement, url: string, start: number, events: Media
     events.onMeta(/\.[a-z0-9]{2,4}$/i.test(name) ? name : "", Number.isFinite(video.duration) ? video.duration : 0);
   }, { once: true });
   video.addEventListener("error", () => events.onError("WATCH_VIDEO_UNAVAILABLE"));
+  video.addEventListener("ended", () => events.onEnded());
   return {
     play() {
       video.play().catch((error: unknown) => {

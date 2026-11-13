@@ -301,6 +301,17 @@
                 :self-name="selfName"
                 @media-loaded="scrollIfFollowing"
             /></div
+            ><button
+              v-if="watchLink && watchableOf(message)"
+              type="button"
+              class="chat-watch-link"
+              data-ws-part="voice.chat.watch-link"
+              :title="t('watchChatLinkHint')"
+              @click="watchLink(watchableOf(message)!)"
+              ><Icon
+                name="play"
+                :size="12"
+              /> <span>{{ t("watchChatLink") }}</span></button
             ><div
               v-if="reactionsOf(message).length"
               class="chat-reactions"
@@ -559,6 +570,7 @@ import ChatMessageContent from "./ChatMessageContent.vue";
 import { formatBytes } from "../../../../src/shared/chat-storage.js";
 import { CHAT_MESSAGE_MAX_BYTES, chatPlainText, parseChatMarkup } from "../../../../src/shared/chat-markup.js";
 import { CHAT_REACTION_EMOJI } from "../../../../src/shared/chat-reactions.js";
+import { watchableLink } from "../../../../src/shared/watch-together.js";
 import type { useWebClientChat } from "../../composables/useWebClientChat.js";
 import type { ChatMessage, ServerEvent } from "../../composables/useVoiceWebSocket.js";
 
@@ -584,7 +596,10 @@ const props = defineProps<{
   avatarInitial: (name: string) => string;
   messageAvatar: (message: ChatMessage) => string;
   formatTime: (timestamp: number) => string;
+  /** Plays a video link for the channel (or queues it); without it no button is shown. */
+  watchLink?: (url: string) => void;
 }>();
+const watchableOf = (message: ChatMessage) => watchableLink(message.message);
 
 // The page owns one stable controller across room and mobile view changes.
 // Keep its list ref attached to the rendered scroller, including unmount cleanup.

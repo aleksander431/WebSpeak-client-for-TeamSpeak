@@ -9,7 +9,7 @@
     <span class="wt-offer-icon" aria-hidden="true">▶</span>
     <span class="wt-offer-text">
       <strong>{{ room.title || t("watchUntitled") }}</strong>
-      <small>{{ t("watchFrom", { name: room.startedBy }) }}<template v-if="room.viewers.length"> · {{ t("watchViewers", { count: room.viewers.length }) }}</template></small>
+      <small>{{ t("watchFrom", { name: room.startedBy }) }}<template v-if="room.viewers.length"> · {{ t("watchViewers", { count: room.viewers.length }) }}</template><template v-if="room.queue.length"> · {{ t("watchQueueCount", { count: room.queue.length }) }}</template></small>
     </span>
     <button type="button" class="wt-btn wt-btn-accent" @click="client.setWatching(true)">{{ t("watchJoin") }}</button>
     <button type="button" class="wt-icon-btn" :aria-label="t('watchHide')" :title="t('watchHide')" @click="dismissed = room.id"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
@@ -61,14 +61,30 @@
       />
       <span class="wt-time">{{ length ? clock(length) : "--:--" }}</span>
       <button type="button" class="wt-icon-btn" :aria-label="t('watchMute')" :title="t('watchMute')" :aria-pressed="muted" @click="setMuted(!muted)"><template v-if="muted || volume === 0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="m16 9.5 5 5m0-5-5 5"/></svg></template><template v-else><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg></template></button>
+      <button v-if="room.queue.length" type="button" class="wt-icon-btn" :aria-label="t('watchNext')" :title="t('watchNext')" @click="client.next()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5v13l9-6.5z" fill="currentColor" stroke="none"/><path d="M17.5 5.5v13" stroke-width="2.4"/></svg></button>
       <input class="wt-volume" type="range" min="0" max="100" :value="Math.round(volume * 100)" :aria-label="t('watchVolume')" :title="t('watchVolume')" @input="setVolume(Number(($event.target as HTMLInputElement).value) / 100)" />
       <button type="button" :class="['wt-btn', 'wt-stop', { 'wt-armed': stopArmed }]" @click="stopForAll">{{ stopArmed ? t("watchStopConfirm") : t("watchStop") }}</button>
+    </div>
+    <div v-if="room.queue.length && !fullscreen" class="wt-queue" data-ws-part="voice.watch.queue">
+      <button type="button" class="wt-queue-toggle" :aria-expanded="queueOpen" @click="queueOpen = !queueOpen">
+        <span>{{ t("watchQueue") }} · {{ room.queue.length }}</span>
+        <svg :class="{ 'wt-flip': queueOpen }" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+      </button>
+      <ol v-if="queueOpen" class="wt-queue-list">
+        <li v-for="(item, index) in room.queue" :key="item.key" class="wt-queue-item">
+          <b>{{ index + 1 }}</b>
+          <img v-if="item.media.kind === 'youtube'" class="wt-thumb" :src="`https://i.ytimg.com/vi/${item.media.id}/mqdefault.jpg`" alt="" loading="lazy" referrerpolicy="no-referrer" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'" />
+          <span v-else class="wt-thumb wt-thumb-file" aria-hidden="true">🎞</span>
+          <span class="wt-queue-text"><strong :title="item.media.url">{{ queueLabel(item) }}</strong><small>{{ t("watchAddedBy", { name: item.addedBy }) }}</small></span>
+          <button type="button" class="wt-icon-btn" :aria-label="t('watchQueueRemove')" :title="t('watchQueueRemove')" @click="client.removeQueued(item.key)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+        </li>
+      </ol>
     </div>
   </section>
 
   <!-- Starting a video. -->
   <div v-if="startOpen" class="wt-dialog-backdrop" @click.self="startOpen = false" @keydown.esc="startOpen = false">
-    <form class="wt-dialog" data-ws-part="voice.watch.start" role="dialog" aria-modal="true" :aria-label="t('watchTitle')" @submit.prevent="submit">
+    <form class="wt-dialog" data-ws-part="voice.watch.start" role="dialog" aria-modal="true" :aria-label="t('watchTitle')" @submit.prevent="submit('queue')">
       <h2>▶ {{ t("watchTitle") }}</h2>
       <label>
         <span>{{ t("watchUrlLabel") }}</span>
@@ -78,7 +94,11 @@
       <p v-if="formProblem" class="wt-form-problem" role="alert">{{ formProblem }}</p>
       <div class="wt-dialog-actions">
         <button type="button" class="wt-btn" @click="startOpen = false">{{ t("cancel") }}</button>
-        <button type="submit" class="wt-btn wt-btn-accent" :disabled="!url.trim()">{{ t("watchStart") }}</button>
+        <template v-if="room">
+          <button type="button" class="wt-btn" :disabled="!url.trim()" @click="submit('now')">{{ t("watchPlayNow") }}</button>
+          <button type="submit" class="wt-btn wt-btn-accent" :disabled="!url.trim()">{{ t("watchQueueAdd") }}</button>
+        </template>
+        <button v-else type="submit" class="wt-btn wt-btn-accent" :disabled="!url.trim()">{{ t("watchStart") }}</button>
       </div>
     </form>
   </div>
@@ -86,7 +106,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
-import { parseWatchUrl, type WatchRoomView } from "../../../../src/shared/watch-together.js";
+import { parseWatchUrl, type WatchQueueItem, type WatchRoomView } from "../../../../src/shared/watch-together.js";
 import type { WatchClient } from "../../watch/watch-client.js";
 import { createMediaPlayer, type MediaPlayer } from "../../watch/media-player.js";
 
@@ -126,6 +146,7 @@ function errorText(code: string): string {
   if (code === "WATCH_VIDEO_UNAVAILABLE") return props.t("watchErrorUnavailable");
   if (code === "WATCH_EMBED_FORBIDDEN") return props.t("watchErrorEmbed");
   if (code === "WATCH_YOUTUBE_UNAVAILABLE") return props.t("watchErrorYoutube");
+  if (code === "WATCH_QUEUE_FULL") return props.t("watchErrorQueueFull");
   return props.t("watchErrorGeneric", { code });
 }
 
@@ -149,14 +170,30 @@ watch(startOpen, async value => {
   urlInput.value?.focus();
 });
 
-function submit(): void {
+/** Queue by default while something plays; "now" replaces the current video. */
+function submit(mode: "queue" | "now" = "queue"): void {
   const value = url.value.trim();
   if (!parseWatchUrl(value)) {
     formProblem.value = props.t("watchErrorBadUrl");
     return;
   }
-  props.client.start(value);
+  if (room.value && mode === "queue") {
+    props.client.queue(value);
+    queueOpen.value = true;
+  } else props.client.start(value);
   startOpen.value = false;
+}
+
+const queueOpen = ref(true);
+function queueLabel(item: WatchQueueItem): string {
+  if (item.media.kind === "youtube") return `YouTube · ${item.media.id}`;
+  try {
+    const link = new URL(item.media.url);
+    const name = decodeURIComponent(link.pathname.split("/").pop() ?? "");
+    return /\.[a-z0-9]{2,4}$/i.test(name) ? name : props.t("watchFile");
+  } catch {
+    return props.t("watchFile");
+  }
 }
 
 watch(() => props.client.state.error, code => {
@@ -174,20 +211,28 @@ async function mount(): Promise<void> {
   const mine = ++generation;
   player.value?.destroy();
   player.value = null;
+  // Boxes of earlier players go too (theirs are emptied by destroy()).
+  if (host.value) for (const old of [...host.value.children]) old.remove();
   blocked.value = false;
   problem.value = "";
   if (!current || !props.client.state.watching || !element) return;
+  // Each player gets its own box, so a late, retired one cannot clear its successor's.
+  const slot = document.createElement("div");
+  slot.className = "wt-slot";
+  element.append(slot);
   try {
-    const created = await createMediaPlayer(element, current.media, props.client.expectedPosition(), {
+    const created = await createMediaPlayer(slot, current.media, props.client.expectedPosition(), {
       onMeta: (title, duration) => props.client.meta(title, duration),
       onBlocked: () => { blocked.value = true; },
       onError: code => { problem.value = errorText(code); },
+      onEnded: () => props.client.ended(current.id),
     });
-    if (mine !== generation) { created.destroy(); return; }
+    if (mine !== generation) { created.destroy(); slot.remove(); return; }
     created.setVolume(volume.value, muted.value);
     player.value = created;
     sync(true);
   } catch (error: unknown) {
+    slot.remove();
     if (mine === generation) problem.value = errorText(error instanceof Error ? error.message : "WATCH_YOUTUBE_UNAVAILABLE");
   }
 }
@@ -274,6 +319,16 @@ watch(() => room.value && `${room.value.id}|${room.value.last.at}|${room.value.l
   const action = current.last.action;
   toast.value = action === "pause" ? props.t("watchDidPause", { name }) : action === "play" ? props.t("watchDidPlay", { name })
     : action === "seek" ? props.t("watchDidSeek", { name, time: clock(current.position) }) : props.t("watchDidStart", { name });
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.value = ""; }, 3000);
+});
+
+// Someone else adding to the queue gets a short line too.
+watch(() => room.value?.queue.length ?? 0, (count, before) => {
+  const current = room.value;
+  const added = current?.queue[count - 1];
+  if (!current || count <= before || !added || added.addedBy === props.selfName) return;
+  toast.value = props.t("watchDidQueue", { name: added.addedBy });
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.value = ""; }, 3000);
 });
@@ -383,7 +438,7 @@ onBeforeUnmount(() => {
 .wt-title { display: grid; flex: 1 1 auto; min-width: 0; margin-right: 6px; }
 .wt-stage { position: relative; aspect-ratio: 16 / 9; background: #000; }
 .wt-full .wt-stage { flex: 1 1 auto; aspect-ratio: auto; min-height: 0; }
-.wt-host, .wt-host :deep(iframe), .wt-host :deep(video) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+.wt-host, .wt-host :deep(.wt-slot), .wt-host :deep(iframe), .wt-host :deep(video) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
 .wt-veil { position: absolute; inset: 0; z-index: 1; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .wt-blocked { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding: 16px; border: 0; background: rgba(0, 0, 0, .6); color: #fff; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
 .wt-toast, .wt-problem { position: absolute; left: 10px; z-index: 3; max-width: calc(100% - 20px); margin: 0; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, .72); pointer-events: none; }
@@ -400,6 +455,19 @@ onBeforeUnmount(() => {
 .wt-stop { min-height: 28px; margin-left: auto; padding: 0 10px; font-size: 12px; font-weight: 500; color: var(--wt-muted); }
 .wt-armed { border-color: var(--wt-accent); color: #ffb4b0; }
 
+.wt-queue { border-top: 1px solid var(--wt-line); }
+.wt-queue-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 6px 12px; border: 0; background: transparent; color: var(--wt-muted); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.wt-queue-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; transition: transform .15s; }
+.wt-queue-toggle .wt-flip { transform: rotate(180deg); }
+.wt-queue-list { display: grid; gap: 2px; max-height: 190px; margin: 0; padding: 0 6px 6px; overflow-y: auto; list-style: none; }
+.wt-queue-item { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 6px; border-radius: 8px; }
+.wt-queue-item:hover { background: var(--wt-raised); }
+.wt-queue-item b { flex: 0 0 14px; color: var(--wt-muted); font-size: 11px; text-align: right; }
+.wt-thumb { flex: 0 0 64px; width: 64px; height: 36px; border-radius: 5px; object-fit: cover; background: #000; }
+.wt-thumb-file { display: grid; place-items: center; font-size: 16px; }
+.wt-queue-text { display: grid; flex: 1 1 auto; min-width: 0; }
+.wt-queue-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.wt-queue-text small { color: var(--wt-muted); font-size: 11px; }
 .wt-dialog-backdrop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; background: rgba(5, 6, 8, .6); }
 .wt-dialog { display: grid; gap: 12px; width: min(520px, 100%); padding: 20px; border-radius: 16px; border: 1px solid var(--wt-line); background: var(--wt-bg); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); }
 .wt-dialog h2 { margin: 0; font-size: 18px; }

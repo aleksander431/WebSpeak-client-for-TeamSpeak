@@ -42,7 +42,8 @@ export class WatchClient {
     this.state.revision++;
     // A new video opens the player only for the one who started it; the page offers it to the rest.
     if (!message.room) this.state.watching = false;
-    else if (previous?.id !== message.room.id && (previous || this.startedHere)) this.state.watching = this.startedHere;
+    // The next video from the queue keeps everyone where they were.
+    else if (previous?.id !== message.room.id && (previous || this.startedHere) && !(previous && message.room.continued)) this.state.watching = this.startedHere;
     if (message.room && previous?.id !== message.room.id) this.startedHere = false;
   }
 
@@ -79,6 +80,29 @@ export class WatchClient {
     this.state.receivedAt = this.clock();
     this.state.revision++;
     this.send({ type: "watchControl", id: room.id, action, position: Math.max(0, position) });
+  }
+
+  /** Adds a video to the queue; with nothing playing it starts at once. */
+  queue(url: string): void {
+    if (!this.state.room) {
+      this.start(url);
+      return;
+    }
+    this.state.error = "";
+    this.send({ type: "watchQueue", url });
+  }
+
+  removeQueued(key: string): void {
+    this.send({ type: "watchQueueRemove", key });
+  }
+
+  next(): void {
+    if (this.state.room) this.send({ type: "watchNext", id: this.state.room.id });
+  }
+
+  /** This browser's player reached the end of the current video. */
+  ended(id: string): void {
+    if (this.state.room?.id === id) this.send({ type: "watchEnded", id });
   }
 
   meta(title: string, duration: number): void {

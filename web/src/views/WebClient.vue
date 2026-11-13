@@ -840,6 +840,7 @@
               :avatar-initial="avatarInitial"
               :message-avatar="messageAvatar"
               :format-time="formatTime"
+              :watch-link="voiceState.connected ? watchChatLink : undefined"
             />
             <div class="ws-skin-mount-slot" data-ws-skin-mount="voice.chat.after"></div>
           </div>
@@ -1437,6 +1438,12 @@ onUnmounted(() => gameClient.dispose());
 const watchClient = new WatchClient(watchTransport);
 const watchPanel = ref<InstanceType<typeof WatchPanel> | null>(null);
 watch(() => voiceState.connected, connected => watchClient.setConnected(connected), { immediate: true });
+/** A video link from the chat: play it for the channel, or queue it behind what plays now. */
+function watchChatLink(url: string) {
+  if (!voiceState.connected) return;
+  watchClient.queue(url);
+  watchClient.setWatching(true);
+}
 function openWatch() {
   if (voiceState.connected) watchPanel.value?.open();
 }
@@ -2463,6 +2470,7 @@ const skinPluginWidgets = {
     avatarInitial,
     messageAvatar,
     formatTime,
+    ...(voiceState.connected ? { watchLink: watchChatLink } : {}),
   }),
   "voice.audio-controls": () => isMobileViewport.value
     ? h("div", { class: "mobile-voice-controls", role: "toolbar", "aria-label": t("desktopAudioControls") }, [
