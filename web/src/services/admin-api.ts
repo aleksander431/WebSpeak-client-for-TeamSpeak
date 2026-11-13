@@ -156,6 +156,8 @@ export function createAdminApi(options: AdminApiOptions) {
     },
     onlineStats: (range: "day" | "week" | "month", tzOffset: number, signal?: AbortSignal) =>
       request(`/stats?range=${range}&tz=${Math.round(tzOffset)}`, adminResponses.onlineStats, "GET", undefined, true, signal),
+    onlineMonth: (month: string, tzOffset: number, signal?: AbortSignal) =>
+      request(`/stats/month?month=${encodeURIComponent(month)}&tz=${Math.round(tzOffset)}`, adminResponses.onlineMonth, "GET", undefined, true, signal),
     dndBackupStatus: (signal?: AbortSignal) => request("/dnd-backup/status", adminResponses.dndBackupStatus, "GET", undefined, true, signal),
     cancelDndRestore: (signal?: AbortSignal) => request("/dnd-backup/pending", adminResponses.dndRestore, "DELETE", {}, true, signal),
     uploadDndRestore(file: File, signal?: AbortSignal) {

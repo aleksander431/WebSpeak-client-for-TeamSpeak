@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { WebSpeakDatabase } from "../persistence/database.js";
-import { onlineStats, OnlineStatsRecorder } from "./online-stats.js";
+import { onlineMonthSummary, onlineStats, OnlineStatsRecorder } from "./online-stats.js";
 
 test("online statistics: peaks per bucket, minutes and visits per nickname, the weekday × hour map", async (context) => {
   const directory = mkdtempSync(path.join(tmpdir(), "webspeak-stats-"));
@@ -70,4 +70,48 @@ test("online statistics are empty before anything was recorded", (context) => {
   assert.equal(stats.since, null);
   assert.equal(stats.heatmap.length, 7);
   assert.equal(stats.heatmap[0]!.length, 24);
+});
+
+test("a month in review: most time, night owl, early bird, regulars, visits, peak, busy hours and newcomers", (context) => {
+  const directory = mkdtempSync(path.join(tmpdir(), "webspeak-stats-"));
+  const database = new WebSpeakDatabase(path.join(directory, "webspeak.sqlite"));
+  context.after(() => {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const tz = -180; // Moscow
+  const at = (day: number, hour: number, month = 11) => Date.UTC(2026, month - 1, day, hour) + tz * 60_000;
+  const put = (when: number, rows: Array<[string, number, boolean?]>) =>
+    database.addOnlinePresence(new Date(when).toISOString().slice(0, 10), Math.floor(when / 3_600_000) * 3_600_000, rows.map(([nickname, minutes, visit]) => ({ nickname, minutes, web: true, visit: visit ?? false })));
+
+  put(at(20, 21, 10), [["Саша", 120, true]]); // October: Sasha is not new in November
+  for (let day = 1; day <= 12; day++) put(at(day, 20), [["Саша", 60, true], ["Мирра", 30, true]]);
+  put(at(3, 2), [["Ivan", 50, true]]);
+  put(at(4, 3), [["Ivan", 40]]);
+  put(at(5, 7), [["Олег", 45, true]]);
+  for (let visit = 0; visit < 20; visit++) put(at(6, 12), [["Олег", 1, true]]);
+  database.addOnlineSample(at(7, 21), 3, 9);
+  database.addOnlineSample(at(8, 21), 2, 6);
+  database.addOnlineSample(at(9, 10), 1, 1);
+
+  const summary = onlineMonthSummary(database, 2026, 11, tz, at(13, 12));
+  assert.equal(summary.month, "2026-11");
+  assert.equal(summary.days, 30);
+  assert.equal(summary.elapsedDays, 13);
+  assert.deepEqual(summary.topTime, { nickname: "Саша", minutes: 720 });
+  assert.deepEqual(summary.nightOwl, { nickname: "Ivan", minutes: 90 });
+  assert.deepEqual(summary.earlyBird, { nickname: "Олег", minutes: 45 });
+  assert.deepEqual(summary.mostDays, { nickname: "Саша", days: 12 }, "a tie in days goes to more time online");
+  assert.deepEqual(summary.topVisits, { nickname: "Олег", visits: 21 });
+  assert.deepEqual(summary.peak, { count: 9, at: at(7, 21) });
+  assert.equal(summary.busiestDay?.weekday, 5, "7 November 2026 is a Saturday");
+  assert.ok(summary.busiestHours && summary.busiestHours.from <= 21 && (summary.busiestHours.to > 21 || summary.busiestHours.to < summary.busiestHours.from));
+  assert.deepEqual(summary.newcomers, ["Мирра", "Ivan", "Олег"]);
+  assert.equal(summary.totalMinutes, 12 * 90 + 90 + 45 + 20);
+  assert.equal(summary.previousTotalMinutes, null, "recording began in late October, so October is no yardstick");
+  assert.equal(summary.people, 4);
+
+  const empty = onlineMonthSummary(database, 2026, 1, tz, at(13, 12));
+  assert.equal(empty.hasData, false);
+  assert.equal(empty.topTime, null);
 });

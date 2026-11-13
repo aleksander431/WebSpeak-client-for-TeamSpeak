@@ -1,4 +1,4 @@
-import type { OnlineStats, OnlineStatsPoint, OnlineStatsRange } from "../shared/online-stats.js";
+import type { OnlineMonthSummary, OnlineStats, OnlineStatsPoint, OnlineStatsRange } from "../shared/online-stats.js";
 
 /*
  * Who is online, recorded once a minute for the admin console. Two sources:
@@ -16,7 +16,10 @@ const HEATMAP_DAYS = 28;
 
 export interface OnlineStatsStore {
   addOnlineSample(at: number, web: number, ts: number | null): void;
-  addOnlinePresence(day: string, entries: Array<{ nickname: string; minutes: number; web: boolean; visit: boolean }>): void;
+  addOnlinePresence(day: string, hour: number, entries: Array<{ nickname: string; minutes: number; web: boolean; visit: boolean }>): void;
+  onlineHours(from: number, to: number): Array<{ hour: number; nickname: string; minutes: number }>;
+  onlineFirstSeen(): Map<string, number>;
+  onlineVisits(fromDay: string, toDay: string): Map<string, number>;
   onlineSamples(from: number, to: number): OnlineStatsPoint[];
   onlinePresence(fromDay: string, limit: number): OnlineStats["top"];
   onlinePeople(fromDay: string): number;
@@ -76,7 +79,7 @@ export class OnlineStatsRecorder {
       this.store.addOnlineSample(Math.floor(at / ONLINE_BUCKET_MS) * ONLINE_BUCKET_MS, web.length, server ? server.length : null);
       if (minutes) {
         const webSet = new Set(web);
-        this.store.addOnlinePresence(dayOf(at), [...present].map(nickname => ({
+        this.store.addOnlinePresence(dayOf(at), Math.floor(at / 3_600_000) * 3_600_000, [...present].map(nickname => ({
           nickname: nickname.slice(0, 64), minutes, web: webSet.has(nickname), visit: !this.previous.has(nickname),
         })));
         this.lastTick = at;
@@ -142,5 +145,101 @@ export function onlineStats(store: OnlineStatsStore, range: OnlineStatsRange, tz
     top: store.onlinePresence(dayOf(from), topLimit),
     since: first ? first.at : null,
     serverKnown: raw.some(sample => sample.ts !== null),
+  };
+}
+
+/** The first instant of a calendar month in a time zone `tzOffset` minutes behind UTC. */
+function monthStart(year: number, month: number, tzOffset: number): number {
+  return Date.UTC(year, month - 1, 1) + tzOffset * 60_000;
+}
+
+/**
+ * Fun facts about one calendar month in the viewer's time zone, for the
+ * statistics page and a message in the chat. `month` is 1–12.
+ */
+export function onlineMonthSummary(store: OnlineStatsStore, year: number, month: number, tzOffset: number, now: number): OnlineMonthSummary {
+  const from = monthStart(year, month, tzOffset);
+  const to = monthStart(month === 12 ? year + 1 : year, month === 12 ? 1 : month + 1, tzOffset);
+  const previousFrom = monthStart(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1, tzOffset);
+  const local = (at: number) => new Date(at - tzOffset * 60_000);
+  const days = Math.round((to - from) / DAY_MS);
+  const elapsedDays = Math.max(1, Math.min(days, Math.ceil((Math.min(now, to) - from) / DAY_MS)));
+
+  const hours = store.onlineHours(from, to);
+  const people = new Map<string, { minutes: number; night: number; morning: number; days: Set<number> }>();
+  let total = 0;
+  for (const row of hours) {
+    const person = people.get(row.nickname) ?? { minutes: 0, night: 0, morning: 0, days: new Set<number>() };
+    const when = local(row.hour);
+    const hour = when.getUTCHours();
+    person.minutes += row.minutes;
+    if (hour < 5) person.night += row.minutes;
+    else if (hour < 9) person.morning += row.minutes;
+    person.days.add(when.getUTCDate());
+    people.set(row.nickname, person);
+    total += row.minutes;
+  }
+  // A month that was only partly recorded is no yardstick.
+  const recordedSince = store.onlineSamples(0, now + ONLINE_BUCKET_MS)[0]?.at ?? Number.POSITIVE_INFINITY;
+  // While the month runs, it is compared with the same stretch of the previous one.
+  const partial = now < to;
+  const previousTo = partial ? Math.min(from, previousFrom + (now - from)) : from;
+  const previousTotal = recordedSince <= previousFrom + ONLINE_BUCKET_MS ? store.onlineHours(previousFrom, previousTo).reduce((sum, row) => sum + row.minutes, 0) : null;
+  const best = <T>(items: Array<[string, T]>, score: (value: T) => number, minimum = 1) => {
+    let winner: { nickname: string; value: number } | null = null;
+    for (const [nickname, value] of items) {
+      const points = score(value);
+      if (points >= minimum && (!winner || points > winner.value)) winner = { nickname, value: points };
+    }
+    return winner;
+  };
+  const entries = [...people.entries()];
+  const topTime = best(entries, person => person.minutes);
+  const nightOwl = best(entries, person => person.night, 30);
+  const earlyBird = best(entries, person => person.morning, 30);
+  // Days first; on a tie, more time online wins (so the answer does not depend on row order).
+  const regular = best(entries, person => person.days.size * 1e7 + person.minutes);
+  const mostDays = regular && { nickname: regular.nickname, value: people.get(regular.nickname)!.days.size };
+  const visits = store.onlineVisits(dayOf(from), dayOf(to - 1));
+  const topVisits = best([...visits.entries()], value => value);
+
+  // The busiest weekday and three-hour stretch, by the average people online.
+  const samples = store.onlineSamples(from, to);
+  let peak: OnlineMonthSummary["peak"] = null;
+  const byWeekday = Array.from({ length: 7 }, () => ({ sum: 0, n: 0 }));
+  const byHour = Array.from({ length: 24 }, () => ({ sum: 0, n: 0 }));
+  for (const sample of samples) {
+    const count = Math.max(sample.web, sample.ts ?? 0);
+    if (count > 0 && (!peak || count > peak.count)) peak = { count, at: sample.at };
+    const when = local(sample.at);
+    const weekday = byWeekday[(when.getUTCDay() + 6) % 7]!;
+    weekday.sum += count; weekday.n += 1;
+    const hour = byHour[when.getUTCHours()]!;
+    hour.sum += count; hour.n += 1;
+  }
+  const average = (cell: { sum: number; n: number }) => cell.n ? cell.sum / cell.n : 0;
+  let busiestDay: OnlineMonthSummary["busiestDay"] = null;
+  byWeekday.forEach((cell, weekday) => { if (average(cell) > 0 && (!busiestDay || average(cell) > busiestDay.average)) busiestDay = { weekday, average: Math.round(average(cell) * 10) / 10 }; });
+  let busiestHours: OnlineMonthSummary["busiestHours"] = null;
+  for (let start = 0; start < 24; start++) {
+    const window = [0, 1, 2].map(offset => average(byHour[(start + offset) % 24]!));
+    const value = window.reduce((a, b) => a + b, 0) / 3;
+    if (value > 0 && (!busiestHours || value > busiestHours.average)) busiestHours = { from: start, to: (start + 3) % 24, average: Math.round(value * 10) / 10 };
+  }
+
+  const firstSeen = store.onlineFirstSeen();
+  const newcomers = entries.filter(([nickname]) => (firstSeen.get(nickname) ?? 0) >= from).sort((a, b) => b[1].minutes - a[1].minutes).map(([nickname]) => nickname);
+  return {
+    month: `${year}-${String(month).padStart(2, "0")}`,
+    from, to, days, elapsedDays,
+    hasData: hours.length > 0 || samples.length > 0,
+    totalMinutes: total, previousTotalMinutes: previousTotal, previousPartial: partial, people: people.size,
+    topTime: topTime && { nickname: topTime.nickname, minutes: topTime.value },
+    nightOwl: nightOwl && { nickname: nightOwl.nickname, minutes: nightOwl.value },
+    earlyBird: earlyBird && { nickname: earlyBird.nickname, minutes: earlyBird.value },
+    mostDays: mostDays && { nickname: mostDays.nickname, days: mostDays.value },
+    topVisits: topVisits && { nickname: topVisits.nickname, visits: topVisits.value },
+    peak, busiestDay, busiestHours,
+    newcomers: newcomers.slice(0, 5), newcomerCount: newcomers.length,
   };
 }

@@ -119,6 +119,13 @@ const onlineStats = object({
   heatmap: array(array(number)), peak: nullable(object({ count: number, at: number })), people: number,
   top: array(onlinePerson), since: nullable(number), serverKnown: boolean,
 });
+const named = <T extends Record<string, Reader>>(fields: T) => nullable(object({ nickname: text, ...fields }));
+const onlineMonth = object({
+  month: text, from: number, to: number, days: number, elapsedDays: number, hasData: boolean, totalMinutes: number, previousTotalMinutes: nullable(number), previousPartial: boolean, people: number,
+  topTime: named({ minutes: number }), nightOwl: named({ minutes: number }), earlyBird: named({ minutes: number }), mostDays: named({ days: number }),
+  topVisits: named({ visits: number }), peak: nullable(object({ count: number, at: number })), busiestDay: nullable(object({ weekday: number, average: number })),
+  busiestHours: nullable(object({ from: number, to: number, average: number })), newcomers: array(text), newcomerCount: number,
+});
 const sessionStatus = object({ authenticated: boolean, mustChangePassword: optional(boolean), csrfToken: optional(text) });
 
 export const adminResponses = {
@@ -152,6 +159,7 @@ export const adminResponses = {
   editorLinks,
   dndBackupStatus,
   onlineStats,
+  onlineMonth,
   dndRestore,
   defaultSkin: object({ ok: choice(true), defaultSkinId: text }),
   updatedSkin: object({ ok: choice(true), skin, defaultSkinId: text }),

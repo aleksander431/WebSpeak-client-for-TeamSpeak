@@ -1413,6 +1413,13 @@ export class WebSpeakDatabase {
             visits INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (day, nickname)
           );
+          CREATE TABLE IF NOT EXISTS online_hours (
+            hour INTEGER NOT NULL,
+            nickname TEXT NOT NULL,
+            minutes INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (hour, nickname)
+          );
+          CREATE INDEX IF NOT EXISTS online_hours_nickname_idx ON online_hours(nickname, hour);
           PRAGMA user_version = 22;
         `);
       });
@@ -1430,16 +1437,38 @@ export class WebSpeakDatabase {
     ).run(at, web, ts);
   }
 
-  addOnlinePresence(day: string, entries: Array<{ nickname: string; minutes: number; web: boolean; visit: boolean }>): void {
+  addOnlinePresence(day: string, hour: number, entries: Array<{ nickname: string; minutes: number; web: boolean; visit: boolean }>): void {
     if (!entries.length) return;
     const statement = this.database.prepare(
       `INSERT INTO online_presence (day, nickname, minutes, web_minutes, visits) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(day, nickname) DO UPDATE SET minutes = minutes + excluded.minutes,
          web_minutes = web_minutes + excluded.web_minutes, visits = visits + excluded.visits`,
     );
+    const hourly = this.database.prepare(
+      `INSERT INTO online_hours (hour, nickname, minutes) VALUES (?, ?, ?)
+       ON CONFLICT(hour, nickname) DO UPDATE SET minutes = minutes + excluded.minutes`,
+    );
     this.transaction(() => {
-      for (const entry of entries) statement.run(day, entry.nickname, entry.minutes, entry.web ? entry.minutes : 0, entry.visit ? 1 : 0);
+      for (const entry of entries) {
+        statement.run(day, entry.nickname, entry.minutes, entry.web ? entry.minutes : 0, entry.visit ? 1 : 0);
+        if (entry.minutes) hourly.run(hour, entry.nickname, entry.minutes);
+      }
     });
+  }
+
+  onlineHours(from: number, to: number): Array<{ hour: number; nickname: string; minutes: number }> {
+    return this.database.prepare("SELECT hour, nickname, minutes FROM online_hours WHERE hour >= ? AND hour < ? ORDER BY hour").all(from, to) as Array<{ hour: number; nickname: string; minutes: number }>;
+  }
+
+  /** When each nickname was first seen (hour, ms). */
+  onlineFirstSeen(): Map<string, number> {
+    const rows = this.database.prepare("SELECT nickname, MIN(hour) AS first FROM online_hours GROUP BY nickname").all() as Array<{ nickname: string; first: number }>;
+    return new Map(rows.map(row => [row.nickname, row.first]));
+  }
+
+  onlineVisits(fromDay: string, toDay: string): Map<string, number> {
+    const rows = this.database.prepare("SELECT nickname, SUM(visits) AS visits FROM online_presence WHERE day >= ? AND day <= ? GROUP BY nickname").all(fromDay, toDay) as Array<{ nickname: string; visits: number }>;
+    return new Map(rows.map(row => [row.nickname, row.visits]));
   }
 
   onlineSamples(from: number, to: number): Array<{ at: number; web: number; ts: number | null }> {
@@ -1460,6 +1489,7 @@ export class WebSpeakDatabase {
   pruneOnlineStats(beforeAt: number, beforeDay: string): void {
     this.database.prepare("DELETE FROM online_samples WHERE at < ?").run(beforeAt);
     this.database.prepare("DELETE FROM online_presence WHERE day < ?").run(beforeDay);
+    this.database.prepare("DELETE FROM online_hours WHERE hour < ?").run(beforeAt);
   }
 
   private writeSettings(settings: SettingsUpdate, now: string): void {

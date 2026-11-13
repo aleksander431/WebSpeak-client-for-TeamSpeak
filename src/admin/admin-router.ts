@@ -1,6 +1,6 @@
 import { ADVENTURE_ARCHIVE_LIMIT_BYTES, AdventureLibrary, AdventureLibraryError } from "./adventure-library.js";
 import { AdventureEditorError, type AdventureEditorStore } from "./adventure-editor.js";
-import { onlineStats } from "../server/online-stats.js";
+import { onlineMonthSummary, onlineStats } from "../server/online-stats.js";
 import { ONLINE_STATS_RANGES, type OnlineStatsRange } from "../shared/online-stats.js";
 import { DND_RESTORE_LIMIT_BYTES, DndBackupError, cancelDndRestore, dndBackupSize, pendingDndRestore, stageDndRestore, writeDndBackup } from "./dnd-backup.js";
 import { Router, raw as expressRaw, type NextFunction, type Request, type Response } from "express";
@@ -327,6 +327,22 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
     const tz = Number(request.query.tz);
     try {
       response.json(onlineStats(options.service.database, range, Number.isFinite(tz) && Math.abs(tz) <= 840 ? Math.round(tz) : 0, Date.now()));
+    } catch (error: unknown) {
+      sendAdminError(response, error);
+    }
+  });
+
+  router.get("/stats/month", (request, response) => {
+    const match = /^(\d{4})-(\d{2})$/.exec(String(request.query.month ?? ""));
+    const year = match ? Number(match[1]) : NaN;
+    const month = match ? Number(match[2]) : NaN;
+    const tz = Number(request.query.tz);
+    if (!match || year < 2000 || year > 2100 || month < 1 || month > 12) {
+      response.status(400).json({ ok: false, code: "INVALID_MONTH" });
+      return;
+    }
+    try {
+      response.json(onlineMonthSummary(options.service.database, year, month, Number.isFinite(tz) && Math.abs(tz) <= 840 ? Math.round(tz) : 0, Date.now()));
     } catch (error: unknown) {
       sendAdminError(response, error);
     }

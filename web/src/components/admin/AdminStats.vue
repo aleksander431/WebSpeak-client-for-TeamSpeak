@@ -144,6 +144,42 @@
       </div>
     </template>
     <article v-else class="operation-card"><span class="spinner small"></span></article>
+
+    <article v-if="stats && stats.since !== null" class="operation-card stats-month" data-admin-section="month">
+      <header class="stats-month-head">
+        <div>
+          <h3>📊 {{ tr("statsMonthTitle") }}</h3>
+          <p class="field-help">{{ tr("statsMonthLead") }}</p>
+        </div>
+        <div class="stats-month-nav">
+          <button type="button" class="secondary-button small" :aria-label="tr('statsMonthPrev')" :title="tr('statsMonthPrev')" @click="shiftMonth(-1)">‹</button>
+          <strong>{{ monthLabel({ month }, locale) }}</strong>
+          <button type="button" class="secondary-button small" :aria-label="tr('statsMonthNext')" :title="tr('statsMonthNext')" :disabled="isCurrentMonth()" @click="shiftMonth(1)">›</button>
+        </div>
+      </header>
+      <template v-if="summary">
+        <p v-if="!summary.hasData" class="field-help">{{ tr("statsMonthEmpty") }}</p>
+        <template v-else>
+          <p v-if="summary.elapsedDays < summary.days" class="stats-month-note">{{ tr("statsMonthSoFar", { days: summary.elapsedDays, total: summary.days }) }}</p>
+          <div class="stats-facts">
+            <div v-for="fact in facts" :key="fact.id" class="stats-fact">
+              <span class="stats-fact-emoji" aria-hidden="true">{{ fact.emoji }}</span>
+              <span class="stats-fact-text">
+                <small>{{ fact.label }}</small>
+                <strong v-if="fact.who">{{ fact.who }}</strong>
+                <span>{{ fact.value }}</span>
+              </span>
+            </div>
+          </div>
+          <div class="stats-month-actions">
+            <button type="button" class="primary-button" @click="copySummary">{{ tr("statsCopy") }}</button>
+            <span v-if="copyState" class="stats-copy-state" role="status">{{ copyState === "ok" ? tr("statsCopied") : tr("statsCopyFailed") }}</span>
+          </div>
+          <pre class="stats-chat-preview" :aria-label="tr('statsCopy')">{{ chatText }}</pre>
+        </template>
+      </template>
+      <span v-else class="spinner small"></span>
+    </article>
   </section>
 </template>
 
@@ -152,6 +188,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import Icon from "../Icon.vue";
 import type { OnlineStatsRange } from "../../../../src/shared/online-stats.js";
 import type { AdminStatsModel } from "../../composables/useAdminStats.js";
+import { monthChatText, monthFacts, monthLabel } from "../../services/month-summary.js";
 import type { useAdminI18n } from "../../composables/useAdminI18n.js";
 
 const RANGES: OnlineStatsRange[] = ["day", "week", "month"];
@@ -166,10 +203,27 @@ const props = defineProps<{
   model: AdminStatsModel;
   i18n: Pick<ReturnType<typeof useAdminI18n>, "tr">;
 }>();
-const { range, stats, loading, load, setRange } = props.model;
+const { range, stats, loading, load, setRange, month, summary, loadMonth, shiftMonth, isCurrentMonth } = props.model;
 const { tr } = props.i18n;
 
 const weekdays = computed(() => tr("statsWeekdays").split(","));
+const locale = computed(() => tr("statsLocale"));
+// The month texts are built from keys this page owns.
+const anyTr = tr as (key: string, variables?: Record<string, string | number>) => string;
+const facts = computed(() => summary.value ? monthFacts(summary.value, anyTr, locale.value) : []);
+const chatText = computed(() => summary.value ? monthChatText(summary.value, anyTr, locale.value) : "");
+const copyState = ref<"" | "ok" | "failed">("");
+let copyTimer: ReturnType<typeof setTimeout> | undefined;
+async function copySummary(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(chatText.value);
+    copyState.value = "ok";
+  } catch {
+    copyState.value = "failed";
+  }
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => { copyState.value = ""; }, 4000);
+}
 
 /** Every bucket of the range, empty ones as gaps. */
 const series = computed(() => {
@@ -279,10 +333,10 @@ function formatBucket(at: number): string {
   return `${start.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}, ${time(start)}–${time(end)}`;
 }
 
-onMounted(() => { void load(); });
+onMounted(() => { void load(); void loadMonth(); });
 // The current hour fills in while the page is open.
 const timer = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 60_000);
-onBeforeUnmount(() => clearInterval(timer));
+onBeforeUnmount(() => { clearInterval(timer); clearTimeout(copyTimer); });
 </script>
 
 <style scoped>
@@ -330,6 +384,23 @@ onBeforeUnmount(() => clearInterval(timer));
 .stats-top-num { font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
 .stats-bar { display: block; width: 100%; max-width: 160px; height: 5px; margin-bottom: 4px; border-radius: 3px; background: var(--admin-field); overflow: hidden; }
 .stats-bar i { display: block; height: 100%; border-radius: 3px; background: var(--admin-accent); }
+.stats-month { display: flex; flex-direction: column; gap: 12px; }
+.stats-month-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.stats-month-head h3 { margin: 0 0 4px; }
+.stats-month-head p { margin: 0; }
+.stats-month-nav { display: flex; align-items: center; gap: 10px; }
+.stats-month-nav strong { min-width: 150px; text-align: center; }
+.stats-month-note { margin: 0; color: var(--admin-muted); font-size: 13px; }
+.stats-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.stats-fact { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid var(--admin-border); background: var(--admin-field); }
+.stats-fact-emoji { flex: 0 0 auto; font-size: 24px; line-height: 1; }
+.stats-fact-text { display: grid; gap: 2px; min-width: 0; }
+.stats-fact-text small { color: var(--admin-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.stats-fact-text strong { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.stats-fact-text span { font-size: 13px; }
+.stats-month-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.stats-copy-state { color: var(--admin-muted); font-size: 13px; }
+.stats-chat-preview { margin: 0; padding: 12px; border-radius: 10px; border: 1px dashed var(--admin-border); background: var(--admin-page); font: inherit; font-size: 13px; line-height: 1.55; white-space: pre-wrap; user-select: all; }
 @media (max-width: 980px) {
   .stats-columns { grid-template-columns: 1fr; }
 }
