@@ -185,6 +185,10 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v1.0.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.1) · 2026-11-14
+
+- Desktop-Client (neue App-Version nötig): Wenn YouTube im gemeinsamen Schauen eine Anmeldung verlangt („Bestätige, dass du kein Bot bist“), öffnet die Schaltfläche „Anmelden“ ein Anmeldefenster in der App statt im Browser; danach schließt es sich und der Player lädt angemeldet neu. Dasselbe gibt es im Infobereich-Menü: „Bei YouTube anmelden“.
+
 ### [v1.0.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.0) · 2026-11-13
 
 - **D&D am Kanaltisch** (nur am Computer): Plätze, faire Würfe auf dem Server, Heldenbögen und Heldenbaukasten, Szenen und taktische Karten mit Nebel, Marker und Pings, Initiative und Züge, Angriffe und Schaden mit einem Klick, Zustände, Ressourcen und Rasten, Stufen, Erfahrung, Inventar und Münzen, Heldentresor, gespeicherte Tische, Erzählung, Szenenmusik (Bibliothek mit 24 neuen Loops), vorbereitete Begegnungen, Improvisationswerkzeuge, Regelhilfe, Gruppentagebuch und ein Einführungsabenteuer.

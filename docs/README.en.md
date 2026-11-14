@@ -195,6 +195,10 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
+### [v1.0.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.1) · 2026-11-14
+
+- Desktop client (needs the new app version): when YouTube asks the watch-together player to sign in ("confirm you're not a bot"), the Sign in button opens a sign-in window inside the app instead of the browser; afterwards the window closes and the player reloads signed in. The tray has the same entry: "Sign in to YouTube".
+
 ### [v1.0.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.0) · 2026-11-13
 
 - **D&D at the channel table** (desktop only): seats, fair server-side dice, hero sheets and a hero builder, scenes and tactical maps with fog, tokens and pings, initiative and turns, one-click attacks and damage, conditions, resources and rests, levels, experience, inventory and coins, a hero vault, saved tables, narration, scene music (a library of 24 new loops), prepared encounters, improvisation tools, rules help, a party journal and a tutorial adventure.

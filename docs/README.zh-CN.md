@@ -199,6 +199,10 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
+### [v1.0.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.1) · 2026-11-14
+
+- 桌面客户端（需要新版应用）：一起看时 YouTube 要求登录（“确认你不是机器人”）时，“登录”按钮会在应用内打开登录窗口，而不是浏览器；登录后窗口关闭，播放器以登录状态重新加载。托盘菜单中也有“登录 YouTube”。
+
 ### [v1.0.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.0) · 2026-11-13
 
 - **频道 D&D 桌面**（仅限电脑）：座位、服务器端公平掷骰、角色卡与角色创建器、带战争迷雾的场景与战术地图、标记与提示点、先攻与回合、一键攻击与伤害、状态、资源与休息、等级、经验、物品与金币、英雄仓库、已保存的牌桌、叙述、场景音乐（24 首新循环曲目）、预设遭遇、即兴工具、规则帮助、队伍日志和教学冒险。
