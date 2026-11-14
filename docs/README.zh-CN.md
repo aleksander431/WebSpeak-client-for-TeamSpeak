@@ -199,6 +199,10 @@ relay.example.com {
 
 <a id="latest-release-notes"></a>
 
+### [v1.0.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.2) · 2026-11-14
+
+- 一起看：YouTube“确认你不是机器人”页面上的“登录”按钮无法点击，因为点击视频会控制共享播放器。现在 YouTube 窗口有自己的登录按钮（标题栏中的人像图标），视频无法开始时底部会出现带“登录 YouTube”按钮的提示。在应用中，登录会在应用窗口中打开，之后播放器会自动重新加载。
+
 ### [v1.0.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.1) · 2026-11-14
 
 - 桌面客户端（需要新版应用）：一起看时 YouTube 要求登录（“确认你不是机器人”）时，“登录”按钮会在应用内打开登录窗口，而不是浏览器；登录后窗口关闭，播放器以登录状态重新加载。托盘菜单中也有“登录 YouTube”。

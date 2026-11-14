@@ -195,6 +195,10 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
+### [v1.0.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.2) · 2026-11-14
+
+- Watch together: the Sign in button on YouTube's "confirm you're not a bot" screen could not be clicked, because clicks on the video drive the shared player. The YouTube window now has its own sign-in button (the person icon in its header), and when a video does not start a hint with "Sign in to YouTube" appears at the bottom. In the app the sign-in opens in an app window and the player restarts by itself afterwards.
+
 ### [v1.0.1](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.1) · 2026-11-14
 
 - Desktop client (needs the new app version): when YouTube asks the watch-together player to sign in ("confirm you're not a bot"), the Sign in button opens a sign-in window inside the app instead of the browser; afterwards the window closes and the player reloads signed in. The tray has the same entry: "Sign in to YouTube".

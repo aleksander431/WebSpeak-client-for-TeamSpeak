@@ -27,7 +27,7 @@ import { NativeHotkeys } from "./native-hotkeys.js";
 import { OverlayController } from "./overlay.js";
 import { EMPTY_ROSTER, parseOverlayRoster, parseOverlaySpeaking, type OverlayRoster } from "./overlay-state.js";
 import { needsNativeHotkey } from "./settings.js";
-import { isSignInUrl, isYouTubePlayerFrame, plainChromeUserAgent, signInFinished, staysInSignIn, YOUTUBE_SIGN_IN_URL } from "./youtube-sign-in.js";
+import { isSignInUrl, plainChromeUserAgent, signInFinished, staysInSignIn, YOUTUBE_SIGN_IN_URL } from "./youtube-sign-in.js";
 
 /*
  * WebSpeak desktop shell. The window shows the WebSpeak site of the
@@ -106,9 +106,8 @@ function openYouTubeSignIn(url = YOUTUBE_SIGN_IN_URL): void {
     if (finished || !signInFinished(target)) return;
     finished = true;
     window.close();
-    for (const frame of mainWindow?.webContents.mainFrame.framesInSubtree ?? []) {
-      if (isYouTubePlayerFrame(frame.url)) frame.reload();
-    }
+    // The page rebuilds its players (reloading the frame would cut them off from their API).
+    void mainWindow?.webContents.executeJavaScript('window.dispatchEvent(new Event("webspeak:youtube-signed-in"))').catch(() => undefined);
   };
   const guard = (event: { preventDefault(): void }, target: string) => {
     if (staysInSignIn(target)) return;

@@ -29,6 +29,7 @@
         <strong :title="room.title || room.media.url">{{ room.title || t("watchUntitled") }}</strong>
         <small :title="room.viewers.join(', ')">{{ t("watchFrom", { name: room.startedBy }) }} · {{ t("watchViewers", { count: room.viewers.length }) }}</small>
       </span>
+      <button v-if="room.media.kind === 'youtube'" type="button" class="wt-icon-btn" :aria-label="t('watchSignIn')" :title="t('watchSignIn')" data-ws-part="voice.watch.sign-in" @click="signIn"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 19.5a7 7 0 0 1 14 0"/></svg></button>
       <button type="button" class="wt-icon-btn" :aria-label="t('watchOther')" :title="t('watchOther')" @click="startOpen = true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
       <button v-if="!fullscreen" type="button" class="wt-icon-btn" :aria-label="t('watchSize')" :title="t('watchSize')" @click="toggleSize"><template v-if="size === 'large'"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><path d="M12.5 10.5h5v5h-5z"/></svg></template><template v-else><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><path d="M13 14.5h4.5V11"/></svg></template></button>
       <button type="button" class="wt-icon-btn" :aria-label="t('watchFullscreen')" :title="t('watchFullscreen')" @click="toggleFullscreen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
@@ -41,6 +42,12 @@
       <button v-if="blocked" type="button" class="wt-blocked" @click="unblock">▶ {{ t("watchBlocked") }}</button>
       <p v-if="toast" class="wt-toast" role="status">{{ toast }}</p>
       <p v-if="problem" class="wt-problem" role="alert">{{ problem }}</p>
+      <!-- YouTube's own "sign in" screen sits under the veil, so the way to sign in is ours. -->
+      <div v-if="signInHint && room.media.kind === 'youtube'" class="wt-signin" role="status">
+        <span>{{ t("watchSignInHint") }}</span>
+        <button type="button" class="wt-btn wt-btn-accent" @click="signIn">{{ t("watchSignIn") }}</button>
+        <button type="button" class="wt-icon-btn" :aria-label="t('watchHide')" :title="t('watchHide')" @click="signInHint = false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
     </div>
     <div class="wt-controls" data-ws-part="voice.watch.controls">
       <button type="button" class="wt-icon-btn wt-play" :aria-label="room.playing ? t('watchPause') : t('watchPlay')" :title="room.playing ? t('watchPause') : t('watchPlay')" @click="togglePlay"><template v-if="room.playing"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor" stroke="none"/></svg></template><template v-else><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"/></svg></template></button>
@@ -127,6 +134,9 @@ const host = ref<HTMLElement | null>(null);
 const windowEl = ref<HTMLElement | null>(null);
 const player = shallowRef<MediaPlayer | null>(null);
 const blocked = ref(false);
+const signInHint = ref(false);
+let blockedTimes = 0;
+let stalledTicks = 0;
 const problem = ref("");
 const toast = ref("");
 const shown = ref(0);
@@ -215,6 +225,9 @@ async function mount(): Promise<void> {
   if (host.value) for (const old of [...host.value.children]) old.remove();
   blocked.value = false;
   problem.value = "";
+  signInHint.value = false;
+  blockedTimes = 0;
+  stalledTicks = 0;
   if (!current || !props.client.state.watching || !element) return;
   // Each player gets its own box, so a late, retired one cannot clear its successor's.
   const slot = document.createElement("div");
@@ -223,7 +236,8 @@ async function mount(): Promise<void> {
   try {
     const created = await createMediaPlayer(slot, current.media, props.client.expectedPosition(), {
       onMeta: (title, duration) => props.client.meta(title, duration),
-      onBlocked: () => { blocked.value = true; },
+      // Refused again after a click: not autoplay but YouTube wanting a sign-in.
+      onBlocked: () => { blocked.value = true; if (++blockedTimes > 1) signInHint.value = true; },
       onError: code => { problem.value = errorText(code); },
       onEnded: () => props.client.ended(current.id),
     });
@@ -263,7 +277,31 @@ const ticker = setInterval(() => {
   if (!room.value || !props.client.state.watching) return;
   shown.value = scrub.value ?? (player.value?.currentTime() || props.client.expectedPosition());
 }, 250);
-const syncer = setInterval(() => { if (props.client.state.watching) sync(); }, 2000);
+const syncer = setInterval(() => {
+  if (!props.client.state.watching) return;
+  sync();
+  // A YouTube video that should play but has not started for about 8 s.
+  const media = player.value;
+  if (room.value?.playing && room.value.media.kind === "youtube" && media && !media.playing()) {
+    if (++stalledTicks >= 4) signInHint.value = true;
+  } else stalledTicks = 0;
+}, 2000);
+
+const YOUTUBE_SIGN_IN = "https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2F";
+/**
+ * Signs in to YouTube: the desktop app opens its own sign-in window (sharing its
+ * cookies) and tells the page when it is done; a browser opens a tab, and the
+ * player is rebuilt when the page gets the focus back.
+ */
+function signIn(): void {
+  signInHint.value = false;
+  const opened = window.open(YOUTUBE_SIGN_IN, "_blank");
+  if ((window as { webspeakDesktop?: unknown }).webspeakDesktop) return;
+  if (opened === null && !document.hasFocus()) return;
+  window.addEventListener("focus", () => setTimeout(() => void mount(), 300), { once: true });
+}
+function onSignedIn(): void { void mount(); }
+window.addEventListener("webspeak:youtube-signed-in", onSignedIn);
 
 function unblock(): void {
   blocked.value = false;
@@ -391,6 +429,7 @@ function clampPlaced(): void {
 window.addEventListener("resize", clampPlaced);
 
 onBeforeUnmount(() => {
+  window.removeEventListener("webspeak:youtube-signed-in", onSignedIn);
   generation++;
   player.value?.destroy();
   clearInterval(ticker);
@@ -445,6 +484,8 @@ onBeforeUnmount(() => {
 .wt-toast, .wt-problem { position: absolute; left: 10px; z-index: 3; max-width: calc(100% - 20px); margin: 0; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, .72); pointer-events: none; }
 .wt-toast { top: 10px; }
 .wt-problem { bottom: 10px; color: #ffb4b0; }
+.wt-signin { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 4; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(0, 0, 0, .82); color: #fff; font-size: 13px; }
+.wt-signin span { flex: 1; min-width: 0; }
 .wt-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 6px 8px; }
 .wt-play { color: var(--wt-text); }
 .wt-time { flex: 0 0 auto; color: var(--wt-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
