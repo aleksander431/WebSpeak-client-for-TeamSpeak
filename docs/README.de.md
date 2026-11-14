@@ -185,6 +185,10 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v1.0.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.3) · 2026-11-14
+
+- Desktop-Client (neue App-Version nötig): Das YouTube-Anmeldefenster gibt sich jetzt als Firefox aus, weil Google die Anmeldung mit „Dieser Browser oder diese App ist möglicherweise nicht sicher“ abgelehnt hat.
+
 ### [v1.0.2](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.2) · 2026-11-14
 
 - Gemeinsam schauen: Die Schaltfläche „Anmelden“ auf YouTubes Seite „Bestätige, dass du kein Bot bist“ war nicht erreichbar, weil Klicks auf das Video den gemeinsamen Player steuern. Das YouTube-Fenster hat jetzt eine eigene Anmeldeschaltfläche (das Personensymbol in der Titelleiste), und startet ein Video nicht, erscheint unten ein Hinweis mit „Bei YouTube anmelden“. In der App öffnet sich die Anmeldung in einem App-Fenster, danach startet der Player von selbst neu.

@@ -27,7 +27,7 @@ import { NativeHotkeys } from "./native-hotkeys.js";
 import { OverlayController } from "./overlay.js";
 import { EMPTY_ROSTER, parseOverlayRoster, parseOverlaySpeaking, type OverlayRoster } from "./overlay-state.js";
 import { needsNativeHotkey } from "./settings.js";
-import { isSignInUrl, plainChromeUserAgent, signInFinished, staysInSignIn, YOUTUBE_SIGN_IN_URL } from "./youtube-sign-in.js";
+import { isSignInUrl, signInFinished, signInUserAgent, staysInSignIn, withoutClientHints, YOUTUBE_SIGN_IN_URL } from "./youtube-sign-in.js";
 
 /*
  * WebSpeak desktop shell. The window shows the WebSpeak site of the
@@ -81,6 +81,7 @@ function serverOrigin(): string | null {
 }
 
 let signInWindow: BrowserWindow | null = null;
+let signInContentsId = -1;
 
 /**
  * A Google sign-in for YouTube in an app window sharing the app's cookies, so
@@ -96,11 +97,12 @@ function openYouTubeSignIn(url = YOUTUBE_SIGN_IN_URL): void {
     parent: mainWindow ?? undefined,
     autoHideMenuBar: true,
     icon: join(STATIC, "icon.png"),
-    webPreferences: { partition: PARTITION, contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
+    webPreferences: { partition: PARTITION, preload: join(__dirname, "sign-in-preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
   });
   signInWindow = window;
   const contents = window.webContents;
-  contents.setUserAgent(plainChromeUserAgent(process.platform, process.versions.chrome ?? ""));
+  signInContentsId = contents.id;
+  contents.setUserAgent(signInUserAgent(process.platform));
   let finished = false;
   const check = (target: string) => {
     if (finished || !signInFinished(target)) return;
@@ -123,7 +125,7 @@ function openYouTubeSignIn(url = YOUTUBE_SIGN_IN_URL): void {
     else if (/^https?:/i.test(target)) void shell.openExternal(target);
     return { action: "deny" };
   });
-  window.on("closed", () => { if (signInWindow === window) signInWindow = null; });
+  window.on("closed", () => { if (signInWindow === window) { signInWindow = null; signInContentsId = -1; } });
   void window.loadURL(url);
 }
 
@@ -283,6 +285,10 @@ function showWindow(): void {
 const ALLOWED_PERMISSIONS = new Set(["media", "display-capture", "notifications", "fullscreen", "clipboard-sanitized-write", "speaker-selection", "window-management"]);
 
 function configureSession(target: Session): void {
+  // The YouTube sign-in window poses as Firefox: its requests to Google carry no Chromium client hints.
+  target.webRequest.onBeforeSendHeaders({ urls: ["https://*.google.com/*", "https://*.youtube.com/*", "https://*.gstatic.com/*"] }, (details, callback) => {
+    callback({ requestHeaders: details.webContentsId === signInContentsId ? withoutClientHints(details.requestHeaders) : details.requestHeaders });
+  });
   target.setPermissionRequestHandler((_contents, permission, callback, details) => {
     callback(isServerUrl(details.requestingUrl) && ALLOWED_PERMISSIONS.has(permission));
   });
