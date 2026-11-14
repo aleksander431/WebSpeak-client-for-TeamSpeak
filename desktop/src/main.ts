@@ -27,6 +27,7 @@ import { NativeHotkeys } from "./native-hotkeys.js";
 import { OverlayController } from "./overlay.js";
 import { EMPTY_ROSTER, parseOverlayRoster, parseOverlaySpeaking, type OverlayRoster } from "./overlay-state.js";
 import { needsNativeHotkey } from "./settings.js";
+import { isSignInUrl, isYouTubePlayerFrame, plainChromeUserAgent, signInFinished, staysInSignIn, YOUTUBE_SIGN_IN_URL } from "./youtube-sign-in.js";
 
 /*
  * WebSpeak desktop shell. The window shows the WebSpeak site of the
@@ -77,6 +78,54 @@ const t: typeof translator.t = (key, variables) => translator.t(key, variables);
 
 function serverOrigin(): string | null {
   try { return settings.value.serverUrl ? new URL(settings.value.serverUrl).origin : null; } catch { return null; }
+}
+
+let signInWindow: BrowserWindow | null = null;
+
+/**
+ * A Google sign-in for YouTube in an app window sharing the app's cookies, so
+ * the embedded players of "watch together" stop asking to confirm "not a bot".
+ * Back on YouTube the window closes and those players reload.
+ */
+function openYouTubeSignIn(url = YOUTUBE_SIGN_IN_URL): void {
+  if (signInWindow && !signInWindow.isDestroyed()) { signInWindow.focus(); return; }
+  const window = new BrowserWindow({
+    width: 520,
+    height: 720,
+    title: "YouTube",
+    parent: mainWindow ?? undefined,
+    autoHideMenuBar: true,
+    icon: join(STATIC, "icon.png"),
+    webPreferences: { partition: PARTITION, contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
+  });
+  signInWindow = window;
+  const contents = window.webContents;
+  contents.setUserAgent(plainChromeUserAgent(process.platform, process.versions.chrome ?? ""));
+  let finished = false;
+  const check = (target: string) => {
+    if (finished || !signInFinished(target)) return;
+    finished = true;
+    window.close();
+    for (const frame of mainWindow?.webContents.mainFrame.framesInSubtree ?? []) {
+      if (isYouTubePlayerFrame(frame.url)) frame.reload();
+    }
+  };
+  const guard = (event: { preventDefault(): void }, target: string) => {
+    if (staysInSignIn(target)) return;
+    event.preventDefault();
+    if (/^https?:/i.test(target)) void shell.openExternal(target);
+  };
+  contents.on("will-navigate", guard);
+  contents.on("will-redirect", guard);
+  contents.on("did-navigate", (_event, target) => check(target));
+  contents.on("did-navigate-in-page", (_event, target) => check(target));
+  contents.setWindowOpenHandler(({ url: target }) => {
+    if (staysInSignIn(target)) void contents.loadURL(target);
+    else if (/^https?:/i.test(target)) void shell.openExternal(target);
+    return { action: "deny" };
+  });
+  window.on("closed", () => { if (signInWindow === window) signInWindow = null; });
+  void window.loadURL(url);
 }
 
 function isServerUrl(url: string): boolean {
@@ -160,6 +209,8 @@ function createMainWindow(): BrowserWindow {
         },
       };
     }
+    // The watch-together player's "sign in" button: sign in inside the app, whose cookies the player uses.
+    if (isSignInUrl(url)) { openYouTubeSignIn(url); return { action: "deny" }; }
     if (/^https?:/i.test(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
@@ -442,6 +493,7 @@ function refreshTray(): void {
     } },
     { label: t("settings"), click: () => openSettings() },
     { label: t("reload"), click: () => { if (mainWindow) loadServer(mainWindow); } },
+    { label: t("youtubeSignIn"), click: () => openYouTubeSignIn() },
     updateState.status === "ready"
       ? { label: t("installUpdate", { version: updateState.version ?? "" }), click: () => installUpdate() }
       : { label: updateState.status === "downloading" ? t("updateDownloading", { version: updateState.version ?? "" }) : t("checkUpdates"), enabled: updateState.status !== "downloading" && updateState.status !== "checking", click: () => checkForUpdates(true) },

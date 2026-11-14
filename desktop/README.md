@@ -10,6 +10,7 @@ A small Electron shell around the WebSpeak site of your server:
 - push-to-talk on any held key or mouse button, without taking the key from games;
 - whisper on a held key or mouse button too: hold it to whisper to the members you chose;
 - an optional in-game overlay (off by default; Settings or the tray) listing who is in your channel, who is talking and who is sharing a screen, click-through and always on top — position (a corner or the middle of a side), size, opacity, offset and "everyone / only talkers" are configurable; exclusive full-screen games hide it, borderless mode does not;
+- when YouTube asks the watch-together player to sign in ("confirm you're not a bot"), the sign-in opens in an app window that shares the app's cookies, and the player reloads signed in afterwards (also in the tray: "Sign in to YouTube");
 - updates itself from the GitHub releases of this repository (`latest.yml` + installer).
 
 ```sh
