@@ -23,7 +23,7 @@
       <button type="button" class="pg-icon-btn" :aria-label="pt('close')" :title="pt('close')" data-ws-part="voice.party.close" @click="close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
     </header>
     <div class="pg-body">
-      <ChessView v-if="tab === 'chess'" :client="chess" :t="pt" />
+      <ChessView v-if="tab === 'chess'" :client="chess" :t="pt" :thinking="botThinking" />
       <MafiaView v-else :client="mafia" :t="pt" :language="language" />
       <p v-if="errorText" class="pg-error" role="alert">{{ errorText }}</p>
     </div>
@@ -34,6 +34,9 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { ChessClient, MafiaClient } from "../../../party/party-client.js";
 import { partyError, partyText } from "../../../party/party-text.js";
+import { ChessEngine } from "../../../party/chess-engine.js";
+import { playChessSound, soundForSan } from "../../../party/chess-sounds.js";
+import { findMove, gameEnd, legalMoves, parseFen, squareIndex, type ChessColor } from "../../../../../src/shared/chess.js";
 import ChessView from "./ChessView.vue";
 import MafiaView from "./MafiaView.vue";
 
@@ -94,6 +97,50 @@ watch(() => [props.chess.state.room?.id, props.chess.state.room?.phase] as const
   if (before !== "playing" && phase === "playing" && props.chess.state.room?.you) open("chess");
 });
 
+// Board sounds for players and for whoever has the board open.
+watch(() => [props.chess.state.room?.id, props.chess.state.room?.moves.length, props.chess.state.room?.phase] as const, ([id, length, phase], [beforeId, beforeLength, beforePhase]) => {
+  const room = props.chess.state.room;
+  if (!room || (!room.you && !(opened.value && tab.value === "chess"))) return;
+  if (id === beforeId && (length ?? 0) > (beforeLength ?? 0)) {
+    const san = room.moves[room.moves.length - 1]!.san;
+    playChessSound(phase === "over" && beforePhase === "playing" ? "end" : soundForSan(san));
+  } else if (id === beforeId && phase === "over" && beforePhase === "playing") playChessSound("end");
+});
+
+// The computer opponent: this page plays its moves when it owns the seat.
+let engine: ChessEngine | null = null;
+const botThinking = ref<ChessColor | null>(null);
+let thinkingFor = "";
+watch(() => [props.chess.state.room?.fen, props.chess.state.room?.phase, props.chess.state.room?.id] as const, async () => {
+  const room = props.chess.state.room;
+  const position = room ? parseFen(room.fen) : null;
+  const seat = room && position ? (position.turn === "w" ? room.white : room.black) : null;
+  if (!room || !position || room.phase !== "playing" || !seat?.bot?.mine) {
+    botThinking.value = null;
+    if (room && !room.white?.bot?.mine && !room.black?.bot?.mine) { engine?.dispose(); engine = null; }
+    return;
+  }
+  const key = `${room.id}|${room.fen}`;
+  if (thinkingFor === key || gameEnd(position, [])) return;
+  thinkingFor = key;
+  botThinking.value = position.turn;
+  engine ??= new ChessEngine();
+  const started = performance.now();
+  let move = await engine.bestMove(room.fen, seat.bot.level).catch(() => null);
+  // A legal move whatever happens (an engine that fails to load still lets the game go on).
+  if (!move || !findMove(position, squareIndex(move.from), squareIndex(move.to), move.promotion)) {
+    const any = legalMoves(position)[0];
+    move = any ? { from: "abcdefgh"[any.from & 7]! + ((any.from >> 3) + 1), to: "abcdefgh"[any.to & 7]! + ((any.to >> 3) + 1), ...(any.promotion ? { promotion: any.promotion } : {}) } : null;
+  }
+  // A beat before answering, so the computer does not look like it moves with you.
+  const wait = 450 - (performance.now() - started);
+  if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+  const now = props.chess.state.room;
+  if (!move || !now || `${now.id}|${now.fen}` !== key || now.phase !== "playing") return;
+  botThinking.value = null;
+  props.chess.send({ type: "chessMove", id: now.id, from: move.from, to: move.to, ...(move.promotion ? { promotion: move.promotion } : {}) });
+}, { immediate: true });
+
 function toggleSize(): void {
   size.value = size.value === "large" ? "small" : "large";
   write(SIZE_KEY, size.value);
@@ -129,6 +176,7 @@ function clampPlaced(): void {
 }
 window.addEventListener("resize", clampPlaced);
 onBeforeUnmount(() => {
+  engine?.dispose();
   clearTimeout(errorTimer);
   window.removeEventListener("resize", clampPlaced);
   window.removeEventListener("pointermove", dragMove);
@@ -225,6 +273,19 @@ onBeforeUnmount(() => {
 .pg-result strong { font-size: 22px; }
 .pg-result small { color: var(--pg-muted); font-size: 13px; }
 .pg-status { min-height: 18px; margin: 0; font-weight: 600; }
+.pg-board-past { box-shadow: 0 0 0 2px #5a7ab0; }
+.pg-replay { display: flex; align-items: center; gap: 2px; }
+.pg-replay-text { flex: 1 1 auto; min-width: 0; padding: 0 6px; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.pg-replay .pg-btn { margin-right: 4px; }
+.pg-icon-btn:disabled { opacity: .35; cursor: default; background: transparent; }
+.pg-claim { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid #5a4a22; background: #2a2414; }
+.pg-actions-end { display: flex; margin-left: auto; }
+.pg-bot-pick { display: inline-flex; gap: 6px; }
+.pg-bot-pick select { min-height: 32px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--pg-line); background: var(--pg-raised); color: var(--pg-text); font: inherit; }
+.pg-moves li button { padding: 1px 4px; border: 0; border-radius: 5px; background: transparent; color: var(--pg-text); font: inherit; text-align: left; cursor: pointer; }
+.pg-moves li button:hover { background: var(--pg-raised); }
+.pg-moves .pg-move-on { background: #33496e; }
+.pg-pgn { margin-top: 6px; }
 .pg-moves summary, .pg-log summary { color: var(--pg-muted); font-size: 12px; cursor: pointer; }
 .pg-moves ol { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 2px 10px; max-height: 108px; margin: 6px 0 0; padding: 0; overflow-y: auto; list-style: none; font-variant-numeric: tabular-nums; }
 .pg-moves li { display: grid; grid-template-columns: 28px 1fr 1fr; }
@@ -275,6 +336,16 @@ onBeforeUnmount(() => {
 .pg-voted { color: var(--pg-muted); font-size: 11px; }
 .pg-kick { position: absolute; right: 6px; bottom: 6px; padding: 0 6px; border: 1px solid var(--pg-line); border-radius: 6px; background: var(--pg-bg); color: var(--pg-muted); font: inherit; font-size: 10px; line-height: 18px; cursor: pointer; }
 .pg-kick:hover { color: #ffb4b0; border-color: #7a2a27; }
+.pg-voice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--pg-line); }
+.pg-voice select { max-width: 260px; min-height: 30px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--pg-line); background: var(--pg-raised); color: var(--pg-text); font: inherit; }
+.pg-voice input[type="range"] { width: 110px; accent-color: var(--pg-accent); }
+.pg-segment { display: inline-flex; justify-self: start; padding: 3px; border-radius: 10px; background: var(--pg-raised); }
+.pg-segment button { min-height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--pg-muted); font: inherit; font-weight: 600; cursor: pointer; }
+.pg-segment .pg-segment-on { background: var(--pg-accent); color: #fff; }
+.pg-role.pg-role-don { border-color: #7a2a27; background: #2a1514; }
+.pg-role.pg-role-maniac { border-color: #6b4a1f; background: #251a10; }
+.pg-role.pg-role-mistress { border-color: #7a2a5a; background: #26121f; }
+.pg-player.pg-role-don small { color: #ff8a80; }
 .pg-chat { display: grid; gap: 6px; padding: 8px 10px; border-radius: 10px; border: 1px solid #5a2422; background: #1d1212; }
 .pg-chat-title { color: #ff8a80; font-size: 12px; font-weight: 600; }
 .pg-chat ol, .pg-log ol { display: grid; gap: 2px; max-height: 120px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }

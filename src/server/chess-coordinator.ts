@@ -1,5 +1,5 @@
 import { applyMove, canMate, findMove, gameEnd, parseFen, repetitionKey, squareIndex, squareName, START_FEN, toFen, toSan, type ChessColor, type ChessPosition } from "../shared/chess.js";
-import type { ChessClientMessage, ChessMoveView, ChessResultReason, ChessRoomView, ChessServerMessage } from "../shared/chess-room.js";
+import { CHESS_ABANDON_MS, type ChessClientMessage, type ChessMoveView, type ChessResultReason, type ChessRoomView, type ChessSeatView, type ChessServerMessage } from "../shared/chess-room.js";
 
 /*
  * One chess board per channel (`<target key>#<channel id>`), in memory. Seats
@@ -24,7 +24,8 @@ export interface ChessCoordinatorOptions {
   clearTimer?: (timer: unknown) => void;
 }
 
-interface Seat { key: string; name: string }
+/** A seat: a person, or the computer, whose moves the owner's page plays. */
+interface Seat { key: string; name: string; bot?: { level: number; owner: string } }
 
 interface Room {
   id: string;
@@ -56,6 +57,8 @@ export class ChessCoordinator {
   private readonly members = new Map<string, Member>();
   private readonly buckets = new Map<string, Bucket>();
   private readonly emptySince = new Map<string, number>();
+  /** When a person (`<room key>|<seat key>`) last left a channel's board. */
+  private readonly leftAt = new Map<string, number>();
   private readonly now: () => number;
   private readonly randomId: () => string;
   private readonly setTimer: (callback: () => void, ms: number) => unknown;
@@ -95,6 +98,7 @@ export class ChessCoordinator {
     this.members.delete(entryId);
     this.buckets.delete(entryId);
     if (!member) return;
+    if (!this.online(member.roomKey, member.seatKey)) this.leftAt.set(`${member.roomKey}|${member.seatKey}`, this.now());
     this.broadcast(member.roomKey);
     this.forgetIdle();
   }
@@ -108,6 +112,7 @@ export class ChessCoordinator {
     if (previous && previous.roomKey !== participant.roomKey) this.removePeer(participant.entryId);
     const roomKey = participant.roomKey!;
     this.members.set(participant.entryId, { roomKey, nickname: participant.nickname, seatKey: participant.seatKey });
+    this.leftAt.delete(`${roomKey}|${participant.seatKey}`);
     this.emptySince.delete(roomKey);
     this.forgetIdle();
     this.room(roomKey);
@@ -134,6 +139,19 @@ export class ChessCoordinator {
     return false;
   }
 
+  /** Whether whoever plays this seat is in the channel (the computer follows its owner). */
+  private seatOnline(roomKey: string, seat: Seat | null): boolean {
+    return !!seat && this.online(roomKey, seat.bot ? seat.bot.owner : seat.key);
+  }
+
+  /** How long the person behind a seat has been away, or null while present. */
+  private seatAway(roomKey: string, seat: Seat): number | null {
+    if (this.seatOnline(roomKey, seat)) return null;
+    const key = `${roomKey}|${seat.bot ? seat.bot.owner : seat.key}`;
+    if (!this.leftAt.has(key)) this.leftAt.set(key, this.now());
+    return this.now() - this.leftAt.get(key)!;
+  }
+
   private colorOf(room: Room, seatKey: string): ChessColor | null {
     if (room.seats.w?.key === seatKey) return "w";
     if (room.seats.b?.key === seatKey) return "b";
@@ -146,12 +164,27 @@ export class ChessCoordinator {
     const mine = this.colorOf(room, member.seatKey);
     switch (message.type) {
       case "chessSit": {
-        if (room.phase === "playing") return "CHESS_IN_PROGRESS";
+        if (room.phase === "playing") {
+          // A game both players walked away from no longer holds the board.
+          if (this.seatOnline(key, room.seats.w) || this.seatOnline(key, room.seats.b)) return "CHESS_IN_PROGRESS";
+          this.reset(room);
+          room.seats = { w: null, b: null };
+        }
         const seat = room.seats[message.color];
         // A seat is free, or held by someone who left the channel.
-        if (seat && seat.key !== member.seatKey && this.online(key, seat.key)) return "CHESS_SEAT_TAKEN";
+        if (seat && seat.key !== member.seatKey && this.seatOnline(key, seat)) return "CHESS_SEAT_TAKEN";
         if (mine) room.seats[mine] = null;
         room.seats[message.color] = { key: member.seatKey, name: member.nickname };
+        if (room.phase === "over") this.reset(room);
+        break;
+      }
+      case "chessBot": {
+        if (room.phase === "playing") return "CHESS_IN_PROGRESS";
+        if (!mine) return "CHESS_NOT_SEATED";
+        const color = other(mine);
+        const seat = room.seats[color];
+        if (seat && !seat.bot && this.seatOnline(key, seat)) return "CHESS_SEAT_TAKEN";
+        room.seats[color] = { key: `bot:${member.seatKey}`, name: "Stockfish", bot: { level: message.level, owner: member.seatKey } };
         if (room.phase === "over") this.reset(room);
         break;
       }
@@ -159,8 +192,18 @@ export class ChessCoordinator {
         if (!mine) return null;
         if (room.phase === "playing") return "CHESS_IN_PROGRESS";
         room.seats[mine] = null;
+        // One's computer opponent leaves with its owner.
+        for (const color of ["w", "b"] as const) if (room.seats[color]?.bot?.owner === member.seatKey) room.seats[color] = null;
         if (room.phase === "over") this.reset(room);
         break;
+      case "chessClaim": {
+        if (room.id !== message.id || room.phase !== "playing") return "CHESS_STALE";
+        if (!mine) return "CHESS_NOT_SEATED";
+        const away = this.seatAway(key, room.seats[other(mine)]!);
+        if (away === null || away < CHESS_ABANDON_MS) return "CHESS_OPPONENT_HERE";
+        this.finish(room, mine, "abandon");
+        break;
+      }
       case "chessClock":
         if (room.phase === "playing") return "CHESS_IN_PROGRESS";
         if (!mine) return "CHESS_NOT_SEATED";
@@ -175,20 +218,24 @@ export class ChessCoordinator {
         break;
       case "chessMove": {
         if (room.id !== message.id || room.phase !== "playing") return "CHESS_STALE";
-        if (mine !== room.position.turn) return "CHESS_NOT_YOUR_TURN";
+        // The owner's page plays the computer's moves.
+        const turnSeat = room.seats[room.position.turn];
+        const playsTurn = mine === room.position.turn || turnSeat?.bot?.owner === member.seatKey;
+        if (!playsTurn) return "CHESS_NOT_YOUR_TURN";
         if (this.flagFell(key, room)) return null;
         const move = findMove(room.position, squareIndex(message.from), squareIndex(message.to), message.promotion);
         if (!move) return "CHESS_ILLEGAL";
         const now = this.now();
+        const mover = room.position.turn;
         if (room.clock) {
-          room.times[mine] = Math.max(0, room.times[mine] - (now - room.turnStartedAt)) + room.clock.increment * 1000;
+          room.times[mover] = Math.max(0, room.times[mover] - (now - room.turnStartedAt)) + room.clock.increment * 1000;
         }
         room.moves.push({ san: toSan(room.position, move), from: squareName(move.from), to: squareName(move.to) });
         room.position = applyMove(room.position, move);
         room.keys.push(repetitionKey(room.position));
         room.turnStartedAt = now;
         // A move answers an offer from the other side by declining it; one's own offer stands.
-        if (room.drawOffer && room.drawOffer !== mine) room.drawOffer = null;
+        if (room.drawOffer && room.drawOffer !== mover) room.drawOffer = null;
         const end = gameEnd(room.position, room.keys);
         if (end) this.finish(room, end.winner, end.reason);
         else this.armFlag(key, room);
@@ -202,6 +249,7 @@ export class ChessCoordinator {
       case "chessDraw":
         if (room.id !== message.id || room.phase !== "playing") return "CHESS_STALE";
         if (!mine) return "CHESS_NOT_SEATED";
+        if (room.seats[other(mine)]?.bot) return "CHESS_BOT_PLAYS_ON";
         if (message.action === "offer") {
           if (room.drawOffer === mine) return null;
           if (room.drawOffer === other(mine)) this.finish(room, null, "agreement");
@@ -218,6 +266,8 @@ export class ChessCoordinator {
         if (room.id !== message.id || room.phase !== "over") return "CHESS_STALE";
         if (!mine) return "CHESS_NOT_SEATED";
         room.rematch.add(mine);
+        // The computer is always up for another game.
+        if (room.seats[other(mine)]?.bot) room.rematch.add(other(mine));
         if (room.rematch.size === 2 && room.seats.w && room.seats.b) {
           // Colours swap for the return game.
           room.seats = { w: room.seats.b, b: room.seats.w };
@@ -291,7 +341,10 @@ export class ChessCoordinator {
 
   private view(key: string, seatKey: string): ChessRoomView {
     const room = this.room(key);
-    const seat = (value: Seat | null) => value ? { name: value.name, online: this.online(key, value.key) } : null;
+    const seat = (value: Seat | null): ChessSeatView | null => value ? {
+      name: value.name, online: this.seatOnline(key, value), away: this.seatAway(key, value),
+      ...(value.bot ? { bot: { level: value.bot.level, mine: value.bot.owner === seatKey } } : {}),
+    } : null;
     const seated = new Set([room.seats.w?.key, room.seats.b?.key]);
     const spectators = new Set<string>();
     for (const member of this.members.values()) if (member.roomKey === key && !seated.has(member.seatKey)) spectators.add(member.nickname);

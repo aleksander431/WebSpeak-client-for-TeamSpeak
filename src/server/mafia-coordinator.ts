@@ -1,4 +1,4 @@
-import { DEFAULT_MAFIA_SETTINGS, dealtMafia, MAFIA_CHAT_KEEP, MAFIA_MAX_PLAYERS, MAFIA_MIN_PLAYERS, type MafiaClientMessage, type MafiaLogEntry, type MafiaPhase, type MafiaRole, type MafiaRoomView, type MafiaServerMessage, type MafiaSettings, type MafiaSide } from "../shared/mafia.js";
+import { DEFAULT_MAFIA_SETTINGS, dealtMafia, isMafiaSide, MAFIA_CHAT_KEEP, MAFIA_MAX_PLAYERS, MAFIA_MIN_PLAYERS, type MafiaClientMessage, type MafiaLogEntry, type MafiaPhase, type MafiaRole, type MafiaRoomView, type MafiaServerMessage, type MafiaSettings, type MafiaSide } from "../shared/mafia.js";
 
 /*
  * One mafia table per channel (`<target key>#<channel id>`), in memory. The
@@ -43,10 +43,12 @@ interface Room {
   nextPlayer: number;
   deadline: number | null;
   timer: unknown;
-  /** Night choices by player id. */
+  /** Night choices by player id (the don's search for the detective under `<id>:check`). */
   acts: Map<string, string>;
   lastHeal: string | null;
-  checks: Array<{ round: number; target: string; mafia: boolean }>;
+  lastVisit: string | null;
+  checks: Array<{ round: number; target: string; mafia: boolean | null }>;
+  donChecks: Array<{ round: number; target: string; detective: boolean | null }>;
   votes: Map<string, string>;
   chat: Array<{ from: string; text: string; at: number }>;
   log: MafiaLogEntry[];
@@ -142,7 +144,7 @@ export class MafiaCoordinator {
     if (!room) {
       room = {
         id: this.randomId(), phase: "lobby", round: 0, host: null, settings: { ...DEFAULT_MAFIA_SETTINGS }, players: [], nextPlayer: 1,
-        deadline: null, timer: null, acts: new Map(), lastHeal: null, checks: [], votes: new Map(), chat: [], log: [], winner: null,
+        deadline: null, timer: null, acts: new Map(), lastHeal: null, lastVisit: null, checks: [], donChecks: [], votes: new Map(), chat: [], log: [], winner: null,
       };
       this.rooms.set(key, room);
     }
@@ -211,16 +213,22 @@ export class MafiaCoordinator {
       case "mafiaAct": {
         if (message.id !== room.id || room.phase !== "night") return "MAFIA_STALE";
         if (!me?.alive || me.role === "citizen" || !me.role) return "MAFIA_NO_ACTION";
-        if (room.acts.has(me.id) && me.role !== "mafia") return "MAFIA_ALREADY_ACTED";
+        const donCheck = message.ability === "check";
+        if (donCheck && me.role !== "don") return "MAFIA_NO_ACTION";
+        const slot = donCheck ? `${me.id}:check` : me.id;
+        // The mafia may change their mind until they agree; everyone else chooses once.
+        if (room.acts.has(slot) && (donCheck || !isMafiaSide(me.role))) return "MAFIA_ALREADY_ACTED";
         const target = room.players.find(player => player.id === message.target && player.alive);
         if (!target) return "MAFIA_BAD_TARGET";
-        if (me.role === "mafia" && target.role === "mafia") return "MAFIA_BAD_TARGET";
-        if (me.role === "doctor" && target.id === room.lastHeal) return "MAFIA_HEALED_LAST_NIGHT";
-        if (me.role === "detective") {
-          if (target === me) return "MAFIA_BAD_TARGET";
-          room.checks.push({ round: room.round, target: target.id, mafia: target.role === "mafia" });
+        if (donCheck) {
+          if (isMafiaSide(target.role)) return "MAFIA_BAD_TARGET";
+        } else {
+          if (isMafiaSide(me.role) && isMafiaSide(target.role)) return "MAFIA_BAD_TARGET";
+          if ((me.role === "detective" || me.role === "maniac" || me.role === "mistress") && target === me) return "MAFIA_BAD_TARGET";
+          if (me.role === "doctor" && target.id === room.lastHeal) return "MAFIA_HEALED_LAST_NIGHT";
+          if (me.role === "mistress" && target.id === room.lastVisit) return "MAFIA_VISITED_LAST_NIGHT";
         }
-        room.acts.set(me.id, target.id);
+        room.acts.set(slot, target.id);
         this.maybeResolve(key, room);
         break;
       }
@@ -239,7 +247,7 @@ export class MafiaCoordinator {
         break;
       case "mafiaChat":
         if (message.id !== room.id || !inGame) return "MAFIA_STALE";
-        if (me?.role !== "mafia") return "MAFIA_NOT_MAFIA";
+        if (!me || !isMafiaSide(me.role)) return "MAFIA_NOT_MAFIA";
         room.chat.push({ from: me.id, text: message.text, at: this.now() });
         if (room.chat.length > MAFIA_CHAT_KEEP) room.chat.splice(0, room.chat.length - MAFIA_CHAT_KEEP);
         break;
@@ -261,9 +269,11 @@ export class MafiaCoordinator {
 
   private deal(room: Room, mafia: number): void {
     const roles: MafiaRole[] = [];
-    for (let i = 0; i < mafia; i++) roles.push("mafia");
+    for (let i = 0; i < mafia; i++) roles.push(i === 0 && room.settings.don ? "don" : "mafia");
     if (room.settings.doctor) roles.push("doctor");
     if (room.settings.detective) roles.push("detective");
+    if (room.settings.maniac) roles.push("maniac");
+    if (room.settings.mistress) roles.push("mistress");
     while (roles.length < room.players.length) roles.push("citizen");
     // Fisher–Yates with the gateway's fair random numbers.
     for (let i = roles.length - 1; i > 0; i--) {
@@ -274,7 +284,9 @@ export class MafiaCoordinator {
     room.id = this.randomId();
     room.round = 0;
     room.lastHeal = null;
+    room.lastVisit = null;
     room.checks = [];
+    room.donChecks = [];
     room.chat = [];
     room.winner = null;
   }
@@ -307,8 +319,10 @@ export class MafiaCoordinator {
    * until they agree or the time runs out (then the lot decides between the leaders).
    */
   private nightDone(room: Room): boolean {
-    if (!room.players.every(player => !player.alive || player.role === "citizen" || room.acts.has(player.id))) return false;
-    const picks = new Set(room.players.filter(player => player.alive && player.role === "mafia").map(player => room.acts.get(player.id)));
+    const done = room.players.every(player => !player.alive || player.role === "citizen"
+      || (room.acts.has(player.id) && (player.role !== "don" || room.acts.has(`${player.id}:check`))));
+    if (!done) return false;
+    const picks = new Set(room.players.filter(player => player.alive && isMafiaSide(player.role)).map(player => room.acts.get(player.id)));
     return picks.size <= 1;
   }
 
@@ -323,24 +337,45 @@ export class MafiaCoordinator {
     else if (room.phase === "vote") this.resolveVote(key, room);
   }
 
+  /**
+   * The morning. The mistress's visit comes first: the player she visited does
+   * nothing that night (a visited mafioso's vote does not count). Then the
+   * mafia's victim (most votes of those not visited, a tie by lot) and the
+   * maniac's, unless the doctor healed them; the detective's and the don's
+   * checks are answered now, so a visited checker learns nothing.
+   */
   private resolveNight(key: string, room: Room): void {
+    const actor = (role: MafiaRole) => room.players.find(player => player.alive && player.role === role) ?? null;
+    const mistress = actor("mistress");
+    const visited = mistress ? room.acts.get(mistress.id) ?? null : null;
+    room.lastVisit = visited;
+    const acts = (player: Player | null, slot = player?.id ?? "") => (player && player.id !== visited ? room.acts.get(slot) ?? null : null);
     const tally = new Map<string, number>();
-    let heal: string | null = null;
     for (const player of room.players) {
-      if (!player.alive) continue;
-      const target = room.acts.get(player.id);
-      if (!target) continue;
-      if (player.role === "mafia") tally.set(target, (tally.get(target) ?? 0) + 1);
-      if (player.role === "doctor") heal = target;
+      if (!player.alive || !isMafiaSide(player.role)) continue;
+      const target = acts(player);
+      if (target) tally.set(target, (tally.get(target) ?? 0) + 1);
     }
-    room.lastHeal = heal;
-    // The mafia's choice: most votes, a tie settled by lot.
+    const doctor = actor("doctor");
+    const heal = acts(doctor);
+    room.lastHeal = doctor ? room.acts.get(doctor.id) ?? null : null;
     const top = Math.max(0, ...tally.values());
     const leaders = [...tally.entries()].filter(([, count]) => count === top && top > 0).map(([id]) => id);
-    const victimId = leaders.length ? leaders[this.random(leaders.length)]! : null;
-    const victim = victimId && victimId !== heal ? room.players.find(player => player.id === victimId && player.alive) ?? null : null;
-    if (victim) this.kill(room, victim, { kind: "killed", round: room.round, name: victim.name, role: this.revealed(room, victim) });
-    else this.pushLog(room, { kind: "quiet", round: room.round });
+    const mafiaVictim = leaders.length ? leaders[this.random(leaders.length)]! : null;
+    const maniacVictim = acts(actor("maniac"));
+    const roleOf = (id: string) => room.players.find(player => player.id === id)?.role ?? null;
+    const detective = actor("detective");
+    const checked = detective ? room.acts.get(detective.id) : undefined;
+    if (detective && checked) room.checks.push({ round: room.round, target: checked, mafia: detective.id === visited ? null : isMafiaSide(roleOf(checked)) });
+    const don = actor("don");
+    const searched = don ? room.acts.get(`${don.id}:check`) : undefined;
+    if (don && searched) room.donChecks.push({ round: room.round, target: searched, detective: don.id === visited ? null : roleOf(searched) === "detective" });
+    const victims = [...new Set([mafiaVictim, maniacVictim])]
+      .filter((id): id is string => !!id && id !== heal)
+      .map(id => room.players.find(player => player.id === id && player.alive))
+      .filter((player): player is Player => !!player);
+    for (const victim of victims) this.kill(room, victim, { kind: "killed", round: room.round, name: victim.name, role: this.revealed(room, victim) });
+    if (!victims.length) this.pushLog(room, { kind: "quiet", round: room.round });
     if (this.checkWin(room)) return;
     room.phase = "day";
     room.acts.clear();
@@ -384,8 +419,12 @@ export class MafiaCoordinator {
 
   private checkWin(room: Room): boolean {
     const alive = room.players.filter(player => player.alive);
-    const mafia = alive.filter(player => player.role === "mafia").length;
-    const winner: MafiaSide | null = mafia === 0 ? "town" : mafia * 2 >= alive.length ? "mafia" : null;
+    const mafia = alive.filter(player => isMafiaSide(player.role)).length;
+    const maniac = alive.some(player => player.role === "maniac");
+    // The maniac wins once at most one other is left; the mafia only once the maniac is gone.
+    const winner: MafiaSide | null = maniac
+      ? (alive.length <= 2 ? "maniac" : null)
+      : mafia === 0 ? "town" : mafia * 2 >= alive.length ? "mafia" : null;
     if (!winner) return false;
     this.disarm(room);
     room.phase = "over";
@@ -424,11 +463,11 @@ export class MafiaCoordinator {
     const room = this.room(key);
     const me = room.players.find(player => player.key === seatKey) ?? null;
     const over = room.phase === "over";
-    const iAmMafia = me?.role === "mafia";
+    const iAmMafia = isMafiaSide(me?.role);
     const visibleRole = (player: Player): MafiaRole | null => {
       if (!player.role) return null;
       if (over || player === me) return player.role;
-      if (iAmMafia && player.role === "mafia") return "mafia";
+      if (iAmMafia && isMafiaSide(player.role)) return player.role;
       if (!player.alive && room.settings.reveal) return player.role;
       return null;
     };
@@ -438,12 +477,17 @@ export class MafiaCoordinator {
     for (const member of this.members.values()) if (member.roomKey === key && !inPlay.has(member.seatKey)) spectators.add(member.nickname);
     const secret: MafiaRoomView["secret"] = {};
     if (me && !over && room.phase !== "lobby") {
-      if (me.role === "mafia") {
+      if (isMafiaSide(me.role)) {
         secret.picks = room.phase === "night"
-          ? room.players.filter(player => player.role === "mafia" && player.alive && room.acts.has(player.id)).map(player => ({ from: player.id, to: room.acts.get(player.id)! }))
+          ? room.players.filter(player => isMafiaSide(player.role) && player.alive && room.acts.has(player.id)).map(player => ({ from: player.id, to: room.acts.get(player.id)! }))
           : [];
       }
+      if (me.role === "don") {
+        secret.donChecks = room.donChecks.map(check => ({ ...check }));
+        secret.donCheck = room.phase === "night" ? room.acts.get(`${me.id}:check`) ?? null : null;
+      }
       if (me.role === "doctor") secret.lastHeal = room.lastHeal;
+      if (me.role === "mistress") secret.lastVisit = room.lastVisit;
       if (me.role === "detective") secret.checks = room.checks.map(check => ({ ...check }));
     }
     return {

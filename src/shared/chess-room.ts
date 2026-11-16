@@ -8,15 +8,23 @@ import type { ChessColor, Promotion } from "./chess.js";
 
 export const CHESS_CLOCK_MINUTES = [0, 1, 3, 5, 10, 15, 30] as const;
 export const CHESS_CLOCK_INCREMENTS = [0, 1, 2, 3, 5, 10] as const;
+/** Computer strength levels the board offers (1 weakest … 8 strongest). */
+export const CHESS_BOT_LEVELS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+/** A player away from the channel this long during a game loses on request. */
+export const CHESS_ABANDON_MS = 60_000;
 
 export type ChessResultReason =
   | "checkmate" | "stalemate" | "material" | "repetition" | "fifty"
-  | "resign" | "timeout" | "timeoutDraw" | "agreement";
+  | "resign" | "timeout" | "timeoutDraw" | "agreement" | "abandon";
 
 export interface ChessSeatView {
   name: string;
-  /** In the channel right now. */
+  /** In the channel right now (for the computer: whoever runs it). */
   online: boolean;
+  /** Milliseconds since this player left the channel, at the moment of sending. */
+  away: number | null;
+  /** The computer: its level, and whether this viewer's page plays its moves. */
+  bot?: { level: number; mine: boolean };
 }
 
 export interface ChessMoveView {
@@ -50,6 +58,8 @@ export type ChessClientMessage =
   | { type: "chessOpen" }
   | { type: "chessClose" }
   | { type: "chessSit"; color: ChessColor }
+  | { type: "chessBot"; level: number }
+  | { type: "chessClaim"; id: string }
   | { type: "chessStand" }
   | { type: "chessClock"; minutes: number; increment: number }
   | { type: "chessStart" }
@@ -95,7 +105,10 @@ export function parseChessClientMessage(value: unknown): ChessClientMessage | { 
       if (!id || !from || !to || (promotion !== undefined && !["q", "r", "b", "n"].includes(String(promotion)))) return invalid;
       return { type: "chessMove", id, from, to, ...(promotion ? { promotion: promotion as Promotion } : {}) };
     }
+    case "chessBot":
+      return (CHESS_BOT_LEVELS as readonly unknown[]).includes(value.level) ? { type: "chessBot", level: value.level as number } : invalid;
     case "chessResign":
+    case "chessClaim":
     case "chessRematch": {
       const id = gameId(value.id);
       return id ? { type: value.type, id } : invalid;
@@ -111,7 +124,9 @@ export function parseChessClientMessage(value: unknown): ChessClientMessage | { 
 
 const seatView = (value: unknown): ChessSeatView | null | undefined => {
   if (value === null) return null;
-  return isRecord(value) && typeof value.name === "string" && typeof value.online === "boolean" ? { name: value.name, online: value.online } : undefined;
+  if (!isRecord(value) || typeof value.name !== "string" || typeof value.online !== "boolean") return undefined;
+  const bot = isRecord(value.bot) && typeof value.bot.level === "number" ? { level: value.bot.level, mine: value.bot.mine === true } : undefined;
+  return { name: value.name, online: value.online, away: typeof value.away === "number" ? value.away : null, ...(bot ? { bot } : {}) };
 };
 
 /** The browser's check of what the gateway sends. */

@@ -135,3 +135,63 @@ test("the page checks what it receives", () => {
   assert.ok("error" in (parseChessClientMessage({ type: "chessClock", minutes: 7, increment: 0 }) ?? {}));
   assert.equal(parseChessClientMessage({ type: "gameOpen" }), null);
 });
+
+test("players who walk away: a win on request after a minute, and a free board once both are gone", () => {
+  const { coordinator, people, room, errors, send, tick } = setup();
+  send("ann", { type: "chessSit", color: "w" });
+  send("bob", { type: "chessSit", color: "b" });
+  send("ann", { type: "chessClock", minutes: 0, increment: 0 });
+  send("ann", { type: "chessStart" });
+  const id = room("ann").id;
+  coordinator.removePeer("e2");
+  tick(30_000);
+  assert.equal(room("ann").black?.away, 0, "counted from the moment of sending; the page adds the time since");
+  send("ann", { type: "chessClaim", id });
+  assert.deepEqual(errors("ann"), ["CHESS_OPPONENT_HERE"], "not yet");
+  send("cid", { type: "chessSit", color: "b" });
+  assert.deepEqual(errors("cid"), ["CHESS_IN_PROGRESS"], "one player is still here");
+  tick(31_000);
+  send("ann", { type: "chessClaim", id });
+  assert.deepEqual(room("cid").result, { winner: "w", reason: "abandon" });
+
+  // A fresh game, and then both players leave: those still here take the board.
+  send("ann", { type: "chessSit", color: "b" });
+  coordinator.handleMessage(people.bob!, { type: "chessOpen" });
+  send("bob", { type: "chessSit", color: "w" });
+  send("bob", { type: "chessStart" });
+  coordinator.removePeer("e1");
+  coordinator.removePeer("e2");
+  send("cid", { type: "chessSit", color: "w" });
+  assert.deepEqual(errors("cid"), ["CHESS_IN_PROGRESS"]);
+  assert.equal(room("cid").phase, "waiting");
+  assert.equal(room("cid").white?.name, "Cid");
+  assert.equal(room("cid").black, null, "the old game no longer holds the board");
+});
+
+test("playing the computer: the owner's page plays its moves, it never takes draws and always wants a rematch", () => {
+  const { coordinator, room, errors, send } = setup();
+  send("ann", { type: "chessSit", color: "w" });
+  send("ann", { type: "chessBot", level: 3 });
+  assert.deepEqual(room("ann").black, { name: "Stockfish", online: true, away: null, bot: { level: 3, mine: true } });
+  assert.equal(room("cid").black?.bot?.mine, false);
+  send("ann", { type: "chessClock", minutes: 0, increment: 0 });
+  send("ann", { type: "chessStart" });
+  const id = room("ann").id;
+  send("ann", { type: "chessMove", id, from: "e2", to: "e4" });
+  send("bob", { type: "chessMove", id, from: "e7", to: "e5" });
+  assert.deepEqual(errors("bob"), ["CHESS_NOT_YOUR_TURN"], "only the owner plays for the computer");
+  send("ann", { type: "chessMove", id, from: "e7", to: "e5" });
+  assert.deepEqual(room("cid").moves.map(move => move.san), ["e4", "e5"]);
+  send("ann", { type: "chessDraw", id, action: "offer" });
+  assert.deepEqual(errors("ann"), ["CHESS_BOT_PLAYS_ON"]);
+  send("ann", { type: "chessResign", id });
+  send("ann", { type: "chessRematch", id });
+  assert.equal(room("ann").phase, "playing", "the computer agrees at once");
+  assert.equal(room("ann").you, "b");
+  assert.equal(room("ann").white?.bot?.level, 3);
+  // The owner leaves: the computer goes with them, so both seats count as gone.
+  coordinator.removePeer("e1");
+  assert.equal(room("cid").white?.online, false);
+  send("cid", { type: "chessSit", color: "w" });
+  assert.equal(room("cid").white?.name, "Cid");
+});

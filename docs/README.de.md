@@ -189,6 +189,12 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 - **Schach im Kanal**: eine Schaltfläche „Spiele“ neben „Gemeinsam schauen“. Zwei Plätze am Brett, alle anderen schauen zu; ziehen per Klick oder Ziehen, mit markierten Zügen, Schach und letztem Zug, geschlagenen Figuren und Partienotation. Uhren mit Inkrement (1 bis 30 Minuten), Remisangebote, Aufgabe und Revanche mit Farbwechsel. Der Server prüft jeden Zug: Rochade, en passant, Umwandlung, Matt, Patt, dreifache Wiederholung, 50-Züge-Regel, ungenügendes Material.
 - **Mafia mit dem Server als Spielleiter**: 4–16 Spieler, geheim verteilte Rollen (Mafia, Arzt, Kommissar, Bürger). Nachts wählt die Mafia ein Opfer (sie sieht die Wahl der anderen und hat einen geheimen Chat), der Arzt heilt, der Kommissar prüft; morgens verkündet der Server die Nacht, tagsüber wird im Sprachkanal beraten und offen abgestimmt. Der Spielleiter stellt die Zahl der Mafia, Arzt und Kommissar, das Aufdecken der Rollen Toter und die Zeiten für Nacht, Beratung und Abstimmung ein. Die Ansagen werden vorgelesen („Die Stadt schläft ein…“), abschaltbar.
+- **Schach gegen den Computer**: Ohne Gegner „Gegen den Computer spielen“ wählen, Stufe 1 bis 8 (Stockfish direkt im Browser). Alle anderen im Kanal schauen zu.
+- **Partie nachspielen**: Züge mit ← → oder per Klick auf die Notation durchgehen; die Partie als PGN kopieren oder herunterladen, etwa für lichess.
+- **Klänge** für Zug, Schlagen, Schach und Partieende (abschaltbar).
+- **Gegner gegangen**: Verlässt der Gegner mitten in der Partie den Kanal, kann man nach einer Minute den Sieg beanspruchen. Gehen beide Spieler, wird das Brett frei und die Anwesenden können eine eigene Partie beginnen.
+- **Mafia: neue Rollen** — der Don (wählt mit der Mafia das Opfer und sucht den Kommissar), der Wahnsinnige (tötet allein und gewinnt allein) und die Geliebte (ihr nächtlicher Besuch vereitelt die Aktion eines Spielers). Der Spielleiter schaltet sie in den Einstellungen ein. Die Antwort auf die Prüfung des Kommissars kommt jetzt am Morgen.
+- **Stimme des Mafia-Spielleiters**: jede auf dem Computer installierte Stimme und die Sprechgeschwindigkeit wählbar, mit Vorschau.
 
 ### [v1.0.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.3) · 2026-11-14
 

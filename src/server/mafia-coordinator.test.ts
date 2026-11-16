@@ -3,7 +3,7 @@ import test from "node:test";
 import { dealtMafia, DEFAULT_MAFIA_SETTINGS, mafiaCountFor, parseMafiaClientMessage, parseMafiaServerMessage, type MafiaRoomView, type MafiaServerMessage } from "../shared/mafia.js";
 import { MafiaCoordinator, type MafiaParticipant } from "./mafia-coordinator.js";
 
-const NAMES = ["Ann", "Bob", "Cid", "Dan", "Eve", "Fay"];
+const NAMES = ["Ann", "Bob", "Cid", "Dan", "Eve", "Fay", "Gus"];
 
 function setup(count = 6, options: { random?: (max: number) => number } = {}) {
   let clock = 5_000_000;
@@ -84,9 +84,10 @@ test("a full game: the doctor saves, the detective finds, the town votes the maf
   send("Bob", { type: "mafiaAct", id: game, target: idOf("Eve") });
   assert.deepEqual(view("Ann").secret.picks, [{ from: idOf("Ann"), to: idOf("Eve") }, { from: idOf("Bob"), to: idOf("Eve") }]);
   send("Dan", { type: "mafiaAct", id: game, target: idOf("Ann") });
-  assert.deepEqual(view("Dan").secret.checks, [{ round: 1, target: idOf("Ann"), mafia: true }]);
+  assert.deepEqual(view("Dan").secret.checks, [], "the answer comes in the morning");
   assert.equal(view("Ann").phase, "night", "the doctor has not chosen yet");
   send("Cid", { type: "mafiaAct", id: game, target: idOf("Eve") });
+  assert.deepEqual(view("Dan").secret.checks, [{ round: 1, target: idOf("Ann"), mafia: true }]);
   assert.equal(view("Zed").phase, "day");
   assert.deepEqual(view("Zed").log.at(-1), { kind: "quiet", round: 1 });
   // Day 1: the host calls the vote, the town picks Ann.
@@ -180,4 +181,78 @@ test("the page checks what it receives", () => {
   assert.ok("error" in (parseMafiaClientMessage({ type: "mafiaSettings", settings: { ...DEFAULT_MAFIA_SETTINGS, nightSeconds: 45 } }) ?? {}));
   assert.ok("error" in (parseMafiaClientMessage({ type: "mafiaChat", id: "m1", text: "   " }) ?? {}));
   assert.equal(parseMafiaClientMessage({ type: "chessOpen" }), null);
+});
+
+/** Seven players dealt in order: Ann don, Bob mafia, Cid doctor, Dan detective, Eve maniac, Fay mistress, Gus citizen. */
+function sevenWithRoles() {
+  const table = setup(7);
+  table.send("Ann", { type: "mafiaSettings", settings: { ...DEFAULT_MAFIA_SETTINGS, mafia: 2, don: true, maniac: true, mistress: true, nightSeconds: 0, daySeconds: 0, voteSeconds: 0 } });
+  table.send("Ann", { type: "mafiaStart" });
+  return { ...table, game: table.view("Ann").id };
+}
+
+test("the don looks for the detective, the mistress cancels a night action, the maniac kills on his own", () => {
+  const { view, errors, send, idOf, game } = sevenWithRoles();
+  assert.deepEqual(view("Ann").players.map(player => player.role), ["don", "mafia", null, null, null, null, null], "the mafia know their don");
+  assert.deepEqual(view("Eve").players.map(player => player.role), [null, null, null, null, "maniac", null, null]);
+  // Night 1: the mafia go for Gus, the maniac for Cid; the mistress visits the doctor, so Cid's heal is void.
+  send("Ann", { type: "mafiaAct", id: game, target: idOf("Gus") });
+  send("Bob", { type: "mafiaAct", id: game, target: idOf("Gus") });
+  send("Ann", { type: "mafiaAct", id: game, target: idOf("Dan"), ability: "check" });
+  assert.equal(view("Ann").secret.donCheck, idOf("Dan"));
+  send("Bob", { type: "mafiaAct", id: game, target: idOf("Dan"), ability: "check" });
+  assert.deepEqual(errors("Bob"), ["MAFIA_NO_ACTION"], "only the don searches");
+  send("Eve", { type: "mafiaAct", id: game, target: idOf("Cid") });
+  send("Fay", { type: "mafiaAct", id: game, target: idOf("Cid") });
+  send("Cid", { type: "mafiaAct", id: game, target: idOf("Gus") });
+  assert.equal(view("Zed").phase, "night", "the detective has not chosen");
+  send("Dan", { type: "mafiaAct", id: game, target: idOf("Eve") });
+  assert.equal(view("Zed").phase, "day");
+  assert.deepEqual(view("Zed").log.slice(-2), [
+    { kind: "killed", round: 1, name: "Gus", role: "citizen" },
+    { kind: "killed", round: 1, name: "Cid", role: "doctor" },
+  ], "the visited doctor saved nobody; two died");
+  assert.deepEqual(view("Ann").secret.donChecks, [{ round: 1, target: idOf("Dan"), detective: true }]);
+  assert.deepEqual(view("Dan").secret.checks, [{ round: 1, target: idOf("Eve"), mafia: false }], "the maniac is not mafia");
+  assert.equal(view("Fay").secret.lastVisit, idOf("Cid"));
+  // Day 1: the town sends the don away.
+  send("Ann", { type: "mafiaAdvance", id: game });
+  for (const voter of ["Bob", "Dan", "Eve", "Fay"]) send(voter, { type: "mafiaVote", id: game, target: idOf(voter === "Bob" ? "Fay" : "Ann") });
+  send("Ann", { type: "mafiaVote", id: game, target: idOf("Fay") });
+  assert.equal(view("Zed").players[0]!.alive, false);
+  // Night 2: the mistress may not visit Cid again (dead anyway) — she visits the maniac, who then kills nobody.
+  send("Fay", { type: "mafiaAct", id: game, target: idOf("Eve") });
+  send("Eve", { type: "mafiaAct", id: game, target: idOf("Dan") });
+  send("Dan", { type: "mafiaAct", id: game, target: idOf("Bob") });
+  send("Bob", { type: "mafiaAct", id: game, target: idOf("Fay") });
+  assert.deepEqual(view("Zed").log.at(-1), { kind: "killed", round: 2, name: "Fay", role: "mistress" });
+  assert.deepEqual(view("Dan").secret.checks?.at(-1), { round: 2, target: idOf("Bob"), mafia: true });
+});
+
+test("the maniac wins when one other is left, and the mafia cannot win while he lives", () => {
+  const { view, send, idOf, game } = sevenWithRoles();
+  // Night 1: maniac kills the detective, the mafia the doctor, the mistress stays home with Gus.
+  send("Ann", { type: "mafiaAct", id: game, target: idOf("Cid") });
+  send("Bob", { type: "mafiaAct", id: game, target: idOf("Cid") });
+  send("Ann", { type: "mafiaAct", id: game, target: idOf("Gus"), ability: "check" });
+  send("Eve", { type: "mafiaAct", id: game, target: idOf("Dan") });
+  send("Fay", { type: "mafiaAct", id: game, target: idOf("Gus") });
+  send("Cid", { type: "mafiaAct", id: game, target: idOf("Fay") });
+  send("Dan", { type: "mafiaAct", id: game, target: idOf("Fay") });
+  assert.deepEqual(view("Ann").secret.donChecks, [{ round: 1, target: idOf("Gus"), detective: false }]);
+  // Five left: don, mafia, maniac, mistress, Gus. Vote out Gus.
+  send("Ann", { type: "mafiaAdvance", id: game });
+  for (const voter of ["Ann", "Bob", "Eve", "Fay"]) send(voter, { type: "mafiaVote", id: game, target: idOf("Gus") });
+  send("Gus", { type: "mafiaVote", id: game, target: "skip" });
+  // Four left: the mafia are half, but the maniac lives, so the game goes on.
+  assert.equal(view("Zed").phase, "night");
+  send("Ann", { type: "mafiaAct", id: game, target: idOf("Fay") });
+  send("Bob", { type: "mafiaAct", id: game, target: idOf("Fay") });
+  send("Ann", { type: "mafiaAct", id: game, target: idOf("Eve"), ability: "check" });
+  send("Fay", { type: "mafiaAct", id: game, target: idOf("Bob") });
+  send("Eve", { type: "mafiaAct", id: game, target: idOf("Ann") });
+  // Fay and Ann die: Bob (mafia) and Eve (maniac) remain — the maniac wins.
+  assert.equal(view("Zed").phase, "over");
+  assert.equal(view("Zed").winner, "maniac");
+  assert.deepEqual(view("Zed").log.at(-1), { kind: "win", side: "maniac" });
 });

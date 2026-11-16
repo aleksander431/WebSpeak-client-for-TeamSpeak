@@ -199,6 +199,12 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 - **Chess in the channel**: a "Games" button beside "Watch together". Two seats at the board, everyone else watches; move by click or drag, with legal moves, check and the last move highlighted, captured pieces and the score sheet. Clocks with increment (1 to 30 minutes), draw offers, resignation and a rematch with colours swapped. The server checks every move: castling, en passant, promotion, mate, stalemate, threefold repetition, the fifty-move rule, insufficient material.
 - **Mafia with the server as host**: 4–16 players, roles dealt in secret (mafia, doctor, detective, citizens). At night the mafia pick a victim (seeing each other's picks, with their own secret chat), the doctor heals, the detective checks; in the morning the server announces the night, the day is for talking in voice and an open vote. The host sets the number of mafia, the doctor and detective, showing the roles of the dead, and the night, discussion and vote timers. The host's lines are read aloud ("The town falls asleep…"), which can be turned off.
+- **Chess against the computer**: with no opponent, press "Play the computer" and choose a level from 1 to 8 (Stockfish right in the browser). Everyone else in the channel watches.
+- **Going over a game**: step through the moves with ← → or by clicking the score sheet; copy or download the game as PGN to open it on lichess, for example.
+- **Sounds** for a move, a capture, check and the end of the game (can be turned off).
+- **An opponent who left**: if your opponent leaves the channel mid-game, you can claim the win after a minute. If both players leave, the board frees up and those still here can start their own game.
+- **Mafia: new roles** — the don (picks the victim with the mafia and looks for the detective), the maniac (kills alone and wins alone) and the mistress (her night visit cancels a player's action). The host turns them on in the settings. The detective's answer now comes in the morning.
+- **The mafia host's voice**: choose any voice installed on your computer and the speaking speed, with a preview.
 
 ### [v1.0.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.3) · 2026-11-14
 
