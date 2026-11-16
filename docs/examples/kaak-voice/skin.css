@@ -4715,7 +4715,8 @@
   transition: color .15s ease, background-color .15s ease, border-color .15s ease;
 }
 [data-ws-plugin-part="kaak-workspace.rail-links"] a .ui-icon { display: block; width: 22px; height: 22px; flex: 0 0 auto; }
-[data-ws-plugin-part="kaak-workspace.rail-links"] a[href="/admin"] {
+[data-ws-plugin-part="kaak-workspace.rail-links"] a[href="/admin"],
+[data-ws-plugin-part="kaak-workspace.rail-links"] a[data-ws-desktop-settings] {
   order: 3;
   flex-basis: 58px;
   width: 58px;

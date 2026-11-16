@@ -136,6 +136,10 @@
       <path d="M12 2.5 20.5 7.3v9.4L12 21.5l-8.5-4.8V7.3L12 2.5Z" />
       <path d="M12 8.2 16 15H8l4-6.8Z" />
     </template>
+    <template v-else-if="name === 'shield'">
+      <path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6L12 3Z" />
+      <path d="m9 12 2 2 4-4" />
+    </template>
     <template v-else-if="name === 'pawn'">
       <circle cx="12" cy="6.5" r="2.6" />
       <path d="M9.6 10.6h4.8M10.4 10.6l-.9 5.2h5l-.9-5.2M7 20h10l-1.4-4.2H8.4L7 20Z" />

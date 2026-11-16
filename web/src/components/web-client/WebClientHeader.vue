@@ -82,6 +82,20 @@
           :size="16"
         /><span>{{ t("viewChangelog") }}</span>
       </a>
+      <button
+        v-if="desktop && !mobile"
+        type="button"
+        class="guide-button"
+        data-ws-part="home.desktop-settings"
+        :title="t('desktopSettings')"
+        :aria-label="t('desktopSettings')"
+        @click="emit('openDesktopSettings')"
+      >
+        <Icon
+          name="settings"
+          :size="15"
+        /><span>{{ t("desktopSettings") }}</span>
+      </button>
       <a
         v-if="!mobile"
         class="guide-button"
@@ -90,7 +104,7 @@
         :aria-label="t('adminConsole')"
       >
         <Icon
-          name="settings"
+          name="shield"
           :size="15"
         /><span>{{ t("adminConsole") }}</span>
       </a>
@@ -122,6 +136,8 @@ const props = defineProps<{
   brandName: string;
   appVersion: string;
   mobile: boolean;
+  /** Inside the desktop app: show the app's settings button. */
+  desktop?: boolean;
   skinOptions: SkinOption[];
   t: (key: string, variables?: Record<string, string | number>) => string;
 }>();
@@ -139,6 +155,7 @@ const changelogUrl = computed(() => {
 });
 const emit = defineEmits<{
   openQq: [];
+  openDesktopSettings: [];
   skinChange: [value: string];
   languageChange: [];
 }>();

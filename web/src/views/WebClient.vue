@@ -86,6 +86,8 @@
         :mobile="mobileMode"
         :skin-options="skinOptions"
         :t="t"
+        :desktop="desktop.isDesktop"
+        @open-desktop-settings="desktop.openSettings()"
         @open-qq="qqModalOpen = true"
         @skin-change="onSkinChange"
         @language-change="persistLanguage"
@@ -540,6 +542,17 @@
               :title="t('audioSettings')"
               :aria-label="t('audioSettings')"
               @click="settingsOpen = true"
+              ><Icon
+                name="settings"
+                :size="18"
+            /></button>
+            <button
+              v-if="desktop.isDesktop && !isMobileViewport"
+              class="header-action"
+              data-ws-part="voice.desktop-settings"
+              :title="t('desktopSettings')"
+              :aria-label="t('desktopSettings')"
+              @click="desktop.openSettings()"
               ><Icon
                 name="settings"
                 :size="18"
@@ -1763,7 +1776,7 @@ watch(cameraErrorCode, code => { if (code) showToast(t(CAMERA_ERROR_KEYS[code] ?
 const memberCamera = { cameraActive, cameraStarting, cameraMedia, cameraSupported, toggleCamera };
 const memberSharingState = { screenShareActive, screenShareStarting, screenShareViewingStreamId, screenShareViewedStreamIds, screenSharePreviewStream, settingsOpen: screenShareSettingsOpen };
 // Desktop client: global hotkeys and tray actions, and state for the tray icon.
-useDesktopBridge({
+const desktop = useDesktopBridge({
   state: () => ({
     connected: voiceState.connected,
     micMuted: microphoneMuted.value,
@@ -2344,11 +2357,19 @@ const skinPluginWidgets = {
       title: t("qqGroup"),
       "aria-label": t("qqGroup"),
     }, [h(Icon, { name: "qq", size: 20 })]),
+    // The desktop app's own settings (shown only inside the app); the admin console has its own shield.
+    ...(desktop.isDesktop ? [h("a", {
+      href: "#desktop-settings",
+      "data-ws-desktop-settings": "",
+      title: t("desktopSettings"),
+      "aria-label": t("desktopSettings"),
+      onClick: (event: Event) => { event.preventDefault(); desktop.openSettings(); },
+    }, [h(Icon, { name: "settings", size: 20 })])] : []),
     h("a", {
       href: "/admin",
       title: t("adminConsole"),
       "aria-label": t("adminConsole"),
-    }, [h(Icon, { name: "settings", size: 20 })]),
+    }, [h(Icon, { name: "shield", size: 20 })]),
   ]),
   "voice.screen-share-start": () => h("button", {
     type: "button",

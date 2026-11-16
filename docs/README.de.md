@@ -195,6 +195,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - **Gegner gegangen**: Verlässt der Gegner mitten in der Partie den Kanal, kann man nach einer Minute den Sieg beanspruchen. Gehen beide Spieler, wird das Brett frei und die Anwesenden können eine eigene Partie beginnen.
 - **Mafia: neue Rollen** — der Don (wählt mit der Mafia das Opfer und sucht den Kommissar), der Wahnsinnige (tötet allein und gewinnt allein) und die Geliebte (ihr nächtlicher Besuch vereitelt die Aktion eines Spielers). Der Spielleiter schaltet sie in den Einstellungen ein. Die Antwort auf die Prüfung des Kommissars kommt jetzt am Morgen.
 - **Stimme des Mafia-Spielleiters**: jede auf dem Computer installierte Stimme und die Sprechgeschwindigkeit wählbar, mit Vorschau.
+- Die Schaltfläche der Administrationskonsole sieht nicht mehr wie Einstellungen aus: Sie hat jetzt ein Schild-Symbol. Die Desktop-App bekommt ein Zahnrad „App-Einstellungen“ in KAAKs linker Leiste, im Raum-Kopf und auf der Startseite; im Browser erscheint es nicht.
 
 ### [v1.0.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.3) · 2026-11-14
 
