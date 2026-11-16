@@ -195,6 +195,11 @@ Disable and save the relay configuration to remove the relay option from the wel
 
 <a id="latest-release-notes"></a>
 
+### [v1.1.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.1.0) · 2026-11-16
+
+- **Chess in the channel**: a "Games" button beside "Watch together". Two seats at the board, everyone else watches; move by click or drag, with legal moves, check and the last move highlighted, captured pieces and the score sheet. Clocks with increment (1 to 30 minutes), draw offers, resignation and a rematch with colours swapped. The server checks every move: castling, en passant, promotion, mate, stalemate, threefold repetition, the fifty-move rule, insufficient material.
+- **Mafia with the server as host**: 4–16 players, roles dealt in secret (mafia, doctor, detective, citizens). At night the mafia pick a victim (seeing each other's picks, with their own secret chat), the doctor heals, the detective checks; in the morning the server announces the night, the day is for talking in voice and an open vote. The host sets the number of mafia, the doctor and detective, showing the roles of the dead, and the night, discussion and vote timers. The host's lines are read aloud ("The town falls asleep…"), which can be turned off.
+
 ### [v1.0.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.3) · 2026-11-14
 
 - Desktop client (needs the new app version): the YouTube sign-in window now presents itself as Firefox, since Google refused the sign-in with "This browser or app may not be secure".

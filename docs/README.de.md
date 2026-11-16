@@ -185,6 +185,11 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 
 <a id="latest-release-notes"></a>
 
+### [v1.1.0](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.1.0) · 2026-11-16
+
+- **Schach im Kanal**: eine Schaltfläche „Spiele“ neben „Gemeinsam schauen“. Zwei Plätze am Brett, alle anderen schauen zu; ziehen per Klick oder Ziehen, mit markierten Zügen, Schach und letztem Zug, geschlagenen Figuren und Partienotation. Uhren mit Inkrement (1 bis 30 Minuten), Remisangebote, Aufgabe und Revanche mit Farbwechsel. Der Server prüft jeden Zug: Rochade, en passant, Umwandlung, Matt, Patt, dreifache Wiederholung, 50-Züge-Regel, ungenügendes Material.
+- **Mafia mit dem Server als Spielleiter**: 4–16 Spieler, geheim verteilte Rollen (Mafia, Arzt, Kommissar, Bürger). Nachts wählt die Mafia ein Opfer (sie sieht die Wahl der anderen und hat einen geheimen Chat), der Arzt heilt, der Kommissar prüft; morgens verkündet der Server die Nacht, tagsüber wird im Sprachkanal beraten und offen abgestimmt. Der Spielleiter stellt die Zahl der Mafia, Arzt und Kommissar, das Aufdecken der Rollen Toter und die Zeiten für Nacht, Beratung und Abstimmung ein. Die Ansagen werden vorgelesen („Die Stadt schläft ein…“), abschaltbar.
+
 ### [v1.0.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.3) · 2026-11-14
 
 - Desktop-Client (neue App-Version nötig): Das YouTube-Anmeldefenster gibt sich jetzt als Firefox aus, weil Google die Anmeldung mit „Dieser Browser oder diese App ist möglicherweise nicht sicher“ abgelehnt hat.

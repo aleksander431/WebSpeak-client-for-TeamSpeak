@@ -5,6 +5,10 @@ import { SessionEventCoordinator, type SessionDirectoryState } from "./session-e
 import { ScreenShareCoordinator } from "./screen-share-coordinator.js";
 import { WhiteboardCoordinator, whiteboardBoardKey } from "./whiteboard-coordinator.js";
 import { WatchCoordinator } from "./watch-coordinator.js";
+import { ChessCoordinator } from "./chess-coordinator.js";
+import { MafiaCoordinator } from "./mafia-coordinator.js";
+import { parseChessClientMessage, type ChessClientMessage } from "../shared/chess-room.js";
+import { parseMafiaClientMessage, type MafiaClientMessage } from "../shared/mafia.js";
 import { ChatCommandRunner } from "./chat-command-runner.js";
 import { parseWatchClientMessage, type WatchClientMessage } from "../shared/watch-together.js";
 import { MemoryWhiteboardStore, type WhiteboardStore } from "./whiteboard-store.js";
@@ -52,6 +56,20 @@ export function parseWatchFrame(raw: string): WatchClientMessage | { error: { co
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return null; }
   return parseWatchClientMessage(value);
+}
+
+/** Channel chess and mafia frames, decoded the same way. */
+export function parseChessFrame(raw: string): ChessClientMessage | { error: { code: string } } | null {
+  if (!raw.includes("\"chess")) return null;
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return null; }
+  return parseChessClientMessage(value);
+}
+export function parseMafiaFrame(raw: string): MafiaClientMessage | { error: { code: string } } | null {
+  if (!raw.includes("\"mafia")) return null;
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return null; }
+  return parseMafiaClientMessage(value);
 }
 
 /** Game frames arrive as JSON text; the shared parser takes the decoded value. */
@@ -192,6 +210,8 @@ export class VoiceBridge {
   private readonly whiteboards: WhiteboardCoordinator;
   private readonly tabletops: TabletopCoordinator;
   private readonly watches: WatchCoordinator;
+  private readonly chess: ChessCoordinator;
+  private readonly mafia: MafiaCoordinator;
   private readonly identityLeases = new IdentityLeaseStore();
   private wss: WebSocketServer | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -258,6 +278,17 @@ export class VoiceBridge {
         }
       },
     });
+    const relay = (kind: string) => (entryId: string, message: { type: string }) => {
+      const entry = this.entries.get(entryId);
+      if (entry?.ws.readyState !== WebSocket.OPEN) return;
+      try {
+        entry.ws.send(JSON.stringify(message));
+      } catch (error: unknown) {
+        this.logger.warn({ entryId, messageType: message.type, errorName: error instanceof Error ? error.name : "unknown" }, `Could not send ${kind} message to browser`);
+      }
+    };
+    this.chess = new ChessCoordinator({ send: relay("chess") });
+    this.mafia = new MafiaCoordinator({ send: relay("mafia") });
     this.tabletops = new TabletopCoordinator({
       adventures: () => [...BUILT_IN_ADVENTURES, ...(options.adventures?.list() ?? [])],
       isCustomAdventure: id => options.adventures?.has(id) ?? false,
@@ -709,6 +740,9 @@ export class VoiceBridge {
             this.whiteboards.onBoardChanged({ entryId, nickname: entry!.nickname, boardKey: whiteboardBoardKey(teamSpeakTargetKey(entry!.target), channelId) });
             this.tabletops.onTableChanged({ ...tableParticipant(), tableKey: tabletopTableKey(teamSpeakTargetKey(entry!.target), channelId) });
             this.watches.onRoomChanged({ entryId, nickname: entry!.nickname, roomKey: tabletopTableKey(teamSpeakTargetKey(entry!.target), channelId) });
+            const roomKey = tabletopTableKey(teamSpeakTargetKey(entry!.target), channelId);
+            this.chess.onRoomChanged({ ...tableParticipant(), roomKey });
+            this.mafia.onRoomChanged({ ...tableParticipant(), roomKey });
           }
         },
         onNotification: notification => this.screenShares.handleNotification(entry!, notification),
@@ -765,6 +799,8 @@ export class VoiceBridge {
           this.whiteboards.removePeer(entryId);
           this.tabletops.removePeer(entryId);
           this.watches.removePeer(entryId);
+          this.chess.removePeer(entryId);
+          this.mafia.removePeer(entryId);
           resetDirectoryForReconnect();
           sendJson({ type: "disconnected", recoverable: isRecoverable(normalized) });
           scheduleReconnect(normalized);
@@ -853,6 +889,21 @@ export class VoiceBridge {
             return;
           }
           this.watches.handleMessage({ entryId, nickname: entry!.nickname, roomKey: tabletopTableKey(teamSpeakTargetKey(entry!.target), tsClient.getChannelId()) }, watchMessage);
+          return;
+        }
+        // Channel chess and mafia: seats follow the person like game tables.
+        const chessMessage = parseChessFrame(rawMessage);
+        const partyMessage = chessMessage ?? parseMafiaFrame(rawMessage);
+        if (partyMessage) {
+          const errorType = chessMessage ? "chessError" : "mafiaError";
+          const rejectParty = (code: string) => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: errorType, code }));
+          };
+          if ("error" in partyMessage) { rejectParty(partyMessage.error.code); return; }
+          if (!tsReady || session.state !== "connected") { rejectParty("SESSION_NOT_READY"); return; }
+          const participant = { ...tableParticipant(), roomKey: tabletopTableKey(teamSpeakTargetKey(entry!.target), tsClient.getChannelId()) };
+          if (partyMessage.type.startsWith("chess")) this.chess.handleMessage(participant, partyMessage as ChessClientMessage);
+          else this.mafia.handleMessage(participant, partyMessage as MafiaClientMessage);
           return;
         }
         const gameMessage = parseGameFrame(rawMessage);
@@ -1194,6 +1245,8 @@ export class VoiceBridge {
     this.whiteboards.removePeer(entry.id);
     this.tabletops.removePeer(entry.id);
     this.watches.removePeer(entry.id);
+    this.chess.removePeer(entry.id);
+    this.mafia.removePeer(entry.id);
     if (this.entries.get(entry.id) === entry) this.entries.delete(entry.id);
     entry.events?.close();
     entry.chatCommands?.close();

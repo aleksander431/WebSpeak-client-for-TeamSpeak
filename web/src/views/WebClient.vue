@@ -733,6 +733,17 @@
                       name="play"
                       :size="14"
                     /> <span>{{ t("watch") }}</span></button
+                  ><button
+                    v-if="voiceState.connected"
+                    type="button"
+                    :class="['whiteboard-open-button', { 'watch-live': partyPanel?.live }]"
+                    data-ws-part="voice.party-open"
+                    :title="t('partyOpenHint')"
+                    @click="openParty()"
+                    ><Icon
+                      name="pawn"
+                      :size="14"
+                    /> <span>{{ t("partyGames") }}</span></button
                   ><span class="section-counter">{{
                   t("onlineShort", { count: currentMembers.length })
                 }}</span></span></div
@@ -1021,6 +1032,14 @@
       />
     </Teleport>
 
+    <PartyPanel
+      v-if="voiceState.connected"
+      ref="partyPanel"
+      :chess="chessClient"
+      :mafia="mafiaClient"
+      :language="language"
+    />
+
     <WatchPanel
       v-if="voiceState.connected"
       ref="watchPanel"
@@ -1168,6 +1187,8 @@ import GamePanel from "../components/web-client/GamePanel.vue";
 import { GameClient } from "../game/game-client.js";
 import { WatchClient } from "../watch/watch-client.js";
 import WatchPanel from "../components/web-client/WatchPanel.vue";
+import PartyPanel from "../components/web-client/party/PartyPanel.vue";
+import { ChessClient, MafiaClient } from "../party/party-client.js";
 import { WhiteboardClient } from "../whiteboard/whiteboard-client.js";
 import { useDesktopBridge } from "../composables/useDesktopBridge.js";
 import { WEB_CLIENT_T, pageLanguage } from "../composables/useWebClientT.js";
@@ -1231,6 +1252,8 @@ const {
   whiteboard: whiteboardTransport,
   games: gameTransport,
   watch: watchTransport,
+  chess: chessTransport,
+  mafia: mafiaTransport,
   setChatLanguage,
   serverInfo: voiceServerInfo,
   sessionEpoch,
@@ -1449,6 +1472,16 @@ function openWatch() {
   if (voiceState.connected) watchPanel.value?.open();
 }
 onUnmounted(() => watchClient.dispose());
+
+// Channel games (chess and mafia): every connected page follows the channel's boards.
+const chessClient = new ChessClient(chessTransport);
+const mafiaClient = new MafiaClient(mafiaTransport);
+const partyPanel = ref<InstanceType<typeof PartyPanel> | null>(null);
+watch(() => voiceState.connected, connected => { chessClient.setConnected(connected); mafiaClient.setConnected(connected); }, { immediate: true });
+function openParty(game?: "chess" | "mafia") {
+  if (voiceState.connected) partyPanel.value?.open(game);
+}
+onUnmounted(() => { chessClient.dispose(); mafiaClient.dispose(); });
 const { panelOpen: performancePanelOpen } = performance;
 
 const query = new URLSearchParams(location.search);
@@ -2263,6 +2296,7 @@ const skinPluginActions = {
   "voice.openWhiteboard": () => { if (voiceState.connected) openWhiteboard(); },
   "voice.openGame": () => openGame(),
   "voice.openWatch": () => openWatch(),
+  "voice.openParty": () => openParty(),
   "voice.toggleCamera": () => toggleCamera(),
   "voice.joinScreenShare": (args: Record<string, string | number | boolean>) => {
     if (!voiceState.connected || typeof args.streamId !== "string") return;

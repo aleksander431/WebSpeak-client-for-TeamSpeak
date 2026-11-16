@@ -21,6 +21,8 @@ import { parseWhiteboardServerMessage, type WhiteboardClientMessage, type Whiteb
 import { parseGameServerMessage, type GameClientMessage, type GameServerMessage } from "../../../src/shared/tabletop.js";
 import { chatCommandHelp, chatCommandLanguage, parseChatCommand } from "../../../src/shared/chat-commands.js";
 import { parseWatchServerMessage, type WatchClientMessage, type WatchServerMessage } from "../../../src/shared/watch-together.js";
+import { parseChessServerMessage, type ChessClientMessage, type ChessServerMessage } from "../../../src/shared/chess-room.js";
+import { parseMafiaServerMessage, type MafiaClientMessage, type MafiaServerMessage } from "../../../src/shared/mafia.js";
 import type { ChatMessage } from "../../../src/shared/voice-models.js";
 import { CHAT_COMMAND_MAX_LENGTH, type ClientCommandPayloads, type ClientCommandType } from "../../../src/shared/client-commands.js";
 export type { ScreenShareStreamDescription as ScreenShareStream, ScreenShareViewerDescription as ScreenShareViewer, ScreenSharePeerSignal as ScreenShareSignal } from "../../../src/shared/screen-share.js";
@@ -350,6 +352,25 @@ export function useVoiceWebSocket() {
       return () => { watchListeners.delete(listener); };
     },
   };
+  // Channel chess and mafia share it as well.
+  function partyTransport<Out, In>() {
+    const listeners = new Set<(message: In) => void>();
+    return {
+      listeners,
+      transport: {
+        isOpen: () => ws.value?.readyState === WebSocket.OPEN && state.connected,
+        send(message: Out) {
+          if (ws.value?.readyState === WebSocket.OPEN) ws.value.send(JSON.stringify(message));
+        },
+        subscribe(listener: (message: In) => void): () => void {
+          listeners.add(listener);
+          return () => { listeners.delete(listener); };
+        },
+      },
+    };
+  }
+  const chessChannel = partyTransport<ChessClientMessage, ChessServerMessage>();
+  const mafiaChannel = partyTransport<MafiaClientMessage, MafiaServerMessage>();
   const inputDevices = reactive<AudioInputDevice[]>([]);
   const outputDevices = reactive<AudioOutputDevice[]>([]);
   const selectedInputDeviceId = ref(typeof localStorage !== "undefined" ? localStorage.getItem("webspeak:input-device") ?? "" : "");
@@ -1235,6 +1256,16 @@ export function useVoiceWebSocket() {
       if (message) for (const listener of watchListeners) listener(message);
       return;
     }
+    if (typeof rawType === "string" && rawType.startsWith("chess")) {
+      const message = parseChessServerMessage(raw);
+      if (message) for (const listener of chessChannel.listeners) listener(message);
+      return;
+    }
+    if (typeof rawType === "string" && rawType.startsWith("mafia")) {
+      const message = parseMafiaServerMessage(raw);
+      if (message) for (const listener of mafiaChannel.listeners) listener(message);
+      return;
+    }
     if (typeof rawType === "string" && rawType.startsWith("game")) {
       const message = parseGameServerMessage(raw);
       if (message) for (const listener of gameListeners) listener(message);
@@ -1762,6 +1793,8 @@ export function useVoiceWebSocket() {
     whiteboard,
     games,
     watch: watchTogether,
+    chess: chessChannel.transport,
+    mafia: mafiaChannel.transport,
     setChatLanguage,
     chatAccess,
     ws,

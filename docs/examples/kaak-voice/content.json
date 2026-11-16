@@ -70,7 +70,8 @@
         "communityLinks": "社区与管理入口",
         "kaakOpenWhiteboard": "打开白板",
         "kaakPeopleSuffix": "人",
-        "kaakOpenWatch": "一起看视频"
+        "kaakOpenWatch": "一起看视频",
+        "kaakOpenParty": "频道游戏"
       }
     },
     "en": {
@@ -142,7 +143,8 @@
         "communityLinks": "Community and administration",
         "kaakOpenWhiteboard": "Open whiteboard",
         "kaakPeopleSuffix": "people",
-        "kaakOpenWatch": "Watch together"
+        "kaakOpenWatch": "Watch together",
+        "kaakOpenParty": "Games: chess and Mafia"
       }
     },
     "de": {
@@ -214,7 +216,8 @@
         "communityLinks": "Community und Verwaltung",
         "kaakOpenWhiteboard": "Whiteboard öffnen",
         "kaakPeopleSuffix": "Personen",
-        "kaakOpenWatch": "Zusammen schauen"
+        "kaakOpenWatch": "Zusammen schauen",
+        "kaakOpenParty": "Spiele: Schach und Mafia"
       }
     },
     "ru": {
@@ -286,7 +289,8 @@
         "communityLinks": "Сообщество и управление",
         "kaakOpenWhiteboard": "Открыть доску",
         "kaakPeopleSuffix": "чел.",
-        "kaakOpenWatch": "Смотреть вместе"
+        "kaakOpenWatch": "Смотреть вместе",
+        "kaakOpenParty": "Игры: шахматы и мафия"
       }
     },
     "ja": {
@@ -358,7 +362,8 @@
         "communityLinks": "コミュニティと管理",
         "kaakOpenWhiteboard": "ホワイトボードを開く",
         "kaakPeopleSuffix": "人",
-        "kaakOpenWatch": "一緒に見る"
+        "kaakOpenWatch": "一緒に見る",
+        "kaakOpenParty": "ゲーム：チェスとマフィア"
       }
     }
   }
