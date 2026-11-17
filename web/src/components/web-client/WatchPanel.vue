@@ -39,15 +39,15 @@
       <button type="button" class="wt-icon-btn" :aria-label="t('watchFullscreen')" :title="t('watchFullscreen')" @click="toggleFullscreen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
       <button type="button" class="wt-icon-btn" :aria-label="t('watchClose')" :title="t('watchClose')" @click="client.setWatching(false)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
     </header>
+    <!-- YouTube's own buttons are reachable (its gear: quality, subtitles). Above the picture, never over it: YouTube keeps buttons in every corner. -->
+    <div v-if="nativeControls" class="wt-native" role="status">
+      <span>{{ t("watchYoutubeSettingsHint") }}</span>
+      <button type="button" class="wt-btn wt-btn-accent" @click="toggleNativeControls">{{ t("watchDone") }}</button>
+    </div>
     <div class="wt-stage" data-ws-part="voice.watch.player">
       <div ref="host" class="wt-host"></div>
       <!-- Clicks on the picture go through the shared controls, not the embed's own. -->
       <button v-if="!nativeControls" type="button" class="wt-veil" :aria-label="room.playing ? t('watchPause') : t('watchPlay')" @click="togglePlay" @dblclick.prevent="toggleFullscreen"></button>
-      <!-- YouTube's own control bar is reachable: quality and subtitles live under its gear. -->
-      <div v-else class="wt-native" role="status">
-        <span>{{ t("watchYoutubeSettingsHint") }}</span>
-        <button type="button" class="wt-btn wt-btn-accent" @click="toggleNativeControls">{{ t("watchDone") }}</button>
-      </div>
       <button v-if="blocked" type="button" class="wt-blocked" @click="unblock">▶ {{ t("watchBlocked") }}</button>
       <p v-if="toast" class="wt-toast" role="status">{{ toast }}</p>
       <p v-if="problem" class="wt-problem" role="alert">{{ problem }}</p>
@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
 .wt-stage { position: relative; aspect-ratio: 16 / 9; background: #000; }
 .wt-full .wt-stage { flex: 1 1 auto; aspect-ratio: auto; min-height: 0; }
 .wt-host, .wt-host :deep(.wt-slot), .wt-host :deep(iframe), .wt-host :deep(video) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
-.wt-native { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(0, 0, 0, .82); color: #fff; font-size: 13px; }
+.wt-native { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; padding: 6px 10px; background: var(--wt-raised); color: var(--wt-text); font-size: 12.5px; }
 .wt-native span { flex: 1; min-width: 0; }
 .wt-icon-btn.wt-icon-on { background: rgba(255, 255, 255, .16); color: #fff; }
 .wt-icon-btn.wt-icon-off { opacity: .6; }
