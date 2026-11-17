@@ -197,6 +197,7 @@ Relay deaktivieren und speichern, um die Option von der Willkommensseite zu entf
 - **Stimme des Mafia-Spielleiters**: jede auf dem Computer installierte Stimme und die Sprechgeschwindigkeit wählbar, mit Vorschau.
 - Die Schaltfläche der Administrationskonsole sieht nicht mehr wie Einstellungen aus: Sie hat jetzt ein Schild-Symbol. Die Desktop-App bekommt ein Zahnrad „App-Einstellungen“ in KAAKs linker Leiste, im Raum-Kopf und auf der Startseite; im Browser erscheint es nicht.
 - **YouTube-Einstellungen in „Gemeinsam schauen“**: In der Kopfzeile des Fensters gibt es einen Untertitel-Schalter (wird gemerkt) und die Schaltfläche „Qualität und Untertitel“, die vorübergehend YouTubes eigene Schaltflächen einblendet, um über das Zahnrad des Players Qualität und Untertitelsprache zu wählen. Pause und Spulen bleiben gemeinsam.
+- **Vollbild in „Gemeinsam schauen“**: Das Video füllt den ganzen Bildschirm; Kopfzeile und Bedienleiste liegen über dem Bild, verschwinden nach einigen Sekunden ohne Mausbewegung und erscheinen bei Bewegung wieder.
 
 ### [v1.0.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.3) · 2026-11-14
 

@@ -19,7 +19,11 @@
   <section
     v-if="room && client.state.watching"
     ref="windowEl"
-    :class="['wt-window', `wt-${size}`, { 'wt-full': fullscreen, 'wt-dragged': placed }]"
+    :class="['wt-window', `wt-${size}`, { 'wt-full': fullscreen, 'wt-immersive': immersive, 'wt-idle': immersive && idle, 'wt-dragged': placed }]"
+    @pointermove="wake"
+    @pointerdown="wake"
+    @keydown="wake"
+    @focusin="wake"
     :style="placed && !fullscreen ? { left: `${placed.left}px`, top: `${placed.top}px` } : undefined"
     data-ws-part="voice.watch"
     :aria-label="t('watchTitle')"
@@ -424,7 +428,30 @@ async function toggleFullscreen(): Promise<void> {
 }
 function onFullscreen(): void {
   fullscreen.value = Boolean(document.fullscreenElement && document.fullscreenElement === windowEl.value);
+  wake();
 }
+
+/*
+ * Full screen: the picture fills the screen and the header and controls lie over
+ * it, fading away while the mouse rests. With YouTube's own buttons open the
+ * window keeps its ordinary rows (ours would cover YouTube's corners, and the
+ * frame does not tell us about mouse movement over it).
+ */
+const immersive = computed(() => fullscreen.value && !nativeControls.value);
+const idle = ref(false);
+let idleTimer: ReturnType<typeof setTimeout> | undefined;
+function wake(): void {
+  idle.value = false;
+  clearTimeout(idleTimer);
+  if (!immersive.value) return;
+  idleTimer = setTimeout(() => {
+    // Not while paused, mid-scrub, over a control or with something to read.
+    const busy = !room.value?.playing || scrub.value !== null || blocked.value || signInHint.value || stopArmed.value
+      || Boolean(windowEl.value?.querySelector(".wt-head:hover, .wt-controls:hover, .wt-head :focus-visible, .wt-controls :focus-visible"));
+    if (busy) wake(); else idle.value = true;
+  }, 2800);
+}
+watch(() => [immersive.value, room.value?.playing] as const, wake);
 document.addEventListener("fullscreenchange", onFullscreen);
 
 let drag: { id: number; dx: number; dy: number } | null = null;
@@ -464,6 +491,7 @@ onBeforeUnmount(() => {
   clearInterval(syncer);
   clearTimeout(stopTimer);
   clearTimeout(toastTimer);
+  clearTimeout(idleTimer);
   document.removeEventListener("fullscreenchange", onFullscreen);
   window.removeEventListener("resize", clampPlaced);
   window.removeEventListener("pointermove", dragMove);
@@ -507,6 +535,16 @@ onBeforeUnmount(() => {
 .wt-stage { position: relative; aspect-ratio: 16 / 9; background: #000; }
 .wt-full .wt-stage { flex: 1 1 auto; aspect-ratio: auto; min-height: 0; }
 .wt-host, .wt-host :deep(.wt-slot), .wt-host :deep(iframe), .wt-host :deep(video) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+/* Full screen: the picture takes the whole screen, the two bars lie over it. */
+.wt-immersive .wt-stage { position: absolute; inset: 0; }
+.wt-immersive .wt-head, .wt-immersive .wt-controls { position: absolute; left: 0; right: 0; z-index: 4; border: 0; transition: opacity .25s; }
+.wt-immersive .wt-head { top: 0; padding-bottom: 22px; background: linear-gradient(rgba(0, 0, 0, .78), transparent); }
+.wt-immersive .wt-controls { bottom: 0; padding: 26px 12px 10px; background: linear-gradient(transparent, rgba(0, 0, 0, .82)); }
+.wt-immersive .wt-title small, .wt-immersive .wt-time, .wt-immersive .wt-icon-btn { color: #e6e6e6; }
+.wt-immersive .wt-toast { top: 64px; }
+.wt-idle .wt-head, .wt-idle .wt-controls { opacity: 0; pointer-events: none; }
+.wt-idle, .wt-idle .wt-veil { cursor: none; }
+@media (prefers-reduced-motion: reduce) { .wt-immersive .wt-head, .wt-immersive .wt-controls { transition: none; } }
 .wt-native { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; padding: 6px 10px; background: var(--wt-raised); color: var(--wt-text); font-size: 12.5px; }
 .wt-native span { flex: 1; min-width: 0; }
 .wt-icon-btn.wt-icon-on { background: rgba(255, 255, 255, .16); color: #fff; }

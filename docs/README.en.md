@@ -207,6 +207,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - **The mafia host's voice**: choose any voice installed on your computer and the speaking speed, with a preview.
 - The admin console button no longer looks like settings: it now has a shield icon. The desktop app gets an "App settings" gear button in KAAK's left rail, the room header and the start page; browsers don't show it.
 - **YouTube settings in "Watch together"**: the window header has a subtitles switch (remembered) and a "Quality and subtitles" button that turns on YouTube's own buttons for a moment, so you can pick the quality and the subtitle language in the player's gear. Pause and seeking stay shared.
+- **Full screen in "Watch together"**: the video takes the whole screen; the header and controls lie over the picture, hide after a few seconds without mouse movement and come back when you move the mouse.
 
 ### [v1.0.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.3) · 2026-11-14
 
