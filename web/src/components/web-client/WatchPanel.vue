@@ -30,6 +30,10 @@
         <small :title="room.viewers.join(', ')">{{ t("watchFrom", { name: room.startedBy }) }} · {{ t("watchViewers", { count: room.viewers.length }) }}</small>
       </span>
       <button v-if="room.media.kind === 'youtube'" type="button" class="wt-icon-btn" :aria-label="t('watchSignIn')" :title="t('watchSignIn')" data-ws-part="voice.watch.sign-in" @click="signIn"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 19.5a7 7 0 0 1 14 0"/></svg></button>
+      <template v-if="room.media.kind === 'youtube'">
+        <button type="button" class="wt-icon-btn" :class="{ 'wt-icon-off': captionsPref === 'off' }" :aria-pressed="captionsPref !== 'off'" :aria-label="captionsPref === 'off' ? t('watchCaptionsOn') : t('watchCaptionsOff')" :title="captionsPref === 'off' ? t('watchCaptionsOn') : t('watchCaptionsOff')" data-ws-part="voice.watch.captions" @click="toggleCaptions"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M10.5 10.5a2 2 0 1 0 0 3M16.5 10.5a2 2 0 1 0 0 3"/><path v-if="captionsPref === 'off'" d="m4 20 16-16"/></svg></button>
+        <button type="button" class="wt-icon-btn" :class="{ 'wt-icon-on': nativeControls }" :aria-pressed="nativeControls" :aria-label="t('watchYoutubeSettings')" :title="t('watchYoutubeSettings')" data-ws-part="voice.watch.youtube-settings" @click="toggleNativeControls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+      </template>
       <button type="button" class="wt-icon-btn" :aria-label="t('watchOther')" :title="t('watchOther')" @click="startOpen = true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
       <button v-if="!fullscreen" type="button" class="wt-icon-btn" :aria-label="t('watchSize')" :title="t('watchSize')" @click="toggleSize"><template v-if="size === 'large'"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><path d="M12.5 10.5h5v5h-5z"/></svg></template><template v-else><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><path d="M13 14.5h4.5V11"/></svg></template></button>
       <button type="button" class="wt-icon-btn" :aria-label="t('watchFullscreen')" :title="t('watchFullscreen')" @click="toggleFullscreen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
@@ -38,7 +42,12 @@
     <div class="wt-stage" data-ws-part="voice.watch.player">
       <div ref="host" class="wt-host"></div>
       <!-- Clicks on the picture go through the shared controls, not the embed's own. -->
-      <button type="button" class="wt-veil" :aria-label="room.playing ? t('watchPause') : t('watchPlay')" @click="togglePlay" @dblclick.prevent="toggleFullscreen"></button>
+      <button v-if="!nativeControls" type="button" class="wt-veil" :aria-label="room.playing ? t('watchPause') : t('watchPlay')" @click="togglePlay" @dblclick.prevent="toggleFullscreen"></button>
+      <!-- YouTube's own control bar is reachable: quality and subtitles live under its gear. -->
+      <div v-else class="wt-native" role="status">
+        <span>{{ t("watchYoutubeSettingsHint") }}</span>
+        <button type="button" class="wt-btn wt-btn-accent" @click="toggleNativeControls">{{ t("watchDone") }}</button>
+      </div>
       <button v-if="blocked" type="button" class="wt-blocked" @click="unblock">▶ {{ t("watchBlocked") }}</button>
       <p v-if="toast" class="wt-toast" role="status">{{ toast }}</p>
       <p v-if="problem" class="wt-problem" role="alert">{{ problem }}</p>
@@ -135,6 +144,22 @@ const windowEl = ref<HTMLElement | null>(null);
 const player = shallowRef<MediaPlayer | null>(null);
 const blocked = ref(false);
 const signInHint = ref(false);
+// YouTube's own controls (its gear has quality and subtitles) and a quick subtitles switch.
+const CAPTIONS_KEY = "webspeak:watch-captions";
+const nativeControls = ref(false);
+/** "off"/"on" as chosen here; "" leaves YouTube's own choice. */
+const captionsPref = ref((() => { try { return localStorage.getItem(CAPTIONS_KEY) ?? ""; } catch { return ""; } })());
+/** The embed was built with its own control bar (it stays under the veil until the next video). */
+let builtWithControls = false;
+function toggleNativeControls(): void {
+  nativeControls.value = !nativeControls.value;
+  if (nativeControls.value && !builtWithControls) void mount();
+}
+function toggleCaptions(): void {
+  captionsPref.value = captionsPref.value === "off" ? "on" : "off";
+  try { localStorage.setItem(CAPTIONS_KEY, captionsPref.value); } catch { /* per-browser convenience */ }
+  player.value?.setCaptions?.(captionsPref.value === "on");
+}
 let blockedTimes = 0;
 let stalledTicks = 0;
 const problem = ref("");
@@ -240,7 +265,8 @@ async function mount(): Promise<void> {
       onBlocked: () => { blocked.value = true; if (++blockedTimes > 1) signInHint.value = true; },
       onError: code => { problem.value = errorText(code); },
       onEnded: () => props.client.ended(current.id),
-    });
+    }, { nativeControls: nativeControls.value, ...(captionsPref.value ? { captions: captionsPref.value === "on" } : {}) });
+    builtWithControls = nativeControls.value;
     if (mine !== generation) { created.destroy(); slot.remove(); return; }
     created.setVolume(volume.value, muted.value);
     player.value = created;
@@ -252,6 +278,8 @@ async function mount(): Promise<void> {
 }
 
 watch(() => [room.value?.id, props.client.state.watching] as const, async () => {
+  // YouTube's own buttons are opened for one video; the next one is shared again.
+  nativeControls.value = false;
   await nextTick();
   void mount();
 }, { flush: "post" });
@@ -479,6 +507,10 @@ onBeforeUnmount(() => {
 .wt-stage { position: relative; aspect-ratio: 16 / 9; background: #000; }
 .wt-full .wt-stage { flex: 1 1 auto; aspect-ratio: auto; min-height: 0; }
 .wt-host, .wt-host :deep(.wt-slot), .wt-host :deep(iframe), .wt-host :deep(video) { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+.wt-native { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(0, 0, 0, .82); color: #fff; font-size: 13px; }
+.wt-native span { flex: 1; min-width: 0; }
+.wt-icon-btn.wt-icon-on { background: rgba(255, 255, 255, .16); color: #fff; }
+.wt-icon-btn.wt-icon-off { opacity: .6; }
 .wt-veil { position: absolute; inset: 0; z-index: 1; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .wt-blocked { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding: 16px; border: 0; background: rgba(0, 0, 0, .6); color: #fff; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
 .wt-toast, .wt-problem { position: absolute; left: 10px; z-index: 3; max-width: calc(100% - 20px); margin: 0; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, .72); pointer-events: none; }

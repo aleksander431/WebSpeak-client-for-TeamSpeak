@@ -25,7 +25,16 @@ export interface MediaPlayer {
   playing(): boolean;
   buffering(): boolean;
   setVolume(volume: number, muted: boolean): void;
+  /** YouTube only: show or hide subtitles (kept across the player's own track changes). */
+  setCaptions?(on: boolean): void;
   destroy(): void;
+}
+
+export interface MediaPlayerOptions {
+  /** YouTube: build the embed with its own control bar (for its quality and subtitle menu). */
+  nativeControls?: boolean;
+  /** YouTube: subtitles forced on or off; unset leaves YouTube's own choice. */
+  captions?: boolean;
 }
 
 // ---- YouTube ----
@@ -41,6 +50,8 @@ interface YtPlayer {
   mute(): void;
   unMute(): void;
   getVideoData?(): { title?: string };
+  loadModule?(name: string): void;
+  unloadModule?(name: string): void;
   destroy(): void;
 }
 interface YtNamespace {
@@ -78,11 +89,11 @@ const YT_UNSTARTED = -1;
 const YT_CUED = 5;
 const YT_ENDED = 0;
 
-async function youtubePlayer(host: HTMLElement, id: string, start: number, events: MediaPlayerEvents): Promise<MediaPlayer> {
+async function youtubePlayer(host: HTMLElement, id: string, start: number, events: MediaPlayerEvents, options: MediaPlayerOptions): Promise<MediaPlayer> {
   const api = await loadYouTubeApi();
   const frame = document.createElement("iframe");
   const params = new URLSearchParams({
-    enablejsapi: "1", controls: "0", disablekb: "1", rel: "0", playsinline: "1", iv_load_policy: "3", fs: "0",
+    enablejsapi: "1", controls: options.nativeControls ? "1" : "0", disablekb: "1", rel: "0", playsinline: "1", iv_load_policy: "3", fs: "0",
     modestbranding: "1", origin: location.origin, start: String(Math.floor(start)),
   });
   frame.src = `https://www.youtube.com/embed/${id}?${params}`;
@@ -97,6 +108,12 @@ async function youtubePlayer(host: HTMLElement, id: string, start: number, event
   let playAskedAt = 0;
   let volume = { level: 1, muted: false };
   let metaSent = false;
+  let captions = options.captions;
+  // The captions module exists only once playback has begun, and YouTube may load it again by itself.
+  const applyCaptions = () => {
+    if (captions === undefined || !player) return;
+    try { if (captions) player.loadModule?.("captions"); else player.unloadModule?.("captions"); } catch { /* an optional nicety */ }
+  };
   const ready = new Promise<void>(resolve => {
     new api.Player(frame, {
       events: {
@@ -104,6 +121,7 @@ async function youtubePlayer(host: HTMLElement, id: string, start: number, event
         onStateChange: event => {
           state = event.data;
           if (state === YT_ENDED) { wantPlay = false; events.onEnded(); }
+          if (state === YT_PLAYING) applyCaptions();
           if (state === YT_PLAYING && !metaSent && player) {
             metaSent = true;
             events.onMeta(player.getVideoData?.().title ?? "", player.getDuration() || 0);
@@ -132,6 +150,7 @@ async function youtubePlayer(host: HTMLElement, id: string, start: number, event
     seek(seconds) { player?.seekTo(seconds, true); },
     currentTime: () => player?.getCurrentTime() ?? 0,
     duration: () => player?.getDuration() ?? 0,
+    setCaptions(on) { captions = on; applyCaptions(); },
     playing: () => state === YT_PLAYING,
     buffering: () => state === YT_BUFFERING,
     setVolume(level, muted) { volume = { level, muted }; applyVolume(); },
@@ -184,6 +203,6 @@ function filePlayer(host: HTMLElement, url: string, start: number, events: Media
   };
 }
 
-export async function createMediaPlayer(host: HTMLElement, media: WatchMedia, start: number, events: MediaPlayerEvents): Promise<MediaPlayer> {
-  return media.kind === "youtube" ? youtubePlayer(host, media.id, start, events) : filePlayer(host, media.url, start, events);
+export async function createMediaPlayer(host: HTMLElement, media: WatchMedia, start: number, events: MediaPlayerEvents, options: MediaPlayerOptions = {}): Promise<MediaPlayer> {
+  return media.kind === "youtube" ? youtubePlayer(host, media.id, start, events, options) : filePlayer(host, media.url, start, events);
 }

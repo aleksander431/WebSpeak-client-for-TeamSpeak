@@ -206,6 +206,7 @@ Disable and save the relay configuration to remove the relay option from the wel
 - **Mafia: new roles** — the don (picks the victim with the mafia and looks for the detective), the maniac (kills alone and wins alone) and the mistress (her night visit cancels a player's action). The host turns them on in the settings. The detective's answer now comes in the morning.
 - **The mafia host's voice**: choose any voice installed on your computer and the speaking speed, with a preview.
 - The admin console button no longer looks like settings: it now has a shield icon. The desktop app gets an "App settings" gear button in KAAK's left rail, the room header and the start page; browsers don't show it.
+- **YouTube settings in "Watch together"**: the window header has a subtitles switch (remembered) and a "Quality and subtitles" button that turns on YouTube's own buttons for a moment, so you can pick the quality and the subtitle language in the player's gear. Pause and seeking stay shared.
 
 ### [v1.0.3](https://github.com/aleksander431/WebSpeak-client-for-TeamSpeak/releases/tag/v1.0.3) · 2026-11-14
 
